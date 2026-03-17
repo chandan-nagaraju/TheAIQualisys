@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% block title %}Part {{ part.part_no }} | FIR Automation{% endblock %}
+{% block content %}
+<section class="table-page">
+  <h2>Part: {{ part.part_no }}</h2>
+  <p class="table-page__hint">
+    Manage internal inspection definitions for this part. These values are used to auto-generate FIR reports.
+  </p>
+
+  <h3>Basic info</h3>
+  <p><strong>Drawing Rev:</strong> {{ part.drawing_rev or "-" }}<br>
+     <strong>Description:</strong> {{ part.description or "-" }}</p>
+
+  <hr>
+
+  <h3>A) Dimension Parameters (part_spec_data)</h3>
+  <p class="table-page__hint">Paste from Excel (tab-separated: Parameter, Specification, Special Char, Method) or add a row, then edit and Save all. This data is loaded into the FIR report when you generate it.</p>
+
+  <div class="form__group" style="margin-bottom:1rem;">
+    <label for="excel_paste">Paste from Excel (columns: Parameter, Specification, Special Char, Method — tab-separated, one row per line):</label>
+    <textarea id="excel_paste" rows="4" style="width:100%;font-family:inherit;" placeholder="HOLE DIA	Ø 8.5 + 0.20		DVC&#10;PITCH	38 ± 0.25		DHG"></textarea>
+    <button type="button" class="btn btn--secondary" id="fillFromPasteBtn" style="margin-top:4px;">Fill table from paste</button>
+  </div>
+
+  <form method="post" id="specBulkForm">
+    <input type="hidden" name="section" value="save_spec_bulk">
+    <div class="table-wrapper">
+      <table class="data-table" id="specTable">
+        <thead>
+          <tr>
+            <th style="width:3rem;">#</th>
+            <th>Parameter</th>
+            <th>Specification</th>
+            <th>Special Char</th>
+            <th>Method</th>
+            <th style="width:5rem;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="specTbody">
+          {% for r in spec_rows %}
+          <tr data-row>
+            <td class="row-num">{{ loop.index }}</td>
+            <td><input type="text" name="spec_param" value="{{ r.parameter or '' }}" class="cell-input"></td>
+            <td><input type="text" name="spec_spec" value="{{ r.specification or '' }}" class="cell-input"></td>
+            <td><input type="text" name="spec_char" value="{{ r.special_char or '' }}" class="cell-input"></td>
+            <td><input type="text" name="spec_method" value="{{ r.method_of_inspection or '' }}" class="cell-input"></td>
+            <td><button type="button" class="btn btn--danger btn-x delete-row" title="Delete">×</button></td>
+          </tr>
+          {% else %}
+          <tr id="specEmptyRow"><td colspan="6">No rows yet. Paste from Excel and click Fill table, or click Add row below.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="button" class="btn btn--secondary" id="specAddOneBtn" style="margin-right:0.5rem;">Add one row</button>
+    <button type="submit" class="btn btn--primary" style="margin-top:0.75rem;">Save all dimension parameters</button>
+  </form>
+
+  <style>
+  .cell-input { width:100%; box-sizing:border-box; padding:4px; border:1px solid #d0d7e2; border-radius:4px; font-size:13px; }
+  .form-inline { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+  .btn-sm { padding:4px 8px; font-size:12px; }
+  .btn--danger { background:#b3261e; color:#fff; border:none; }
+  .btn--danger:hover { background:#8a1c16; }
+  .btn-x { width:22px; height:22px; min-width:22px; padding:0; font-size:14px; line-height:1; display:inline-flex; align-items:center; justify-content:center; border-radius:3px; cursor:pointer; }
+  </style>
+  <script>
+  (function() {
+    var tbody = document.getElementById('specTbody');
+    var emptyRow = document.getElementById('specEmptyRow');
+    var partId = {{ part.part_id }};
+
+    function removeEmptyPlaceholder() {
+      if (emptyRow && emptyRow.parentNode) emptyRow.remove();
+      emptyRow = null;
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function addRow(cells) {
+      removeEmptyPlaceholder();
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-row', '');
+      var n = tbody.querySelectorAll('tr[data-row]').length + 1;
+      cells = cells || ['', '', '', ''];
+      tr.innerHTML =
+        '<td class="row-num">' + n + '</td>' +
+        '<td><input type="text" name="spec_param" value="' + esc(cells[0]) + '" class="cell-input"></td>' +
+        '<td><input type="text" name="spec_spec" value="' + esc(cells[1]) + '" class="cell-input"></td>' +
+        '<td><input type="text" name="spec_char" value="' + esc(cells[2]) + '" class="cell-input"></td>' +
+        '<td><input type="text" name="spec_method" value="' + esc(cells[3]) + '" class="cell-input"></td>' +
+        '<td><button type="button" class="btn btn--danger btn-x delete-row" title="Delete">×</button></td>';
+      tbody.appendChild(tr);
+      tr.querySelector('.delete-row').addEventListener('click', function() {
+        tr.remove();
+        renumberRows();
+        if (tbody.querySelectorAll('tr[data-row]').length === 0 && emptyRow === null) {
+          var empty = document.createElement('tr');
+          empty.id = 'specEmptyRow';
+          empty.innerHTML = '<td colspan="6">No rows yet. Paste from Excel and click Fill table, or click Add one row.</td>';
+          tbody.appendChild(empty);
+          emptyRow = empty;
+        }
+      });
+      return tr;
+    }
+
+    function renumberRows() {
+      tbody.querySelectorAll('tr[data-row]').forEach(function(r, i) {
+        r.querySelector('.row-num').textContent = i + 1;
+      });
+    }
+
+    document.getElementById('specAddOneBtn').addEventListener('click', function() {
+      addRow([]);
+    });
+
+    document.getElementById('fillFromPasteBtn').addEventListener('click', function() {
+      var text = document.getElementById('excel_paste').value.trim();
+      if (!text) return;
+      var lines = text.split(/\r?\n/).filter(function(l) { return l.trim(); });
+      removeEmptyPlaceholder();
+      lines.forEach(function(line) {
+        var cells = line.split(/\t/).map(function(c) { return c.trim(); });
+        addRow(cells);
+      });
+      document.getElementById('excel_paste').value = '';
+    });
+
+    tbody.addEventListener('click', function(e) {
+      if (e.target.classList.contains('delete-row')) {
+        var tr = e.target.closest('tr[data-row]');
+        if (tr) {
+          tr.remove();
+          renumberRows();
+          if (tbody.querySelectorAll('tr[data-row]').length === 0) {
+            var empty = document.createElement('tr');
+            empty.id = 'specEmptyRow';
+            empty.innerHTML = '<td colspan="6">No rows yet. Paste from Excel and click Fill table, or click Add one row.</td>';
+            tbody.appendChild(empty);
+            emptyRow = empty;
+          }
+        }
+      }
+    });
+  })();
+  </script>
+
+  <hr>
+
+  <h3>B) Customer Complaint Parameters</h3>
+  <p class="table-page__hint">Paste from Excel (tab-separated) or add a row, edit and Save all. Loaded into FIR when you generate the report.</p>
+  <div class="form__group" style="margin-bottom:1rem;">
+    <label for="ccp_paste">Paste from Excel (tab-separated):</label>
+    <textarea id="ccp_paste" rows="3" style="width:100%;font-family:inherit;"></textarea>
+    <button type="button" class="btn btn--secondary" id="ccpFillBtn" style="margin-top:4px;">Fill table from paste</button>
+  </div>
+  <form method="post" id="ccpBulkForm">
+    <input type="hidden" name="section" value="save_ccp_bulk">
+    <div class="table-wrapper">
+      <table class="data-table" id="ccpTable">
+        <thead>
+          <tr><th style="width:3rem;">#</th><th>Parameter</th><th>Specification</th><th>Special Char</th><th>Method</th><th style="width:5rem;">Action</th></tr>
+        </thead>
+        <tbody id="ccpTbody">
+          {% for r in ccp_rows %}
+          <tr data-row>
+            <td class="row-num">{{ loop.index }}</td>
+            <td><input type="text" name="ccp_param" value="{{ r.parameter or '' }}" class="cell-input"></td>
+            <td><input type="text" name="ccp_spec" value="{{ r.specification or '' }}" class="cell-input"></td>
+            <td><input type="text" name="ccp_char" value="{{ r.special_char or '' }}" class="cell-input"></td>
+            <td><input type="text" name="ccp_method" value="{{ r.method_of_inspection or '' }}" class="cell-input"></td>
+            <td><button type="button" class="btn btn--danger btn-x delete-row" title="Delete">×</button></td>
+          </tr>
+          {% else %}
+          <tr id="ccpEmptyRow"><td colspan="6">No rows yet. Paste and Fill, or click Add one row.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="button" class="btn btn--secondary" id="ccpAddOneBtn" style="margin-right:0.5rem;">Add one row</button>
+    <button type="submit" class="btn btn--primary" style="margin-top:0.75rem;">Save all complaint parameters</button>
+  </form>
+
+  <hr>
+
+  <h3>C) Material Grade</h3>
+  <p class="table-page__hint">Paste one grade per line or add a row, edit and Save all. Loaded into FIR when you generate the report.</p>
+  <div class="form__group" style="margin-bottom:1rem;">
+    <label for="mat_paste">Paste from Excel (one material grade per line):</label>
+    <textarea id="mat_paste" rows="3" style="width:100%;font-family:inherit;"></textarea>
+    <button type="button" class="btn btn--secondary" id="matFillBtn" style="margin-top:4px;">Fill table from paste</button>
+  </div>
+  <form method="post" id="matBulkForm">
+    <input type="hidden" name="section" value="save_material_bulk">
+    <div class="table-wrapper">
+      <table class="data-table" id="matTable">
+        <thead>
+          <tr><th style="width:3rem;">#</th><th>Material Grade</th><th style="width:5rem;">Action</th></tr>
+        </thead>
+        <tbody id="matTbody">
+          {% for r in material_rows %}
+          <tr data-row>
+            <td class="row-num">{{ loop.index }}</td>
+            <td><input type="text" name="material_grade" value="{{ r.material_grade or '' }}" class="cell-input"></td>
+            <td><button type="button" class="btn btn--danger btn-x delete-row" title="Delete">×</button></td>
+          </tr>
+          {% else %}
+          <tr id="matEmptyRow"><td colspan="3">No rows yet. Paste and Fill, or click Add one row.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="button" class="btn btn--secondary" id="matAddOneBtn" style="margin-right:0.5rem;">Add one row</button>
+    <button type="submit" class="btn btn--primary" style="margin-top:0.75rem;">Save all material grades</button>
+  </form>
+
+  <hr>
+
+  <h3>D) Surface Coating</h3>
+  <p class="table-page__hint">Paste from Excel (tab-separated) or add a row, edit and Save all. Loaded into FIR when you generate the report.</p>
+  <div class="form__group" style="margin-bottom:1rem;">
+    <label for="coat_paste">Paste from Excel (tab-separated):</label>
+    <textarea id="coat_paste" rows="3" style="width:100%;font-family:inherit;"></textarea>
+    <button type="button" class="btn btn--secondary" id="coatFillBtn" style="margin-top:4px;">Fill table from paste</button>
+  </div>
+  <form method="post" id="coatBulkForm">
+    <input type="hidden" name="section" value="save_coating_bulk">
+    <div class="table-wrapper">
+      <table class="data-table" id="coatTable">
+        <thead>
+          <tr><th style="width:3rem;">#</th><th>Parameter</th><th>Specification</th><th>Special Char</th><th>Method</th><th style="width:5rem;">Action</th></tr>
+        </thead>
+        <tbody id="coatTbody">
+          {% for r in coating_rows %}
+          <tr data-row>
+            <td class="row-num">{{ loop.index }}</td>
+            <td><input type="text" name="coat_param" value="{{ r.parameter or '' }}" class="cell-input"></td>
+            <td><input type="text" name="coat_spec" value="{{ r.specification or '' }}" class="cell-input"></td>
+            <td><input type="text" name="coat_char" value="{{ r.special_char or '' }}" class="cell-input"></td>
+            <td><input type="text" name="coat_method" value="{{ r.method_of_inspection or '' }}" class="cell-input"></td>
+            <td><button type="button" class="btn btn--danger btn-x delete-row" title="Delete">×</button></td>
+          </tr>
+          {% else %}
+          <tr id="coatEmptyRow"><td colspan="6">No rows yet. Paste and Fill, or click Add one row.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="button" class="btn btn--secondary" id="coatAddOneBtn" style="margin-right:0.5rem;">Add one row</button>
+    <button type="submit" class="btn btn--primary" style="margin-top:0.75rem;">Save all surface coating parameters</button>
+  </form>
+
+  <script>
+  (function() {
+    function makeSection(opts) {
+      var tbody = document.getElementById(opts.tbodyId);
+      var emptyRowId = opts.emptyRowId;
+      var addOneBtnId = opts.addOneBtnId;
+      var pasteId = opts.pasteId;
+      var fillBtnId = opts.fillBtnId;
+      var names = opts.names;
+      var cols = opts.cols;
+      var emptyColspan = opts.emptyColspan;
+      var emptyText = opts.emptyText || 'No rows yet.';
+      var emptyRow = document.getElementById(emptyRowId);
+
+      function removeEmpty() {
+        if (emptyRow && emptyRow.parentNode) emptyRow.remove();
+        emptyRow = null;
+      }
+      function esc(s) {
+        if (!s) return '';
+        return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+      function addRow(cells) {
+        removeEmpty();
+        var tr = document.createElement('tr');
+        tr.setAttribute('data-row', '');
+        var n = tbody.querySelectorAll('tr[data-row]').length + 1;
+        cells = cells || [];
+        while (cells.length < cols) cells.push('');
+        var cellsHtml = '';
+        for (var i = 0; i < cols; i++) {
+          cellsHtml += '<td><input type="text" name="' + names[i] + '" value="' + esc(cells[i]) + '" class="cell-input"></td>';
+        }
+        tr.innerHTML = '<td class="row-num">' + n + '</td>' + cellsHtml + '<td><button type="button" class="btn btn--danger btn-x delete-row" title="Delete">×</button></td>';
+        tbody.appendChild(tr);
+        tr.querySelector('.delete-row').addEventListener('click', function() {
+          tr.remove();
+          renumber();
+          if (tbody.querySelectorAll('tr[data-row]').length === 0) {
+            var e = document.createElement('tr');
+            e.id = emptyRowId;
+            e.innerHTML = '<td colspan="' + emptyColspan + '">' + emptyText + '</td>';
+            tbody.appendChild(e);
+            emptyRow = e;
+          }
+        });
+      }
+      function renumber() {
+        tbody.querySelectorAll('tr[data-row]').forEach(function(r, i) {
+          r.querySelector('.row-num').textContent = i + 1;
+        });
+      }
+      if (addOneBtnId) {
+        document.getElementById(addOneBtnId).addEventListener('click', function() {
+          addRow([]);
+        });
+      }
+      document.getElementById(fillBtnId).addEventListener('click', function() {
+        var text = document.getElementById(pasteId).value.trim();
+        if (!text) return;
+        var lines = text.split(/\r?\n/).filter(function(l) { return l.trim(); });
+        removeEmpty();
+        lines.forEach(function(line) {
+          var cells = line.split(/\t/).map(function(c) { return c.trim(); });
+          addRow(cells);
+        });
+        document.getElementById(pasteId).value = '';
+      });
+      tbody.addEventListener('click', function(e) {
+        if (e.target.classList.contains('delete-row')) {
+          var tr = e.target.closest('tr[data-row]');
+          if (tr) {
+            tr.remove();
+            renumber();
+            if (tbody.querySelectorAll('tr[data-row]').length === 0) {
+              var e = document.createElement('tr');
+              e.id = emptyRowId;
+              e.innerHTML = '<td colspan="' + emptyColspan + '">' + emptyText + '</td>';
+              tbody.appendChild(e);
+              emptyRow = e;
+            }
+          }
+        }
+      });
+    }
+    makeSection({
+      tbodyId: 'ccpTbody', emptyRowId: 'ccpEmptyRow', addOneBtnId: 'ccpAddOneBtn',
+      pasteId: 'ccp_paste', fillBtnId: 'ccpFillBtn',
+      names: ['ccp_param', 'ccp_spec', 'ccp_char', 'ccp_method'], cols: 4, emptyColspan: 6,
+      emptyText: 'No rows yet. Paste and Fill, or click Add one row.'
+    });
+    makeSection({
+      tbodyId: 'matTbody', emptyRowId: 'matEmptyRow', addOneBtnId: 'matAddOneBtn',
+      pasteId: 'mat_paste', fillBtnId: 'matFillBtn',
+      names: ['material_grade'], cols: 1, emptyColspan: 3,
+      emptyText: 'No rows yet. Paste and Fill, or click Add one row.'
+    });
+    makeSection({
+      tbodyId: 'coatTbody', emptyRowId: 'coatEmptyRow', addOneBtnId: 'coatAddOneBtn',
+      pasteId: 'coat_paste', fillBtnId: 'coatFillBtn',
+      names: ['coat_param', 'coat_spec', 'coat_char', 'coat_method'], cols: 4, emptyColspan: 6,
+      emptyText: 'No rows yet. Paste and Fill, or click Add one row.'
+    });
+  })();
+  </script>
+</section>
+{% endblock %}
+

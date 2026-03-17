@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Inspection Selection | FIR Automation{% endblock %}
+{% block content %}
+<section class="table-page">
+  <h2>Select Parts for FIR Generation</h2>
+  <p class="table-page__hint">
+    Choose which parts you want to generate Final Inspection Reports for. All rows are selected by default.
+  </p>
+
+  <form method="post">
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>
+              <input type="checkbox" id="select_all" checked>
+            </th>
+            {% for col in columns %}
+              <th>{{ col }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>
+                <input type="checkbox" name="rows" value="{{ loop.index0 }}" class="row-check" checked>
+              </td>
+              {% for col in columns %}
+                <td>{{ row[col] }}</td>
+              {% endfor %}
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="{{ columns|length + 1 }}">No rows found in the uploaded file.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-page__actions">
+      <a class="btn btn--secondary" href="{{ url_for('upload_invoice') }}">Back to upload</a>
+      <button class="btn btn--primary" type="submit">Generate reports for selected parts</button>
+    </div>
+  </form>
+</section>
+
+<script>
+  const selectAll = document.getElementById('select_all');
+  const checks = document.querySelectorAll('.row-check');
+  if (selectAll) {
+    selectAll.addEventListener('change', () => {
+      checks.forEach(c => c.checked = selectAll.checked);
+    });
+  }
+</script>
+{% endblock %}
+

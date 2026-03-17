@@ -1,0 +1,606 @@
+<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Version>16.00</Version>
+ </DocumentProperties>
+ <OfficeDocumentSettings xmlns="urn:schemas-microsoft-com:office:office">
+  <AllowPNG/>
+ </OfficeDocumentSettings>
+ <ExcelWorkbook xmlns="urn:schemas-microsoft-com:office:excel">
+  <WindowHeight>8685</WindowHeight>
+  <WindowWidth>24000</WindowWidth>
+  <WindowTopX>32767</WindowTopX>
+  <WindowTopY>32767</WindowTopY>
+  <ProtectStructure>False</ProtectStructure>
+  <ProtectWindows>False</ProtectWindows>
+ </ExcelWorkbook>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Bottom"/>
+   <Borders/>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="s62">
+   <Alignment ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Arial" ss:Bold="1"/>
+   <Interior ss:Color="#CCC0D9" ss:Pattern="Solid"/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="s63">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="s64">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="Inspection Report">
+  <Table ss:ExpandedColumnCount="8" ss:ExpandedRowCount="51" x:FullColumns="1"
+   x:FullRows="1" ss:DefaultRowHeight="15">
+   <Column ss:Width="90" ss:Span="1"/>
+   <Column ss:Index="3" ss:AutoFitWidth="0" ss:Width="99"/>
+   <Column ss:AutoFitWidth="0" ss:Width="72"/>
+   <Column ss:AutoFitWidth="0" ss:Width="73.5"/>
+   <Column ss:Width="75" ss:Span="1"/>
+   <Column ss:Index="8" ss:Width="90"/>
+   <Row ss:Height="25.5">
+    <Cell ss:StyleID="s62"><Data ss:Type="String">Plant</Data></Cell>
+    <Cell ss:StyleID="s62"><Data ss:Type="String">Material Code</Data></Cell>
+    <Cell ss:StyleID="s62"><Data ss:Type="String">Material Desc.</Data></Cell>
+    <Cell ss:StyleID="s62"><Data ss:Type="String">Vendor Code</Data></Cell>
+    <Cell ss:StyleID="s62"><Data ss:Type="String">Invoice/DC No.</Data></Cell>
+    <Cell ss:StyleID="s62"><Data ss:Type="String">Advised Qty</Data></Cell>
+    <Cell ss:StyleID="s62"><Data ss:Type="String">DC Date</Data></Cell>
+    <Cell ss:StyleID="s62"><Data ss:Type="String">Document Date</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F4V02414</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketBrake Control Valve Air QSPV  AN</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21137</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        110.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F4H01313</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketAir Piping Z BRACKET</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21138</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         33.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F4H01313</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketAir Piping Z BRACKET</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21139</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         66.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F4H01313</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketAir Piping Z BRACKET</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21140</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        149.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F4G07613</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETAIR INTAKE REAR AIS</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21141</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         21.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F6B05614</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETFUEL FILTER PIPING HAND PRIMER E</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21142</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        170.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F0417110</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">TAIL LAMP MTG BRKT</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21143</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        214.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F0417110</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">TAIL LAMP MTG BRKT</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21144</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         51.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F5H03614</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketCSO Bracket CSO for U</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21145</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         10.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F5B08614</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETCABLE KIT FOR CSO CABLE CLAMPING</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21146</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         36.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F5B08814</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETCABLE KIT 6x4 CARGO RMC</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21147</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         36.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F5B04114</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketCable Kit FOR CLAMPING</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21148</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        140.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">XFG08413</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET Bracket for WIFS connector park</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21149</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        170.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM128313</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE  130 mm Long</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21150</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        190.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM128313</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE  130 mm Long</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21151</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        220.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F8M04314</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETWIRING HARNESS GUIDE</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21152</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        150.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM118713</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE WITH M6 WELDED NUT</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21154</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        200.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM118713</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE WITH M6 WELDED NUT</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21155</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        200.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM114513</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE FOR CONNECTOR P</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21156</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        100.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F5D05514</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETCENTER BEARING  L  TYP</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21157</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         20.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F5D06514</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketCenter Bearing Module for MBP Tr</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21158</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         50.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">X6C17714</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETZ TYPE FOR 6X2 RMC</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21159</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         50.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F4H01714</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketAir Piping BRAKE HOSE</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21160</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         10.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">X6C12813</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETZ TYPE For Cheetah 4X2</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21161</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         10.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">X6C22813</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETZ TYPE FOR 48T LNG</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21162</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         20.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">X6C25013</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETZ TYPE Brake hose mounting</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21163</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         10.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM152513</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE DAT MAKEUP LINE</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21164</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         10.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F4H08013</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETAIR PIPING Brake hose mounting</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21165</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         10.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM127013</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE QRV MOUNTING</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21166</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        150.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM118613</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE WITH  15MM DIA VERTICAL H</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21171</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        400.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F7E07614</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketRadiator Side Stay LH  CARGO BS6</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21172</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         36.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F7E07714</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETRADIATOR SIDE STAY RH  CARGO BS6</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21173</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         36.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F4V02514</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketBrake Control Valve Air QSPV AND</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21174</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        120.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F4V02514</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketBrake Control Valve Air QSPV AND</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21175</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         13.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FAB08814</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET C TYPE  SWC</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21190</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         92.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">XD100613</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">Pipe Clamp AIR PIPING</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21191</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        620.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FV549713</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">REINFORCEMENTFRAME HELPER SPR</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21192</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        290.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">14/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM128914</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET L TYPE FOR BOSS BSVI</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21211</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        160.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F5S11514</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETEXHAUST PIPE ECOMET PI</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21212</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        150.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">X0474814</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">REAR BUFFER BRACKET RH</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21213</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         50.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">X0474914</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">REAR BUFFER BRACKET LH</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21214</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         75.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">F5B04114</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BracketCable Kit FOR CLAMPING</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21215</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         30.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM113913</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE COMPRESSOR OUTL</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21217</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        403.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FV506714</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">ReinforcementFrame REAR ARB</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21218</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        105.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FEL00514</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKETISOLATOR SWITCH MOUNTING  FOR EC</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21219</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         50.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FAE17714</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">Channel Temporary SWC</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21220</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        120.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">XD100613</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">Pipe Clamp AIR PIPING</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21221</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         60.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">XD100613</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">Pipe Clamp AIR PIPING</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21222</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        160.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM127013</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE QRV MOUNTING</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21223</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">         10.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">2002</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">FM127013</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">BRACKET LTYPE QRV MOUNTING</Data></Cell>
+    <Cell ss:StyleID="s64"><Data ss:Type="String">7200465</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">21224</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">        150.000</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+    <Cell ss:StyleID="s63"><Data ss:Type="String">15/03/2026</Data></Cell>
+   </Row>
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <Selected/>
+   <Panes>
+    <Pane>
+     <Number>3</Number>
+     <RangeSelection>C1</RangeSelection>
+    </Pane>
+   </Panes>
+   <ProtectObjects>False</ProtectObjects>
+   <ProtectScenarios>False</ProtectScenarios>
+  </WorksheetOptions>
+ </Worksheet>
+ <ss:TEST_REPORT>
+   <ss:Author>7200465</ss:Author>
+  </ss:TEST_REPORT>
+</Workbook>

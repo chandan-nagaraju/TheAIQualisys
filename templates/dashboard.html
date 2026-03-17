@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | FIR Automation{% endblock %}
+{% block content %}
+<section class="dashboard">
+  <h2>Dashboard</h2>
+  <p>Welcome, {{ user["name"] }}.</p>
+  <div class="card-grid">
+    <div class="card">
+      <h3>Upload Invoice</h3>
+      <p>Upload an Excel invoice file to begin generating Final Inspection Reports.</p>
+      <a class="btn btn--primary" href="{{ url_for('upload_invoice') }}">Upload invoice</a>
+    </div>
+    <div class="card card--muted">
+      <h3>Customers / Vendors</h3>
+      <p>Maintain customer records and vendor codes.</p>
+      <a class="btn btn--secondary" href="{{ url_for('customers') }}">Manage customers</a>
+    </div>
+    <div class="card card--muted">
+      <h3>Parts Master Data</h3>
+      <p>Maintain master parts and internal inspection definitions.</p>
+      <a class="btn btn--secondary" href="{{ url_for('parts') }}">Manage parts</a>
+    </div>
+    <div class="card card--muted">
+      <h3>Global FIR Settings</h3>
+      <p>Configure logo and document metadata used in all reports.</p>
+      <a class="btn btn--secondary" href="{{ url_for('settings_view') }}">Global settings</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+

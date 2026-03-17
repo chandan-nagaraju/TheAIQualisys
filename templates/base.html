@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}FIR Automation System{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+  <header class="top-bar">
+    <div class="top-bar__brand">
+      <span class="brand-name">FIR Automation System</span>
+    </div>
+    <nav class="top-bar__nav">
+      {% if session.get('user_id') %}
+        <span class="top-bar__user">Hi, {{ session.get('user_name') }}</span>
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('upload_invoice') }}">Upload Invoice</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+      {% else %}
+        <a href="{{ url_for('landing') }}">Home</a>
+        <a href="{{ url_for('login') }}">Login</a>
+        <a href="{{ url_for('signup') }}">Sign up</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main class="page-main">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-container">
+          {% for category, message in messages %}
+            <div class="flash flash--{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="page-footer">
+    <span>&copy; {{ current_year }} FIR Automation System</span>
+  </footer>
+</body>
+</html>
+

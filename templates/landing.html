@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Welcome | FIR Automation{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero__content">
+    <h1>FIR Automation System</h1>
+    <p class="hero__tagline">
+      Internal tool to automate Final Inspection Reports for your manufacturing team.
+    </p>
+    <p class="hero__subtext">
+      Upload invoice Excel files, generate inspection data, and prepare clean A4-ready FIRs.
+    </p>
+    <div class="hero__actions">
+      <a class="btn btn--primary" href="{{ url_for('signup') }}">Get started</a>
+      <a class="btn btn--secondary" href="{{ url_for('login') }}">Login</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+

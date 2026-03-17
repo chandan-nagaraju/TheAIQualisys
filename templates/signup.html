@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Sign up | FIR Automation{% endblock %}
+{% block content %}
+<section class="auth">
+  <h2>Create an account</h2>
+  <form method="post" class="form">
+    <div class="form__group">
+      <label for="name">Name</label>
+      <input id="name" name="name" type="text" required value="{{ name or '' }}">
+    </div>
+    <div class="form__group">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required value="{{ email or '' }}">
+    </div>
+    <div class="form__group">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required>
+    </div>
+    <button class="btn btn--primary" type="submit">Sign up</button>
+    <p class="form__hint">
+      Already have an account?
+      <a href="{{ url_for('login') }}">Login</a>
+    </p>
+  </form>
+</section>
+{% endblock %}
+

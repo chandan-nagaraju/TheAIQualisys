@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Customers | FIR Automation{% endblock %}
+{% block content %}
+<section class="table-page">
+  <h2>Customers / Vendors</h2>
+  <p class="table-page__hint">
+    Maintain customer/vendor records with their vendor codes. These are used to scope invoices and parts.
+  </p>
+
+  <form method="post" class="form">
+    <div class="form__group">
+      <label for="vendor_code">Vendor Code</label>
+      <input id="vendor_code" name="vendor_code" type="text" required>
+    </div>
+    <div class="form__group">
+      <label for="name">Customer Name</label>
+      <input id="name" name="name" type="text" required>
+    </div>
+    <button class="btn btn--primary" type="submit">Add customer</button>
+  </form>
+
+  <h3 style="margin-top:1.8rem;">Existing customers</h3>
+  <div class="table-wrapper">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Vendor Code</th>
+          <th>Customer Name</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in customers %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ c["vendor_code"] }}</td>
+            <td>{{ c["name"] }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="3">No customers added yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+

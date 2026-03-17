@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Global Settings | FIR Automation{% endblock %}
+{% block content %}
+<section class="table-page">
+  <h2>Global Report Settings</h2>
+  <p class="table-page__hint">
+    Configure company branding and document metadata used in every FIR (logo, format number, revision dates).
+  </p>
+
+  <form method="post" enctype="multipart/form-data" class="form">
+    <div class="form__group">
+      <label for="company_name">Company Name</label>
+      <input id="company_name" name="company_name" type="text" value="{{ settings.company_name or '' }}">
+    </div>
+    <div class="form__group">
+      <label for="logo">Company Logo (square image)</label>
+      <input id="logo" name="logo" type="file" accept="image/*">
+    </div>
+    {% if settings.logo_path %}
+      <div class="form__group">
+        <span class="table-page__hint">Current logo:</span><br>
+        <div style="width:70px;height:70px;border:1px solid #000;overflow:hidden;">
+          <img src="{{ settings.logo_path }}" alt="Logo" style="width:100%;height:100%;object-fit:cover;">
+        </div>
+      </div>
+    {% endif %}
+    <div class="form__group">
+      <label for="inspector_signature">Inspector Signature</label>
+      <input id="inspector_signature" name="inspector_signature" type="file" accept="image/*">
+    </div>
+    {% if settings.inspector_signature_path %}
+      <div class="form__group">
+        <span class="table-page__hint">Current inspector signature:</span><br>
+        <img src="{{ settings.inspector_signature_path }}" alt="Inspector Signature" style="width:70px;height:70px;object-fit:contain;border:1px solid #000;background:#fff;">
+      </div>
+    {% endif %}
+    <div class="form__group">
+      <label for="quality_signature">Quality Head Signature</label>
+      <input id="quality_signature" name="quality_signature" type="file" accept="image/*">
+    </div>
+    {% if settings.quality_signature_path %}
+      <div class="form__group">
+        <span class="table-page__hint">Current quality head signature:</span><br>
+        <img src="{{ settings.quality_signature_path }}" alt="Quality Signature" style="width:70px;height:70px;object-fit:contain;border:1px solid #000;background:#fff;">
+      </div>
+    {% endif %}
+    <div class="form__group">
+      <label for="format_no">Format No.</label>
+      <input id="format_no" name="format_no" type="text" value="{{ settings.format_no or '' }}">
+    </div>
+    <div class="form__group">
+      <label for="issue_date">Issue Date</label>
+      <input id="issue_date" name="issue_date" type="date" value="{{ settings.issue_date or '' }}">
+    </div>
+    <div class="form__group">
+      <label for="doc_rev_no">Doc Rev No.</label>
+      <input id="doc_rev_no" name="doc_rev_no" type="text" value="{{ settings.doc_rev_no or '' }}">
+    </div>
+    <div class="form__group">
+      <label for="rev_date">Revision Date</label>
+      <input id="rev_date" name="rev_date" type="date" value="{{ settings.rev_date or '' }}">
+    </div>
+    <button class="btn btn--primary" type="submit">Save settings</button>
+  </form>
+</section>
+{% endblock %}
+

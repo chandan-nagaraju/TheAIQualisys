@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Inspection Results | FIR Automation{% endblock %}
+{% block content %}
+<section class="table-page">
+  <h2>Inspection Results – FIR Preview</h2>
+  <p class="table-page__hint">
+    Preview FIRs for each selected part. In the preview screen, you can edit the inspection table and download the PDF.
+  </p>
+
+  <div class="table-wrapper">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Part Number</th>
+          <th>Description</th>
+          <th>Draw Rev</th>
+          <th>Quantity</th>
+          <th>Invoice Number</th>
+          <th>Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ row["Part Number"] }}</td>
+            <td>{{ row["Description"] }}</td>
+            <td>{{ row["draw_rev"] }}</td>
+            <td>{{ row["Quantity"] }}</td>
+            <td>{{ row["Invoice Number"] }}</td>
+            <td>{{ row["Date"] }}</td>
+            <td>
+              <a class="btn btn--secondary"
+                 href="{{ url_for('fir_preview') }}?partName={{ row['Part Number'] | urlencode }}&description={{ row['Description'] | urlencode }}&drawRev={{ row['draw_rev'] | urlencode }}&invoiceNo={{ row['Invoice Number'] | urlencode }}&vendorCode={{ customer['vendor_code'] if customer else '' | urlencode }}&customer={{ customer['name'] if customer else '' | urlencode }}&reportNo={{ (row['Invoice Number'] ~ '-' ~ loop.index) | urlencode }}&reportDate={{ current_date | urlencode }}&quantity={{ row['Quantity'] | urlencode }}&sampleSize={{ row['sample_size'] | urlencode }}&noOfParams={{ row['num_params'] | default(17) }}"
+                 target="_blank">
+                Preview FIR
+              </a>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="7">No parts selected for FIR generation.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="table-page__actions">
+    <a class="btn btn--secondary" href="{{ url_for('inspection') }}">Back to selection</a>
+    <button class="btn btn--primary btn--disabled" type="button" title="Open each preview and download from there for now.">
+      Download all reports (coming soon)
+    </button>
+  </div>
+</section>
+{% endblock %}
+

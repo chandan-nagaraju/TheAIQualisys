@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Final Inspection Report Preview</title>
+  <style>
+  @page { size: A4 landscape; margin: 10mm; }
+  body { font-family: Calibri, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; }
+  body.generating-pdf { min-width: 297mm; width: 297mm; margin: 0 auto; }
+
+  #reportRoot { width: 100%; max-width: 297mm; margin: 0 auto; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
+  body.generating-pdf #reportRoot { width: 297mm !important; min-width: 297mm; max-width: 297mm; margin: 0 auto; }
+
+  .report-container {
+    background: #ffffff;
+    border: 1px solid #000;
+    width: 100%;
+    max-width: 297mm;
+    margin: 10px auto;
+    padding: 6px 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    box-sizing: border-box;
+    page-break-after: auto;
+    overflow: hidden;
+  }
+  body.generating-pdf .report-container { overflow: visible; border: none; box-shadow: none; max-width: 270mm; }
+
+  .header-table, .data-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 11px;
+    border: 1px solid #333;
+  }
+  .data-table { table-layout: fixed; border-spacing: 0; }
+  .data-table thead { display: table-header-group; }
+  .header-table td, .header-table th {
+    border: 1px solid #333;
+    padding: 4px;
+    vertical-align: middle;
+    text-align: center;
+    box-sizing: border-box;
+    word-wrap: break-word;
+  }
+  .data-table td, .data-table th {
+    border: 1px solid #333;
+    padding: 1px 2px;
+    vertical-align: middle;
+    text-align: center;
+    box-sizing: border-box;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    white-space: normal;
+    line-height: 1.25;
+  }
+  .data-table td input, .data-table th input,
+  .data-table td textarea, .data-table th textarea {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .header-table .logo-cell {
+    text-align: center;
+    vertical-align: middle;
+  }
+  .header-table .small-cell { text-align: left; }
+  .header-table { table-layout: fixed; }
+
+  .header-title { font-size: 20px; font-weight: bold; text-align: center; }
+  .logo-cell {
+    font-style: italic;
+    font-weight: bold;
+    font-size: 18px;
+    text-align: center;
+  }
+  .small-cell { font-size: 12px; text-align: left; padding: 3px 6px; }
+  .bold { font-weight: bold; }
+  .section-title {
+    background-color: #dbe5f1;
+    font-weight: bold;
+    text-align: center;
+    padding: 3px 5px;
+    border: 1px solid #000;
+    line-height: 1.3;
+  }
+  body.generating-pdf .section-title { page-break-after: avoid; border-width: 1px; }
+  body.generating-pdf .data-table td, body.generating-pdf .data-table th { border: 1px solid #333; }
+  body.generating-pdf .data-table tbody tr { page-break-inside: avoid; }
+  body.generating-pdf .signatures-section td.status-btn,
+  body.generating-pdf #status-accepted,
+  body.generating-pdf #status-rejected { border: 1px solid #333 !important; }
+
+  input[type="text"] {
+    width: 100%;
+    border: none;
+    outline: none;
+    text-align: center;
+    background: none;
+    line-height: 1.25;
+    padding: 0 1px;
+  }
+  .data-table textarea,
+  .data-table input.method-input,
+  .data-table input.special-char-input {
+    font-size: 15px;
+    font-family: inherit;
+  }
+  input[type="text"]:focus {
+    background: #e6f0ff;
+    
+    text-align: left;
+    border: 1px solid #007bff;
+  }
+  .header-table td input, .header-table th input,
+  .header-table td textarea, .header-table th textarea {
+    min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box;
+  }
+  .data-table td input, .data-table th input,
+  .data-table td textarea, .data-table th textarea {
+    min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box;
+  }
+  .header-table textarea {
+    resize: none; border: none; outline: none; font: inherit; font-size: 11px; text-align: center;
+    background: none; overflow: hidden; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
+    line-height: 1.25; padding: 0 1px; min-height: 1.4em;
+  }
+  .data-table textarea {
+    resize: none; border: none; outline: none; font: inherit; font-size: 12px; text-align: center;
+    background: none; overflow: hidden; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
+    line-height: 1.25; padding: 0 1px; min-height: 1.4em;
+  }
+  .header-table textarea:focus, .data-table textarea:focus { background: #e6f0ff; border: 1px solid #007bff; }
+
+  @font-face {
+    font-family: 'Quali_1';
+    src: {% if quali_font_data_uri %}url("{{ quali_font_data_uri }}") format('{{ quali_font_format }}'), {% endif %}local('Quali_1'), url("{{ url_for('static', filename='fonts/Quali_1.woff2', _external=True) }}") format('woff2'), url("{{ url_for('static', filename='fonts/Quali_1.woff', _external=True) }}") format('woff'), url("{{ url_for('static', filename='fonts/Quali_1.ttf', _external=True) }}") format('truetype');
+    font-display: swap;
+  }
+  .quali-font,
+  input.actual-value,
+  input.remarks-value {
+    font-family: 'Quali_1', sans-serif;
+    line-height: 1.5  ;
+  }
+  .data-table input.actual-value,
+  .data-table input.remarks-value {
+    font-size: 25px;
+    min-height: 0;
+  }
+  input.actual-value,
+  input.remarks-value {
+    min-height: 0;
+  }
+
+  button.upload-btn {
+    background-color: #007bff; color: white; border: none;
+    padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 13px;
+  }
+  button.upload-btn:hover { background-color: #0056b3; }
+  .signature-cell { text-align: center; vertical-align: middle; padding: 10px; box-sizing: border-box; }
+  .signature-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; }
+  .signature-preview { height: 50px; width: auto; max-width: 80%; object-fit: contain; margin-top: 6px; border: none; }
+  .download-btn {
+    position: fixed; bottom: 20px; right: 20px;
+    background-color: #28a745; color: white; border: none;
+    padding: 12px 18px; border-radius: 6px;
+    cursor: pointer; font-size: 15px; font-weight: bold;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 1000;
+  }
+  .download-btn:hover { background-color: #1e7e34; }
+  .autofill-btn {
+    position: fixed; bottom: 20px; right: 180px;
+    background-color: #17a2b8; color: white; border: none;
+    padding: 10px 14px; border-radius: 6px; cursor: pointer; font-size: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 1000;
+  }
+  .autofill-btn:hover { background-color: #138496; }
+  .status-btn { padding: 6px 12px; font-weight: bold; text-align: center; border: 1px solid #333; border-radius: 4px; }
+  #status-accepted.status-btn { background: #e8e8e8; color: #333; }
+  #status-accepted.status-btn.highlight { background: #e0e0e0; color: #333; border: 1px solid #333; }
+  #status-rejected.status-btn { background: #e8e8e8; color: #333; }
+  #status-rejected.status-btn.highlight { background: #dc3545; color: #fff; border: 1px solid #333; }
+  .signatures-section td.status-btn { border: 1px solid #333; box-sizing: border-box; }
+
+  @media print {
+    body { background: none; }
+    .download-btn, .autofill-btn { display: none; }
+    .report-container { box-shadow: none; border: none; overflow: visible; }
+    .data-table thead { display: table-header-group; }
+    .signatures-section { page-break-inside: avoid; }
+    #reportRoot { width: 297mm; margin: 0 auto; }
+    .report-container { max-width: 270mm; margin: 0 auto; }
+  }
+  </style>
+</head>
+
+<body>
+  <button class="download-btn" id="downloadPDF">⬇ Download PDF</button>
+  <button class="autofill-btn" id="autofillMeasuredBtn" type="button">Auto-fill measured values</button>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <div id="reportRoot"></div>
+
+  <script>
+  const globalSettings = {{ settings | tojson | safe }};
+  const FIR_SPEC_DATA = {{ spec_data | tojson | safe }} || [];
+  const FIR_CCP_DATA = {{ ccp_data | tojson | safe }} || [];
+  const FIR_MATERIAL_DATA = {{ material_data | tojson | safe }} || [];
+  const FIR_COATING_DATA = {{ coating_data | tojson | safe }} || [];
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const partName = urlParams.get('partName');
+  const description = urlParams.get('description');
+  const drawRev = urlParams.get('drawRev') || "";
+  const vendorCode = urlParams.get('vendorCode') || "";
+  const customer = urlParams.get('customer') || "";
+  const reportNo = urlParams.get('reportNo') || "";
+  const invoiceNo = urlParams.get('invoiceNo') || "";
+  const reportDate = urlParams.get('reportDate') || "";
+  const lotQty = urlParams.get('quantity') || "";
+  const sampleSize = urlParams.get('sampleSize') || "";
+  const noOfParamsParam = parseInt(urlParams.get('noOfParams'));
+  const totalRows = FIR_SPEC_DATA.length > 0 ? FIR_SPEC_DATA.length : (noOfParamsParam || 18);
+
+  function esc(s) {
+    if (s == null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  if (!partName || !description) {
+    document.body.innerHTML = `<h2 style='text-align:center;color:red;'>Missing part data. Please go back and fill the form.</h2>
+    <div style='text-align:center;'><button onclick='history.back()'>Go Back</button></div>`;
+  } else {
+    let html = ``;
+    let slno = 1;
+    const root = document.getElementById('reportRoot');
+
+    html += `<div class='report-container'>`;
+    html += `
+      <table class="header-table">
+        <tr>
+          <td rowspan="2" colspan="5" class="logo-cell" id="companyCode"></td>
+          <td colspan="7" class="header-title">FINAL INSPECTION REPORT</td>
+          <td colspan="4" class="small-cell" id="docInfo"></td>
+        </tr><tr></tr>
+        <tr><td class="bold" colspan="2">VENDOR CODE :</td><td colspan="3"><input type="text" value="${vendorCode}"></td>
+        <td class="bold" colspan="2">CUSTOMER</td><td colspan="4"><input type="text" value="${customer}"></td>
+        <td class="bold" colspan="2">REPORT NO :</td><td colspan="3"><input type="text" value="${reportNo}"></td></tr>
+        <tr><td class="bold" colspan="2">PART NO :</td><td colspan="3"><input type="text" value="${partName}"></td>
+        <td class="bold" colspan="2">LOT QTY :</td><td colspan="4"><input type="text" value="${lotQty}"></td>
+        <td class="bold" colspan="2">INVOICE NO :</td><td colspan="3"><input type="text" value="${invoiceNo}"></td></tr>
+        <tr><td class="bold" colspan="2">DESCRIPTION :</td><td colspan="3"><input type="text" value="${description}"></td>
+        <td class="bold" colspan="2">SAMPLE SIZE :</td><td colspan="4"><input type="text" value="${sampleSize}"></td>
+        <td class="bold" colspan="2">DATE :</td><td colspan="3"><input type="text" value="${reportDate}"></td></tr>
+        <tr><td class="bold" colspan="2">DRAW.REV NO :</td><td colspan="14"><input type="text" value="${drawRev}"></td></tr>
+      </table>`;
+
+    html += `<div class="section-title">A) Dimension Parameters</div>
+      <table class="data-table" id="dimension-table"><thead>
+        <tr><th rowspan="2" style="width:5%;">Sl No</th>
+        <th rowspan="2" style="width:15%;">Parameter</th>
+        <th rowspan="2" style="width:15%;">Specification</th>
+        <th rowspan="2" style="width:5%;">Special Char.</th>
+        <th rowspan="2" style="width:10%;">Method of Inspection</th>
+        <th colspan="5" style="width:41%; background-color:#dbe5f1;">Actual Measured Values</th>
+        <th rowspan="2" style="width:8%;">Remarks</th></tr>
+        <tr><th style="background-color:#eef3fa;">1</th><th style="background-color:#eef3fa;">2</th>
+        <th style="background-color:#eef3fa;">3</th><th style="background-color:#eef3fa;">4</th><th style="background-color:#eef3fa;">5</th></tr>
+      </thead><tbody>`;
+
+    const actualInput = '<input type="text" class="actual-value quali-font">';
+    const remarksInput = '<input type="text" class="remarks-value quali-font">';
+    const wrapCell = (val) => `<textarea rows="1">${esc(val || '')}</textarea>`;
+    const shortInput = (val) => `<input type="text" value="${esc(val || '')}">`;
+    const methodInput = (val) => `<input type="text" class="method-input" value="${esc(val || '')}">`;
+    const specialCharInput = (val) => `<input type="text" class="special-char-input" value="${esc(val || '')}">`;
+    for (let i = 1; i <= totalRows; i++) {
+      const idx = i - 1;
+      const row = FIR_SPEC_DATA[idx];
+      if (row) {
+        html += `<tr><td>${slno++}</td><td>${wrapCell(row.parameter)}</td><td>${wrapCell(row.specification)}</td><td>${specialCharInput(row.special_char)}</td><td>${methodInput(row.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+      } else {
+        html += `<tr><td>${slno++}</td><td>${wrapCell()}</td><td>${wrapCell()}</td><td>${specialCharInput()}</td><td>${methodInput()}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+      }
+    }
+    html += `</tbody></table>`;
+
+    {
+        const actualInput = '<input type="text" class="actual-value quali-font">';
+        const remarksInput = '<input type="text" class="remarks-value quali-font">';
+        let bHtml = '<div class="section-title">B) Customer End Complaints Parameters & Check Points</div><table class="data-table" id="ccp-table"><thead><tr><th style="width:5%;">Sl No</th><th style="width:15%;">Parameter</th><th style="width:15%;">Specification</th><th style="width:5%;">Special Char.</th><th style="width:10%;">Method</th><th colspan="5" style="width:41%;">Actual Measured Values</th><th style="width:8%;">Remarks</th></tr></thead><tbody>';
+        if (FIR_CCP_DATA.length > 0) {
+          FIR_CCP_DATA.forEach(function(r, idx) {
+            bHtml += `<tr><td style="width:5%;">${slno++}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharInput(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+          });
+        }
+        bHtml += '</tbody></table>';
+        const cRemarksInput = '<input type="text" class="remarks-value quali-font" value="OK">';
+        let cHtml = '<div class="section-title">C) Material Grade</div><table class="data-table" id="material-table"><tbody>';
+        if (FIR_MATERIAL_DATA.length > 0) {
+          FIR_MATERIAL_DATA.forEach(function(r) {
+            cHtml += `<tr><td style="width:5%;">${slno++}</td><td style="width:85%;">${wrapCell(r.material_grade)}</td><td style="width:10%;">${cRemarksInput}</td></tr>`;
+          });
+        } else {
+          cHtml += `<tr><td style="width:5%;">${slno++}</td><td style="width:85%;">${wrapCell()}</td><td style="width:10%;">${cRemarksInput}</td></tr>`;
+        }
+        cHtml += '</tbody></table>';
+        let dHtml = '<div class="section-title">D) Surface Coating</div><table class="data-table" id="coating-table"><thead><tr><th style="width:5%;">Sl No</th><th style="width:15%;">Parameter</th><th style="width:15%;">Specification</th><th style="width:5%;">Special Char.</th><th style="width:10%;">Method</th><th colspan="5" style="width:41%;">Actual Measured Values</th><th style="width:8%;">Remarks</th></tr></thead><tbody>';
+        if (FIR_COATING_DATA.length > 0) {
+          FIR_COATING_DATA.forEach(function(r) {
+            dHtml += `<tr><td>${slno++}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharInput(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+          });
+        } else {
+          dHtml += `<tr><td>${slno++}</td><td>${wrapCell()}</td><td>${wrapCell()}</td><td>${specialCharInput()}</td><td>${methodInput()}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+        }
+        dHtml += '</tbody></table>';
+        html += bHtml + cHtml + dHtml;
+    }
+
+    html += `
+        <table class="data-table signatures-section" style="margin-top:0;">
+          <tr style="height:58px;">
+            <td class="bold">Inspector Name & Sign:</td>
+            <td class="signature-cell"><div class="signature-container">
+              <img id="signaturePreview" class="signature-preview"></div></td>
+            <td class="section-title">Status of Inspection:</td><td id="status-accepted" class="status-btn" colspan="2">Accepted</td><td id="status-rejected" class="status-btn" style="display:none;" colspan="2">Rejected</td>
+            <td class="section-title">AL SQE Verification</td><td><input type="text"></td></tr>
+          <tr style="height:58px;">
+            <td class="bold">Quality Head Name & Sign:</td>
+            <td class="signature-cell"><div class="signature-container">
+              <img id="qSignaturePreview" class="signature-preview"></div></td>
+            <td class="section-title" rowspan="3">Sampling Plan</td>
+            <td colspan="6" rowspan="3" style="text-align:left; vertical-align:top; padding:2px; width:100%;">
+              <table style="width:100%; border-collapse:collapse; border:1px solid #333;">
+                <tr><td class="section-title" style="background-color:#dbe5f1;">Customer Complaint Parameter</td><td style="width:50%;">100% Inspection</td></tr>
+                <tr><td class="section-title" style="background-color:#dbe5f1;">Dimension Parameter</td><td style="width:50%;">Minimum 5 Nos</td></tr>
+                <tr><td class="section-title" style="background-color:#dbe5f1;">Visual Check</td><td style="width:50%;">100% Inspection</td></tr>
+              </table>
+            </td>
+          </tr>
+        </table>`;
+    html += `</div>`;
+    root.insertAdjacentHTML('beforeend', html);
+
+    // Apply global settings: logo, company name, and document meta
+    const companyCell = root.querySelector('#companyCode');
+    if (companyCell && globalSettings) {
+      let inner = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;">';
+      if (globalSettings.logo_path) {
+        inner += `<div style="width:90px;height:90px;border:1px solid #000;overflow:hidden;margin-bottom:4px;display:flex;align-items:center;justify-content:center;"><img src="${globalSettings.logo_path}" style="width:100%;height:100%;object-fit:cover;"></div>`;
+      }
+      if (globalSettings.company_name) {
+        inner += `<div style="font-weight:bold;font-style:italic;text-align:center;">${globalSettings.company_name}</div>`;
+      }
+      inner += '</div>';
+      companyCell.innerHTML = inner;
+    }
+    const docInfoCell = root.querySelector('#docInfo');
+    if (docInfoCell && globalSettings) {
+      const lines = [];
+      if (globalSettings.format_no) lines.push(`Format No: ${globalSettings.format_no}`);
+      if (globalSettings.issue_date) lines.push(`Issue Dt: ${globalSettings.issue_date}`);
+      if (globalSettings.doc_rev_no) lines.push(`Doc Rev No: ${globalSettings.doc_rev_no}`);
+      if (globalSettings.rev_date) lines.push(`Rev Dt: ${globalSettings.rev_date}`);
+      docInfoCell.innerHTML = lines.join('<br>');
+    }
+  }
+
+  // Apply global signatures (from settings)
+  if (globalSettings) {
+    const insp = document.getElementById('signaturePreview');
+    if (insp && globalSettings.inspector_signature_path) {
+      insp.src = globalSettings.inspector_signature_path;
+      insp.style.display = 'block';
+    }
+    const qual = document.getElementById('qSignaturePreview');
+    if (qual && globalSettings.quality_signature_path) {
+      qual.src = globalSettings.quality_signature_path;
+      qual.style.display = 'block';
+    }
+  }
+
+  function updateStatusButtons() {
+    try {
+      const acceptedEl = document.getElementById('status-accepted');
+      const rejectedEl = document.getElementById('status-rejected');
+      if (!acceptedEl || !rejectedEl) return;
+      const remarksInputs = document.querySelectorAll('input.remarks-value');
+      let allOk = true;
+      let hasRemarks = false;
+      remarksInputs.forEach(function(inp) {
+        const v = (inp.value || '').trim().toUpperCase();
+        if (v !== '') hasRemarks = true;
+        if (v !== '' && v !== 'OK') allOk = false;
+      });
+      if (hasRemarks && !allOk) {
+        acceptedEl.style.display = 'none';
+        acceptedEl.colSpan = 2;
+        rejectedEl.style.display = 'table-cell';
+        rejectedEl.colSpan = 4;
+        rejectedEl.classList.add('highlight');
+      } else {
+        acceptedEl.style.display = 'table-cell';
+        acceptedEl.colSpan = 4;
+        rejectedEl.style.display = 'none';
+        rejectedEl.colSpan = 2;
+        rejectedEl.classList.remove('highlight');
+        acceptedEl.classList.toggle('highlight', hasRemarks && allOk);
+      }
+    } catch (err) { console.error('updateStatusButtons', err); }
+  }
+  try {
+    updateStatusButtons();
+    if (root) {
+      root.addEventListener('input', function(e) {
+        if (e.target && e.target.classList && e.target.classList.contains('remarks-value')) updateStatusButtons();
+      });
+      root.addEventListener('change', function(e) {
+        if (e.target && e.target.classList && e.target.classList.contains('remarks-value')) updateStatusButtons();
+      });
+    }
+  } catch (err) { console.error('status/root init', err); }
+
+  // --- Parse specification to get min/max (within tolerance); step 0.5 for R (radius) specs ---
+  function parseSpec(specStr) {
+    const s = (specStr || "").trim();
+    if (!s) return null;
+    const isRadius = /R\s*\d+/i.test(s);
+    const numStr = s.replace(/[^\d.\s±+-]/g, " ").trim();
+    const numbers = numStr.match(/-?\d+\.?\d*/g);
+    if (!numbers || numbers.length === 0) return null;
+    const nominal = parseFloat(numbers[0]);
+    if (isNaN(nominal)) return null;
+    let min = nominal, max = nominal;
+    const plusMinus = s.match(/±\s*([0-9.]+)/i);
+    const plusOnly = s.match(/\+\s*([0-9.]+)/);
+    const minusOnly = s.match(/-(\s*[0-9.]+)/);
+    if (plusMinus) {
+      const tol = parseFloat(plusMinus[1]);
+      if (!isNaN(tol)) { min = nominal - tol; max = nominal + tol; }
+    } else if (plusOnly && minusOnly) {
+      const upper = parseFloat(plusOnly[1]);
+      const lower = parseFloat(minusOnly[1].trim());
+      if (!isNaN(upper)) max = nominal + upper;
+      if (!isNaN(lower)) min = nominal - lower;
+    } else if (plusOnly) {
+      const upper = parseFloat(plusOnly[1]);
+      if (!isNaN(upper)) max = nominal + upper;
+    } else if (minusOnly) {
+      const lower = parseFloat(minusOnly[1].trim());
+      if (!isNaN(lower)) min = nominal - lower;
+    } else {
+      const tol = 0.1 * Math.abs(nominal) || 0.1;
+      min = nominal - tol; max = nominal + tol;
+    }
+    return { min, max, nominal, step: isRadius ? 0.5 : null };
+  }
+
+  function randomInRange(min, max, step) {
+    if (max < min) { const t = min; min = max; max = t; }
+    if (min === max) return step === 0.5 ? (Math.round(min * 2) / 2) : Number(min.toFixed(2));
+    if (step === 0.5) {
+      const steps = Math.round((max - min) / 0.5) + 1;
+      const idx = Math.floor(Math.random() * steps);
+      const v = Math.round((min + idx * 0.5) * 2) / 2;
+      return Number(v.toFixed(1));
+    }
+    const v = min + Math.random() * (max - min);
+    return Number(v.toFixed(2));
+  }
+
+  function isWithinSpec(value, min, max) {
+    const n = parseFloat(String(value).replace(/[^\d.-]/g, ""));
+    if (isNaN(n)) return false;
+    return n >= min && n <= max;
+  }
+
+  function fillOneRow(tr) {
+    const inputs = tr.querySelectorAll("input[type='text'], textarea");
+    if (inputs.length < 10) return;
+    const specInput = inputs[1];
+    const methodInput = inputs[3];
+    const remarksInput = inputs[9];
+    if (!remarksInput) return;
+    const method = (methodInput && methodInput.value || "").trim().toUpperCase();
+    const spec = (specInput && specInput.value || "").trim();
+    const actualInputs = [inputs[4], inputs[5], inputs[6], inputs[7], inputs[8]];
+    if (method === "VISUAL" || method === "VISUAL INSPECTION") {
+      actualInputs.forEach(inp => { inp.value = "OK"; });
+      remarksInput.value = "OK";
+      return;
+    }
+    const range = parseSpec(spec);
+    if (!range) {
+      actualInputs.forEach(inp => { inp.value = ""; });
+      remarksInput.value = "";
+      return;
+    }
+    const { min, max, step } = range;
+    const values = [];
+    for (let i = 0; i < 5; i++) values.push(randomInRange(min, max, step));
+    actualInputs.forEach((inp, i) => { inp.value = values[i]; });
+    const allOk = values.every(v => isWithinSpec(v, min, max));
+    remarksInput.value = allOk ? "OK" : "Not OK";
+  }
+
+  function autoFillMeasuredValues() {
+    ["dimension-table", "ccp-table", "coating-table"].forEach(tableId => {
+      const table = document.getElementById(tableId);
+      if (!table) return;
+      table.querySelectorAll("tbody tr").forEach(tr => fillOneRow(tr));
+    });
+    const materialTable = document.getElementById("material-table");
+    if (materialTable) {
+      materialTable.querySelectorAll("tbody tr").forEach(tr => {
+        const inputs = tr.querySelectorAll("input[type='text']");
+        const remarksInput = inputs[inputs.length - 1];
+        if (remarksInput && remarksInput.classList.contains("remarks-value")) remarksInput.value = "OK";
+      });
+    }
+  }
+
+  var autofillBtn = document.getElementById("autofillMeasuredBtn");
+  if (autofillBtn) {
+    autofillBtn.addEventListener("click", function() {
+      autoFillMeasuredValues();
+      updateStatusButtons();
+    });
+  }
+
+  // --- Smart paste ---
+  document.addEventListener("paste", e => {
+    const active = document.activeElement;
+    if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData("text");
+      const rows = text.trim().split(/\r?\n/);
+      const rowEl = active.closest("tr");
+      if (!rowEl) return;
+
+      const allInputs = Array.from(rowEl.querySelectorAll("input[type='text'], textarea"));
+      const currentIndex = allInputs.indexOf(active);
+
+      let rIndex = 0;
+      for (const rowData of rows) {
+        const cells = rowData.split(/\t/);
+        for (let c = 0; c < cells.length; c++) {
+          const target = allInputs[currentIndex + c + rIndex * allInputs.length];
+          if (target) target.value = cells[c].trim();
+        }
+        rIndex++;
+      }
+      const event = new Event("input", { bubbles: true });
+      active.dispatchEvent(event);
+    }
+  });
+
+  // --- PDF Download ---
+  var downloadBtn = document.getElementById("downloadPDF");
+  if (downloadBtn) {
+    downloadBtn.addEventListener("click", function() {
+    const btn = document.getElementById("downloadPDF");
+    const autofillBtn = document.getElementById("autofillMeasuredBtn");
+    btn.style.display = "none";
+    if (autofillBtn) autofillBtn.style.display = "none";
+    const el = document.getElementById('reportRoot') || document.body;
+
+    document.body.classList.add('generating-pdf');
+    const partInput = [...document.querySelectorAll('input[type="text"]')].find(i => i.closest('td')?.previousElementSibling?.textContent?.includes("PART"));
+    const invoiceInput = [...document.querySelectorAll('input[type="text"]')].find(i => i.closest('td')?.previousElementSibling?.textContent?.includes("INVOICE"));
+    const fileName = `${(invoiceInput?.value || 'Invoice').replace(/\W+/g,'_')}_${(partInput?.value || 'Part').replace(/\W+/g,'_')}_FIR.pdf`;
+
+    html2pdf().set({
+      margin: 0,
+      filename: fileName,
+      image: { type: 'jpeg', quality: 1 },
+      html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+      pagebreak: { mode: ['css'] }
+    }).from(el).save().then(() => {
+      document.body.classList.remove('generating-pdf');
+      btn.style.display = "block";
+      if (autofillBtn) autofillBtn.style.display = "block";
+    }).catch(function() {
+      document.body.classList.remove('generating-pdf');
+      btn.style.display = "block";
+      if (autofillBtn) autofillBtn.style.display = "block";
+    });
+  });
+  }
+  </script>
+</body>
+</html>
+

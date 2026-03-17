@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Select Customer | FIR Automation{% endblock %}
+{% block content %}
+<section class="table-page">
+  <h2>Select Customer for Invoice</h2>
+  <p class="table-page__hint">
+    Multiple customers are configured. Select which one this invoice belongs to before uploading.
+  </p>
+
+  <form method="post" class="form">
+    <div class="form__group">
+      <label for="customer_id">Customer</label>
+      <select id="customer_id" name="customer_id" required>
+        <option value="">-- Select customer --</option>
+        {% for c in customers %}
+          <option value="{{ c['id'] }}">{{ c['name'] }} ({{ c['vendor_code'] }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn--primary" type="submit">Continue to upload</button>
+  </form>
+</section>
+{% endblock %}
+

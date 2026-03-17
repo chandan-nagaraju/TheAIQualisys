@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Upload Invoice | FIR Automation{% endblock %}
+{% block content %}
+<section class="upload">
+  <h2>Upload Invoice Excel</h2>
+  <p class="upload__hint">
+    Upload an Excel file containing part numbers, descriptions, quantities, invoice number and date.
+  </p>
+  <form method="post" enctype="multipart/form-data" class="form">
+    <div class="form__group">
+      <label for="invoice_file">Invoice Excel file (.xlsx or .xls)</label>
+      <input id="invoice_file" name="invoice_file" type="file" accept=".xlsx,.xls" required>
+    </div>
+    <button class="btn btn--primary" type="submit">Upload &amp; Extract</button>
+  </form>
+</section>
+{% endblock %}
+

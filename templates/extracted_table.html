@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Extracted Invoice Data | FIR Automation{% endblock %}
+{% block content %}
+<section class="table-page">
+  <h2>Extracted Invoice Data</h2>
+  <p class="table-page__hint">
+    Review the data extracted from <strong>{{ filename }}</strong>. This is a preview only in v1.
+  </p>
+
+  <div class="table-wrapper">
+    <table class="data-table">
+      <thead>
+        <tr>
+          {% for col in columns %}
+            <th>{{ col }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            {% for col in columns %}
+              <td>{{ row[col] }}</td>
+            {% endfor %}
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="{{ columns|length }}">No rows found in the uploaded file.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="table-page__actions">
+    <a class="btn btn--secondary" href="{{ url_for('upload_invoice') }}">Upload another file</a>
+    <a class="btn btn--primary" href="{{ url_for('inspection') }}">Continue to inspection</a>
+  </div>
+</section>
+{% endblock %}
+
