@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+saas/backend/.env
+database/*.db-journal
+legacy/database/*.db-journal
+saas/frontend/node_modules/
+saas/frontend/dist/
+*.db
+uploads/
+*.xlsx
+__pycache__/

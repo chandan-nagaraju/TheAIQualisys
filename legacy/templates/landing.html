@@ -13,7 +13,13 @@
     <div class="hero__actions">
       <a class="btn btn--primary" href="{{ url_for('signup') }}">Get started</a>
       <a class="btn btn--secondary" href="{{ url_for('login') }}">Login</a>
+      <a class="btn btn--secondary" href="{{ url_for('pricing') }}">Pricing &amp; plans</a>
     </div>
+    <p class="hero__saas-hint">
+      <strong>Team / cloud billing:</strong> multi-company signup, trials, and usage plans are on the
+      <a href="{{ saas_signup_url }}">SaaS portal</a>
+      — or see <a href="{{ url_for('pricing') }}">pricing here</a> (same plans).
+    </p>
   </div>
 </section>
 {% endblock %}

@@ -41,12 +41,14 @@ CREATE TABLE IF NOT EXISTS Settings (
 
 CREATE TABLE IF NOT EXISTS Customers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL DEFAULT 1,
     vendor_code TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS Invoices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id INTEGER NOT NULL DEFAULT 1,
     invoice_number TEXT NOT NULL,
     upload_date TEXT NOT NULL,
     uploaded_by INTEGER NOT NULL,
@@ -76,6 +78,7 @@ CREATE TABLE IF NOT EXISTS FIRReports (
 
 CREATE TABLE IF NOT EXISTS parts_master (
     part_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id   INTEGER NOT NULL DEFAULT 1,
     part_no      TEXT NOT NULL UNIQUE,
     drawing_rev  TEXT,
     description  TEXT
@@ -83,6 +86,7 @@ CREATE TABLE IF NOT EXISTS parts_master (
 
 CREATE TABLE IF NOT EXISTS part_spec_data (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id           INTEGER NOT NULL DEFAULT 1,
     part_id              INTEGER NOT NULL,
     parameter            TEXT NOT NULL,
     specification        TEXT,
@@ -93,6 +97,7 @@ CREATE TABLE IF NOT EXISTS part_spec_data (
 
 CREATE TABLE IF NOT EXISTS customer_complaint_parameters (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id           INTEGER NOT NULL DEFAULT 1,
     part_id              INTEGER NOT NULL,
     parameter            TEXT NOT NULL,
     specification        TEXT,
@@ -103,6 +108,7 @@ CREATE TABLE IF NOT EXISTS customer_complaint_parameters (
 
 CREATE TABLE IF NOT EXISTS material_grade (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id     INTEGER NOT NULL DEFAULT 1,
     part_id        INTEGER NOT NULL,
     material_grade TEXT NOT NULL,
     FOREIGN KEY (part_id) REFERENCES parts_master(part_id) ON DELETE CASCADE ON UPDATE CASCADE
@@ -110,6 +116,7 @@ CREATE TABLE IF NOT EXISTS material_grade (
 
 CREATE TABLE IF NOT EXISTS surface_coating_master (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_id           INTEGER NOT NULL DEFAULT 1,
     part_id              INTEGER NOT NULL,
     parameter            TEXT NOT NULL,
     specification        TEXT,

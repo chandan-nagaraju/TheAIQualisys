@@ -12,6 +12,7 @@
       <span class="brand-name">FIR Automation System</span>
     </div>
     <nav class="top-bar__nav">
+      <a href="{{ url_for('pricing') }}">Pricing</a>
       {% if session.get('user_id') %}
         <span class="top-bar__user">Hi, {{ session.get('user_name') }}</span>
         <a href="{{ url_for('dashboard') }}">Dashboard</a>

@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fir
+      POSTGRES_PASSWORD: fir
+      POSTGRES_DB: fir_saas
+    ports:
+      - "5432:5432"
+    volumes:
+      - fir_saas_pg:/var/lib/postgresql/data
+
+volumes:
+  fir_saas_pg:

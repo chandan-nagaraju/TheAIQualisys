@@ -1,0 +1,180 @@
+from __future__ import annotations
+
+from calendar import monthrange
+from datetime import date, datetime, timezone
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.models import Company, FirReportEvent, InvoiceV2, SubscriptionStatus
+from app.pricing_catalog import invoice_cap_for_plan
+
+FIR_WORKSPACE_FORBIDDEN_CODE = "FIR_WORKSPACE_FORBIDDEN"
+FIR_WORKSPACE_FORBIDDEN_MESSAGE = (
+    "Trial ended or subscription inactive. Open Billing or Upgrade to continue; "
+    "the FIR workspace is unavailable until you have an active trial or paid plan."
+)
+
+
+def plan_invoice_limit(db: Session, plan_type: str) -> int | None:
+    """Monthly combined usage cap (v2 invoices + FIR reports); None = unlimited."""
+    return invoice_cap_for_plan(db, plan_type)
+
+
+def month_bounds_utc(d: date) -> tuple[datetime, datetime]:
+    start = datetime(d.year, d.month, 1, tzinfo=timezone.utc)
+    last_day = monthrange(d.year, d.month)[1]
+    end = datetime(d.year, d.month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
+    return start, end
+
+
+def count_invoices_this_month(db: Session, company_id: int, today: date | None = None) -> int:
+    today = today or datetime.now(timezone.utc).date()
+    start, end = month_bounds_utc(today)
+    q = select(func.count()).select_from(InvoiceV2).where(
+        InvoiceV2.company_id == company_id,
+        InvoiceV2.created_at >= start,
+        InvoiceV2.created_at <= end,
+    )
+    return int(db.execute(q).scalar_one())
+
+
+def count_fir_reports_this_month(db: Session, company_id: int, today: date | None = None) -> int:
+    today = today or datetime.now(timezone.utc).date()
+    start, end = month_bounds_utc(today)
+    q = select(func.count()).select_from(FirReportEvent).where(
+        FirReportEvent.company_id == company_id,
+        FirReportEvent.created_at >= start,
+        FirReportEvent.created_at <= end,
+    )
+    return int(db.execute(q).scalar_one())
+
+
+def count_combined_usage_this_month(db: Session, company_id: int, today: date | None = None) -> int:
+    """Invoices (v2) + FIR report rows — both count toward the same monthly plan cap."""
+    return count_invoices_this_month(db, company_id, today) + count_fir_reports_this_month(
+        db, company_id, today
+    )
+
+
+def trial_is_valid(company: Company, today: date | None = None) -> bool:
+    today = today or datetime.now(timezone.utc).date()
+    return company.subscription_status == SubscriptionStatus.trial.value and today <= company.trial_end_date
+
+
+def subscription_is_active(company: Company, today: date | None = None) -> bool:
+    today = today or datetime.now(timezone.utc).date()
+    if company.subscription_status != SubscriptionStatus.active.value:
+        return False
+    if company.subscription_end is None:
+        return False
+    return today <= company.subscription_end
+
+
+def can_create_invoice(
+    db: Session,
+    company: Company,
+    *,
+    enable_subscription: bool,
+    today: date | None = None,
+) -> tuple[bool, str | None]:
+    """
+    Returns (allowed, error_message).
+    When enable_subscription is False, always allow (feature flag off).
+    """
+    if not enable_subscription:
+        return True, None
+
+    today = today or datetime.now(timezone.utc).date()
+
+    if trial_is_valid(company, today):
+        return True, None
+
+    if subscription_is_active(company, today):
+        limit = plan_invoice_limit(db, company.plan_type)
+        if limit is None:
+            return True, None
+        used = count_combined_usage_this_month(db, company.id, today)
+        if used >= limit:
+            return False, "Monthly usage limit reached (invoices + FIR reports). Please upgrade."
+        return True, None
+
+    # Expired trial and not active paid
+    if company.subscription_status == SubscriptionStatus.expired.value:
+        return False, "Subscription expired. Upgrade to create invoices."
+
+    if company.subscription_status == SubscriptionStatus.trial.value and today > company.trial_end_date:
+        return False, "Trial ended. Upgrade to create invoices."
+
+    if company.subscription_status == SubscriptionStatus.active.value and not subscription_is_active(company, today):
+        return False, "Subscription period ended. Please renew."
+
+    return False, "Cannot create invoices with current subscription status."
+
+
+def can_record_fir_reports(
+    db: Session,
+    company: Company,
+    *,
+    n: int,
+    enable_subscription: bool,
+    today: date | None = None,
+) -> tuple[bool, str | None]:
+    """Allow recording n new FIR report rows; same subscription gates as invoices (combined cap)."""
+    if n < 0:
+        return False, "Invalid report count"
+    if not enable_subscription:
+        return True, None
+
+    today = today or datetime.now(timezone.utc).date()
+
+    if trial_is_valid(company, today):
+        return True, None
+
+    if subscription_is_active(company, today):
+        limit = plan_invoice_limit(db, company.plan_type)
+        if limit is None:
+            return True, None
+        used = count_combined_usage_this_month(db, company.id, today)
+        if used + n > limit:
+            return False, "Monthly usage limit reached (invoices + FIR reports). Please upgrade."
+        return True, None
+
+    if company.subscription_status == SubscriptionStatus.expired.value:
+        return False, "Subscription expired. Upgrade to generate FIR reports."
+
+    if company.subscription_status == SubscriptionStatus.trial.value and today > company.trial_end_date:
+        return False, "Trial ended. Upgrade to generate FIR reports."
+
+    if company.subscription_status == SubscriptionStatus.active.value and not subscription_is_active(company, today):
+        return False, "Subscription period ended. Please renew."
+
+    return False, "Cannot record FIR reports with current subscription status."
+
+
+def can_access_app(company: Company, *, enable_subscription: bool, today: date | None = None) -> bool:
+    """Read access: trial valid, active subscription, or expired (view-only still allowed at route level)."""
+    if not enable_subscription:
+        return True
+    today = today or datetime.now(timezone.utc).date()
+    if trial_is_valid(company, today):
+        return True
+    if subscription_is_active(company, today):
+        return True
+    # Expired / post-trial: still allow login and read endpoints
+    return True
+
+
+def can_access_fir_workspace(company: Company, *, enable_subscription: bool, today: date | None = None) -> bool:
+    """
+    FIR workspace (/api/app/*) — when subscription enforcement is on, require an active trial or paid period.
+    Company billing routes (v2 /me, /subscription/status, etc.) stay reachable via can_access_app.
+    """
+    if not enable_subscription:
+        return True
+    today = today or datetime.now(timezone.utc).date()
+    if trial_is_valid(company, today):
+        return True
+    if subscription_is_active(company, today):
+        return True
+    return False

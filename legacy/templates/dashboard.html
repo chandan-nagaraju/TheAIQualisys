@@ -5,6 +5,14 @@
   <h2>Dashboard</h2>
   <p>Welcome, {{ user["name"] }}.</p>
   <div class="card-grid">
+    <div class="card card--accent">
+      <h3>Pricing &amp; SaaS portal</h3>
+      <p>Usage-based plans (7-day trial, Basic / Pro / Enterprise). Subscribe or upgrade via the cloud app.</p>
+      <div class="card__actions">
+        <a class="btn btn--primary" href="{{ url_for('pricing') }}">View pricing</a>
+        <a class="btn btn--secondary" href="{{ saas_signup_url }}">SaaS sign up</a>
+      </div>
+    </div>
     <div class="card">
       <h3>Upload Invoice</h3>
       <p>Upload an Excel invoice file to begin generating Final Inspection Reports.</p>

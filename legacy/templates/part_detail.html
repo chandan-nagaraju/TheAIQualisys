@@ -6,6 +6,10 @@
   <p class="table-page__hint">
     Manage internal inspection definitions for this part. These values are used to auto-generate FIR reports.
   </p>
+  <p class="form__group" style="margin-bottom:1rem;">
+    <a class="btn btn--secondary" href="{{ url_for('export_part_master', part_id=part.part_id) }}">Download part master (JSON)</a>
+    <span class="table-page__hint" style="display:inline-block;margin-left:0.5rem;">Exports A–D data for this part. Use <strong>Import part master</strong> on the SaaS <em>Parts master</em> page to upload into your cloud tenant.</span>
+  </p>
 
   <h3>Basic info</h3>
   <p><strong>Drawing Rev:</strong> {{ part.drawing_rev or "-" }}<br>

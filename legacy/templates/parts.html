@@ -7,6 +7,25 @@
     Define master parts and drawing revisions. FIR reports will use this data to auto-fill headers and parameter row counts.
   </p>
 
+  <div class="parts-io-toolbar">
+    <a class="btn btn--primary" href="{{ url_for('export_all_parts_master') }}">Download all parts (full A–D JSON)</a>
+    <form
+      method="post"
+      action="{{ url_for('import_parts_json') }}"
+      enctype="multipart/form-data"
+      class="parts-io-toolbar__import"
+    >
+      <label class="parts-io-toolbar__file">
+        <span class="btn btn--secondary">Choose JSON…</span>
+        <input type="file" name="json_file" accept=".json,application/json" required />
+      </label>
+      <button type="submit" class="btn btn--secondary">Import JSON</button>
+    </form>
+  </div>
+  <p class="table-page__hint parts-io-hint">
+    <strong>Import</strong> accepts a <em>bundle</em> (from Download all) or a <em>single-part</em> file (row JSON or part detail export). Same part number = updated.
+  </p>
+
   <form method="post" class="form" id="partForm">
     <input type="hidden" name="part_id" id="part_id" value="">
     <div class="form__group">
@@ -35,6 +54,7 @@
           <th>Part Number</th>
           <th>Drawing Rev</th>
           <th>Description</th>
+          <th>JSON</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -50,19 +70,48 @@
             <td>{{ p["drawing_rev"] or "" }}</td>
             <td>{{ p["description"] or "" }}</td>
             <td>
+              <a class="btn btn--secondary btn-sm" href="{{ url_for('export_part_master', part_id=p['part_id']) }}" title="Download this part (A–D)">Download</a>
+            </td>
+            <td>
               <button type="button" class="btn btn--secondary btn-sm edit-part-btn" data-part-id="{{ p['part_id'] }}" data-part-no="{{ p['part_no'] | e }}" data-description="{{ p['description'] or '' | e }}" data-drawing-rev="{{ p['drawing_rev'] or '' | e }}">Edit</button>
             </td>
           </tr>
         {% else %}
           <tr>
-            <td colspan="5">No parts defined yet.</td>
+            <td colspan="6">No parts defined yet.</td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
-  <style>.btn-sm { padding: 4px 8px; font-size: 12px; }</style>
+  <style>
+    .btn-sm { padding: 4px 8px; font-size: 12px; }
+    .parts-io-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem 1rem;
+      margin: 1rem 0 0.35rem;
+      padding: 0.85rem 1rem;
+      background: var(--color-surface, #fff);
+      border: 1px solid var(--color-border, #d0d7e2);
+      border-radius: var(--radius-md, 6px);
+      box-shadow: var(--shadow-soft, 0 2px 8px rgba(15, 35, 52, 0.08));
+    }
+    .parts-io-toolbar__import {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0;
+    }
+    .parts-io-toolbar__file input[type="file"] {
+      max-width: 200px;
+      font-size: 12px;
+    }
+    .parts-io-hint { margin-top: 0.25rem !important; margin-bottom: 1rem !important; }
+  </style>
   <script>
   (function() {
     var form = document.getElementById('partForm');

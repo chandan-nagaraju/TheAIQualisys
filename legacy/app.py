@@ -1,7 +1,9 @@
 import base64
+import json
 import os
+import re
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import (
@@ -13,6 +15,7 @@ from flask import (
     flash,
     session,
     send_from_directory,
+    Response,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 import pandas as pd
@@ -20,6 +23,153 @@ import pandas as pd
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "database" / "fir.db"
 UPLOAD_FOLDER = BASE_DIR / "uploads"
+
+
+def _sqlite_row4_master(r) -> dict:
+    return {
+        "parameter": r["parameter"] or "",
+        "specification": r["specification"] or "",
+        "special_char": r["special_char"] or "",
+        "method_of_inspection": r["method_of_inspection"] or "",
+    }
+
+
+def _legacy_inner_part_block(conn, part_id: int) -> dict | None:
+    part = conn.execute(
+        "SELECT part_id, part_no, drawing_rev, description FROM parts_master WHERE part_id = ?",
+        (part_id,),
+    ).fetchone()
+    if not part:
+        return None
+    spec_rows = conn.execute(
+        """
+        SELECT parameter, specification, special_char, method_of_inspection
+        FROM part_spec_data WHERE part_id = ? ORDER BY id
+        """,
+        (part_id,),
+    ).fetchall()
+    ccp_rows = conn.execute(
+        """
+        SELECT parameter, specification, special_char, method_of_inspection
+        FROM customer_complaint_parameters WHERE part_id = ? ORDER BY id
+        """,
+        (part_id,),
+    ).fetchall()
+    material_rows = conn.execute(
+        "SELECT material_grade FROM material_grade WHERE part_id = ? ORDER BY id",
+        (part_id,),
+    ).fetchall()
+    coating_rows = conn.execute(
+        """
+        SELECT parameter, specification, special_char, method_of_inspection
+        FROM surface_coating_master WHERE part_id = ? ORDER BY id
+        """,
+        (part_id,),
+    ).fetchall()
+    return {
+        "part": {
+            "part_no": part["part_no"] or "",
+            "drawing_rev": part["drawing_rev"] or "",
+            "description": part["description"] or "",
+        },
+        "spec_rows": [_sqlite_row4_master(r) for r in spec_rows],
+        "ccp_rows": [_sqlite_row4_master(r) for r in ccp_rows],
+        "material_rows": [{"material_grade": r["material_grade"] or ""} for r in material_rows],
+        "coating_rows": [_sqlite_row4_master(r) for r in coating_rows],
+    }
+
+
+def _legacy_apply_part_json_entry(conn, entry: dict) -> None:
+    part = entry.get("part") or {}
+    pn = (part.get("part_no") or "").strip()
+    if not pn:
+        raise ValueError("Each entry must include part.part_no")
+    dr = (part.get("drawing_rev") or "").strip()
+    desc = (part.get("description") or "").strip()
+    row = conn.execute("SELECT part_id FROM parts_master WHERE part_no = ?", (pn,)).fetchone()
+    if row:
+        pid = row["part_id"]
+        conn.execute(
+            "UPDATE parts_master SET drawing_rev = ?, description = ? WHERE part_id = ?",
+            (dr, desc, pid),
+        )
+    else:
+        cur = conn.execute(
+            "INSERT INTO parts_master (part_no, drawing_rev, description) VALUES (?, ?, ?)",
+            (pn, dr, desc),
+        )
+        pid = cur.lastrowid
+
+    conn.execute("DELETE FROM part_spec_data WHERE part_id = ?", (pid,))
+    for r in entry.get("spec_rows") or []:
+        if not isinstance(r, dict):
+            continue
+        pnm = (r.get("parameter") or "").strip()
+        if not pnm:
+            continue
+        conn.execute(
+            """
+            INSERT INTO part_spec_data (part_id, parameter, specification, special_char, method_of_inspection)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                pid,
+                pnm,
+                (r.get("specification") or "").strip(),
+                (r.get("special_char") or "").strip(),
+                (r.get("method_of_inspection") or "").strip(),
+            ),
+        )
+
+    conn.execute("DELETE FROM customer_complaint_parameters WHERE part_id = ?", (pid,))
+    for r in entry.get("ccp_rows") or []:
+        if not isinstance(r, dict):
+            continue
+        pnm = (r.get("parameter") or "").strip()
+        if not pnm:
+            continue
+        conn.execute(
+            """
+            INSERT INTO customer_complaint_parameters (part_id, parameter, specification, special_char, method_of_inspection)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                pid,
+                pnm,
+                (r.get("specification") or "").strip(),
+                (r.get("special_char") or "").strip(),
+                (r.get("method_of_inspection") or "").strip(),
+            ),
+        )
+
+    conn.execute("DELETE FROM material_grade WHERE part_id = ?", (pid,))
+    for r in entry.get("material_rows") or []:
+        if not isinstance(r, dict):
+            continue
+        g = (r.get("material_grade") or "").strip()
+        if g:
+            conn.execute("INSERT INTO material_grade (part_id, material_grade) VALUES (?, ?)", (pid, g))
+
+    conn.execute("DELETE FROM surface_coating_master WHERE part_id = ?", (pid,))
+    for r in entry.get("coating_rows") or []:
+        if not isinstance(r, dict):
+            continue
+        pnm = (r.get("parameter") or "").strip()
+        if not pnm:
+            continue
+        conn.execute(
+            """
+            INSERT INTO surface_coating_master (part_id, parameter, specification, special_char, method_of_inspection)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                pid,
+                pnm,
+                (r.get("specification") or "").strip(),
+                (r.get("special_char") or "").strip(),
+                (r.get("method_of_inspection") or "").strip(),
+            ),
+        )
 
 
 def create_app() -> Flask:
@@ -50,10 +200,22 @@ def create_app() -> Flask:
         return dict(row)
 
     @app.context_processor
-    def inject_now():
+    def inject_globals():
+        saas_base = os.environ.get("SAAS_APP_URL", "http://127.0.0.1:5173").rstrip("/")
+        upi = os.environ.get("SAAS_UPI_ID", "yourupi@okaxis")
         return {
             "current_year": datetime.utcnow().year,
             "settings": get_settings(),
+            "saas_app_url": saas_base,
+            "saas_pricing_url": f"{saas_base}/pricing",
+            "saas_signup_url": f"{saas_base}/signup",
+            "saas_login_url": f"{saas_base}/login",
+            "saas_upgrade_url": f"{saas_base}/upgrade",
+            "saas_upi_id": upi,
+            "saas_manual_payment_message": os.environ.get(
+                "SAAS_MANUAL_PAYMENT_MESSAGE",
+                f"Pay via UPI: {upi} and send screenshot on WhatsApp",
+            ),
         }
 
     # ---------- Auth helpers ----------
@@ -84,6 +246,11 @@ def create_app() -> Flask:
         if current_user():
             return redirect(url_for("dashboard"))
         return render_template("landing.html")
+
+    @app.route("/pricing")
+    def pricing():
+        """Usage-based SaaS plans (same tiers as the React SaaS app); legacy FIR tools stay on this site."""
+        return render_template("pricing.html")
 
     @app.route("/signup", methods=["GET", "POST"])
     def signup():
@@ -422,6 +589,103 @@ def create_app() -> Flask:
         conn.close()
         return render_template("parts.html", parts=parts)
 
+    @app.route("/parts/export-all", methods=["GET"])
+    @login_required
+    def export_all_parts_master():
+        """Download every part with full A–D data as one JSON bundle."""
+        conn = get_db_connection()
+        rows = conn.execute(
+            "SELECT part_id, part_no, drawing_rev, description FROM parts_master ORDER BY part_no"
+        ).fetchall()
+        blocks = []
+        for p in rows:
+            inner = _legacy_inner_part_block(conn, p["part_id"])
+            if inner:
+                blocks.append(inner)
+        conn.close()
+        payload = {
+            "format": "fir_part_master_bundle_v1",
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_from": "legacy",
+            "parts": blocks,
+        }
+        return Response(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            mimetype="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": 'attachment; filename="fir_all_parts_master.json"',
+                "Cache-Control": "no-store",
+            },
+        )
+
+    @app.route("/parts/import-json", methods=["POST"])
+    @login_required
+    def import_parts_json():
+        """Import one part (`fir_part_master_v1`) or many (`fir_part_master_bundle_v1`)."""
+        f = request.files.get("json_file")
+        if not f or not (f.filename or "").strip():
+            flash("Choose a JSON file.", "danger")
+            return redirect(url_for("parts"))
+        try:
+            data = json.loads(f.read().decode("utf-8"))
+        except Exception as e:
+            flash(f"Invalid JSON: {e}", "danger")
+            return redirect(url_for("parts"))
+        fmt = data.get("format")
+        conn = get_db_connection()
+        try:
+            if fmt == "fir_part_master_bundle_v1":
+                plist = data.get("parts") or []
+                for entry in plist:
+                    if isinstance(entry, dict):
+                        _legacy_apply_part_json_entry(conn, entry)
+                conn.commit()
+                flash(f"Imported {len(plist)} part(s).", "success")
+            elif fmt == "fir_part_master_v1":
+                inner = {k: data[k] for k in ("part", "spec_rows", "ccp_rows", "material_rows", "coating_rows") if k in data}
+                _legacy_apply_part_json_entry(conn, inner)
+                conn.commit()
+                flash("Imported 1 part (full A–D).", "success")
+            else:
+                flash(
+                    "Unknown format. Use “Download all parts”, row “JSON”, or part-detail export.",
+                    "danger",
+                )
+        except Exception as e:
+            conn.rollback()
+            flash(f"Import failed: {e}", "danger")
+        finally:
+            conn.close()
+        return redirect(url_for("parts"))
+
+    @app.route("/parts/<int:part_id>/export", methods=["GET"])
+    @login_required
+    def export_part_master(part_id: int):
+        """Download full part master (A–D) as JSON for import into SaaS workspace."""
+        conn = get_db_connection()
+        inner = _legacy_inner_part_block(conn, part_id)
+        conn.close()
+        if not inner:
+            flash("Part not found.", "danger")
+            return redirect(url_for("parts"))
+        part = inner["part"]
+        payload = {
+            "format": "fir_part_master_v1",
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_from": "legacy",
+            **inner,
+        }
+        safe_no = re.sub(r"[^\w.\-]+", "_", (part.get("part_no") or "part").strip())[:120] or "part"
+        filename = f"fir_part_master_{safe_no}.json"
+        return Response(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            mimetype="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-store",
+            },
+        )
+
     @app.route("/parts/<int:part_id>", methods=["GET", "POST"])
     @login_required
     def part_detail(part_id: int):
@@ -746,6 +1010,20 @@ def init_db():
         conn.execute("ALTER TABLE Settings ADD COLUMN quality_signature_path TEXT")
     except sqlite3.OperationalError:
         pass
+    # SaaS readiness: company_id for multi-tenant (default 1 = legacy single-tenant data).
+    for stmt in (
+        "ALTER TABLE parts_master ADD COLUMN company_id INTEGER DEFAULT 1",
+        "ALTER TABLE part_spec_data ADD COLUMN company_id INTEGER DEFAULT 1",
+        "ALTER TABLE customer_complaint_parameters ADD COLUMN company_id INTEGER DEFAULT 1",
+        "ALTER TABLE material_grade ADD COLUMN company_id INTEGER DEFAULT 1",
+        "ALTER TABLE surface_coating_master ADD COLUMN company_id INTEGER DEFAULT 1",
+        "ALTER TABLE Customers ADD COLUMN company_id INTEGER DEFAULT 1",
+        "ALTER TABLE Invoices ADD COLUMN company_id INTEGER DEFAULT 1",
+    ):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     conn.close()
 

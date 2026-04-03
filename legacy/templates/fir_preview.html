@@ -135,7 +135,7 @@
 
   @font-face {
     font-family: 'Quali_1';
-    src: {% if quali_font_data_uri %}url("{{ quali_font_data_uri }}") format('{{ quali_font_format }}'), {% endif %}local('Quali_1'), url("{{ url_for('static', filename='fonts/Quali_1.woff2', _external=True) }}") format('woff2'), url("{{ url_for('static', filename='fonts/Quali_1.woff', _external=True) }}") format('woff'), url("{{ url_for('static', filename='fonts/Quali_1.ttf', _external=True) }}") format('truetype');
+    src: {% if quali_font_data_uri %}url("{{ quali_font_data_uri }}") format('{{ quali_font_format }}'), {% endif %}local('Quali_1'){% if api_static_base %}, url("{{ api_static_base }}fonts/Quali_1.woff2") format('woff2'), url("{{ api_static_base }}fonts/Quali_1.woff") format('woff'), url("{{ api_static_base }}fonts/Quali_1.ttf") format('truetype'){% else %}, url("{{ url_for('static', filename='fonts/Quali_1.woff2', _external=True) }}") format('woff2'), url("{{ url_for('static', filename='fonts/Quali_1.woff', _external=True) }}") format('woff'), url("{{ url_for('static', filename='fonts/Quali_1.ttf', _external=True) }}") format('truetype'){% endif %};
     font-display: swap;
   }
   .quali-font,
@@ -184,6 +184,10 @@
   #status-rejected.status-btn.highlight { background: #dc3545; color: #fff; border: 1px solid #333; }
   .signatures-section td.status-btn { border: 1px solid #333; box-sizing: border-box; }
 
+  /* Embedded in inspection results iframes: parent page drives autofill / ZIP */
+  html.fir-embedded .download-btn,
+  html.fir-embedded .autofill-btn { display: none !important; }
+
   @media print {
     body { background: none; }
     .download-btn, .autofill-btn { display: none; }
@@ -203,6 +207,9 @@
   <div id="reportRoot"></div>
 
   <script>
+  if (window.self !== window.top) {
+    document.documentElement.classList.add('fir-embedded');
+  }
   const globalSettings = {{ settings | tojson | safe }};
   const FIR_SPEC_DATA = {{ spec_data | tojson | safe }} || [];
   const FIR_CCP_DATA = {{ ccp_data | tojson | safe }} || [];
@@ -412,11 +419,12 @@
   }
   try {
     updateStatusButtons();
-    if (root) {
-      root.addEventListener('input', function(e) {
+    var rootEl = document.getElementById('reportRoot');
+    if (rootEl) {
+      rootEl.addEventListener('input', function(e) {
         if (e.target && e.target.classList && e.target.classList.contains('remarks-value')) updateStatusButtons();
       });
-      root.addEventListener('change', function(e) {
+      rootEl.addEventListener('change', function(e) {
         if (e.target && e.target.classList && e.target.classList.contains('remarks-value')) updateStatusButtons();
       });
     }
@@ -476,33 +484,39 @@
     return n >= min && n <= max;
   }
 
+  /** Sl No | Parameter | Specification | Special char | Method | 5× actual | Remarks (11 cells) */
   function fillOneRow(tr) {
-    const inputs = tr.querySelectorAll("input[type='text'], textarea");
-    if (inputs.length < 10) return;
-    const specInput = inputs[1];
-    const methodInput = inputs[3];
-    const remarksInput = inputs[9];
-    if (!remarksInput) return;
-    const method = (methodInput && methodInput.value || "").trim().toUpperCase();
-    const spec = (specInput && specInput.value || "").trim();
-    const actualInputs = [inputs[4], inputs[5], inputs[6], inputs[7], inputs[8]];
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length < 11) return;
+    var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
+    var methodEl = cells[4].querySelector("input");
+    var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
+    if (!specEl || !methodEl || !remarksEl) return;
+    var actualInputs = [];
+    for (var ci = 5; ci <= 9; ci++) {
+      var inp = cells[ci].querySelector("input.actual-value") || cells[ci].querySelector('input[type="text"]');
+      if (!inp) return;
+      actualInputs.push(inp);
+    }
+    var method = (methodEl.value || "").trim().toUpperCase();
+    var spec = (specEl.value || "").trim();
     if (method === "VISUAL" || method === "VISUAL INSPECTION") {
-      actualInputs.forEach(inp => { inp.value = "OK"; });
-      remarksInput.value = "OK";
+      actualInputs.forEach(function(inp) { inp.value = "OK"; });
+      remarksEl.value = "OK";
       return;
     }
-    const range = parseSpec(spec);
+    var range = parseSpec(spec);
     if (!range) {
-      actualInputs.forEach(inp => { inp.value = ""; });
-      remarksInput.value = "";
+      actualInputs.forEach(function(inp) { inp.value = ""; });
+      remarksEl.value = "";
       return;
     }
-    const { min, max, step } = range;
-    const values = [];
-    for (let i = 0; i < 5; i++) values.push(randomInRange(min, max, step));
-    actualInputs.forEach((inp, i) => { inp.value = values[i]; });
-    const allOk = values.every(v => isWithinSpec(v, min, max));
-    remarksInput.value = allOk ? "OK" : "Not OK";
+    var min = range.min, max = range.max, step = range.step;
+    var values = [];
+    for (var i = 0; i < 5; i++) values.push(randomInRange(min, max, step));
+    actualInputs.forEach(function(inp, idx) { inp.value = values[idx]; });
+    var allOk = values.every(function(v) { return isWithinSpec(v, min, max); });
+    remarksEl.value = allOk ? "OK" : "Not OK";
   }
 
   function autoFillMeasuredValues() {
@@ -589,6 +603,81 @@
     });
   });
   }
+
+  /** Batch tools on parent page (e.g. SaaS inspection results): same-origin iframes only */
+  function firGeneratePdfBlob() {
+    return new Promise(function(resolve, reject) {
+      if (typeof html2pdf === 'undefined') {
+        reject(new Error('html2pdf not loaded'));
+        return;
+      }
+      var btn = document.getElementById("downloadPDF");
+      var autofillBtnEl = document.getElementById("autofillMeasuredBtn");
+      if (btn) btn.style.display = "none";
+      if (autofillBtnEl) autofillBtnEl.style.display = "none";
+      var el = document.getElementById('reportRoot') || document.body;
+      document.body.classList.add('generating-pdf');
+      var textInputs = Array.prototype.slice.call(document.querySelectorAll('input[type="text"]'));
+      var partInput = textInputs.find(function(i) {
+        var td = i.closest('td');
+        return td && td.previousElementSibling && td.previousElementSibling.textContent && td.previousElementSibling.textContent.indexOf("PART") !== -1;
+      });
+      var invoiceInput = textInputs.find(function(i) {
+        var td = i.closest('td');
+        return td && td.previousElementSibling && td.previousElementSibling.textContent && td.previousElementSibling.textContent.indexOf("INVOICE") !== -1;
+      });
+      var fileName = ((invoiceInput && invoiceInput.value) || 'Invoice').replace(/\W+/g,'_') + '_' + ((partInput && partInput.value) || 'Part').replace(/\W+/g,'_') + '_FIR.pdf';
+
+      function restoreUi() {
+        document.body.classList.remove('generating-pdf');
+        if (btn) btn.style.display = "block";
+        if (autofillBtnEl) autofillBtnEl.style.display = "block";
+      }
+
+      var worker = html2pdf().set({
+        margin: 0,
+        filename: fileName,
+        image: { type: 'jpeg', quality: 1 },
+        html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        pagebreak: { mode: ['css'] }
+      }).from(el);
+
+      var out = null;
+      if (typeof worker.outputPdf === 'function') {
+        out = worker.outputPdf('blob');
+      } else if (typeof worker.output === 'function') {
+        out = worker.output('blob');
+      }
+      if (out && typeof out.then === 'function') {
+        out.then(function(blob) {
+          restoreUi();
+          resolve({ blob: blob, filename: fileName });
+        }).catch(function(err) {
+          restoreUi();
+          reject(err);
+        });
+      } else {
+        restoreUi();
+        reject(new Error('html2pdf blob output not available in this build'));
+      }
+    });
+  }
+
+  window.FIR_PREVIEW_API = {
+    get ready() {
+      try {
+        return !!document.getElementById('dimension-table');
+      } catch (e) {
+        return false;
+      }
+    },
+    autoFillMeasuredValues: function() {
+      autoFillMeasuredValues();
+      updateStatusButtons();
+    },
+    generatePdfBlob: firGeneratePdfBlob
+  };
   </script>
 </body>
 </html>

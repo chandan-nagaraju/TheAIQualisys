@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Pricing | FIR Automation{% endblock %}
+{% block content %}
+<section class="pricing-page">
+  <header class="pricing-page__intro">
+    <h2>Pricing</h2>
+    <p class="pricing-page__lede">
+      Your <strong>existing FIR tools</strong> on this site (upload, parts, customers, FIR preview) stay as they are.
+      The plans below are for the <strong>multi-tenant SaaS</strong> (separate app): company signup, JWT login,
+      usage-based invoices in PostgreSQL, admin billing, and data export.
+    </p>
+    <p class="pricing-page__trial">
+      <strong>7-day free trial</strong> on the SaaS — full access during the trial; after it ends you can still view data;
+      new invoice creation in the cloud app requires an active subscription (when billing is enabled).
+    </p>
+  </header>
+
+  <div class="pricing-grid">
+    <article class="pricing-card">
+      <h3 class="pricing-card__name">Basic</h3>
+      <p class="pricing-card__price"><span class="pricing-card__currency">₹</span>1,799<span class="pricing-card__period">/month</span></p>
+      <p class="pricing-card__band">0–1,000 invoices / month</p>
+      <ul class="pricing-card__list">
+        <li>Counted per company per calendar month</li>
+        <li>Multi-tenant data isolation (<code>company_id</code>)</li>
+      </ul>
+      <a class="btn btn--primary pricing-card__cta" href="{{ saas_signup_url }}">Start trial (SaaS)</a>
+    </article>
+
+    <article class="pricing-card">
+      <h3 class="pricing-card__name">Pro</h3>
+      <p class="pricing-card__price"><span class="pricing-card__currency">₹</span>3,599<span class="pricing-card__period">/month</span></p>
+      <p class="pricing-card__band">1,001–2,000 invoices / month</p>
+      <ul class="pricing-card__list">
+        <li>Higher monthly invoice allowance</li>
+        <li>Same features as Basic tier</li>
+      </ul>
+      <a class="btn btn--primary pricing-card__cta" href="{{ saas_signup_url }}">Start trial (SaaS)</a>
+    </article>
+
+    <article class="pricing-card pricing-card--featured">
+      <span class="pricing-card__badge">Best for growing companies</span>
+      <h3 class="pricing-card__name">Enterprise</h3>
+      <p class="pricing-card__price"><span class="pricing-card__currency">₹</span>4,599<span class="pricing-card__period">/month</span></p>
+      <p class="pricing-card__band">2,001+ invoices / month</p>
+      <ul class="pricing-card__list">
+        <li>Unlimited band for high volume</li>
+        <li>Manual UPI + WhatsApp upgrade flow</li>
+      </ul>
+      <a class="btn btn--primary pricing-card__cta" href="{{ saas_signup_url }}">Start trial (SaaS)</a>
+    </article>
+  </div>
+
+  <section class="pricing-whatsapp">
+    <h3>Upgrade via WhatsApp</h3>
+    <p>Pay manually via UPI. We activate your subscription after you send the payment screenshot on WhatsApp.</p>
+    <p class="pricing-whatsapp__message">{{ saas_manual_payment_message }}</p>
+    <p class="pricing-whatsapp__upi"><strong>UPI:</strong> {{ saas_upi_id }}</p>
+    <div class="pricing-whatsapp__actions">
+      <a class="btn btn--secondary" href="{{ saas_upgrade_url }}">Open SaaS upgrade page</a>
+      <a class="btn btn--secondary" href="{{ saas_login_url }}">SaaS login</a>
+    </div>
+  </section>
+
+  <p class="pricing-page__foot">
+    {% if session.get('user_id') %}
+      <a href="{{ url_for('dashboard') }}">Back to dashboard</a>
+    {% else %}
+      <a href="{{ url_for('landing') }}">Home</a>
+      · <a href="{{ url_for('login') }}">Login</a> (this site)
+    {% endif %}
+  </p>
+</section>
+{% endblock %}
