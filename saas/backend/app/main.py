@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine
+from app.migration_runner import apply_sql_migrations
 from app.models import PlatformAdmin
 from app.pricing_seed import ensure_module_pricing_seeded
 from app.routers import admin, auth, billing, modules, pricing_public, subscription
@@ -16,8 +17,11 @@ from app.security import hash_password
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
     settings = get_settings()
+    # Ensure incremental SQL migrations are applied in hosted environments
+    # (e.g. Supabase/Render) before ORM metadata and seed logic run.
+    apply_sql_migrations(engine, settings.backend_root)
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         ensure_module_pricing_seeded(db)
@@ -51,11 +55,14 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(auth.router)
+    app.include_router(auth.router, prefix="/api")
     app.include_router(pricing_public.router)
     app.include_router(billing.router)
     app.include_router(modules.router)
     app.include_router(subscription.router)
+    app.include_router(subscription.router, prefix="/api")
     app.include_router(admin.router)
+    app.include_router(admin.router, prefix="/api")
     app.include_router(v2_router)
     app.include_router(workspace_router)
 

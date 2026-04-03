@@ -60,6 +60,7 @@ class Settings(BaseSettings):
 
     # Workspace uploads (per-company FIR files) under saas/backend/uploads/
     workspace_upload_dir: Path = Field(default=_BACKEND_ROOT / "uploads")
+    backend_root: Path = Field(default=_BACKEND_ROOT)
 
     # Public SPA origin for password-reset links, e.g. http://localhost:5173
     public_app_url: str = Field(

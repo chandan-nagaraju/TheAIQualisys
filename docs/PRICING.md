@@ -12,3 +12,5 @@ Plan amounts, tier names, and invoice bands shown in the app and API are defined
 **Subscription enforcement:** Trial and workspace gating use `ENABLE_SUBSCRIPTION` / `enable_subscription` in config (`true` in production when you want post-trial workspace blocking).
 
 For existing PostgreSQL databases after pulling new models (part PDF columns, revision history, password reset tokens), run the SQL in [`saas/backend/migrations/001_workspace_features.sql`](../saas/backend/migrations/001_workspace_features.sql) if `create_all` did not add columns automatically.
+
+Runtime now also applies SQL files from `saas/backend/migrations/*.sql` at startup and records them in a `schema_migrations` table. This helps hosted DBs (Render/Supabase/Neon) stay in sync when a deploy happens without a manual migration step.

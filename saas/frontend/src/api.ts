@@ -28,13 +28,24 @@ function authHeader(kind: TokenKind): HeadersInit {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
+function apiUrl(path: string): string {
+  const base = API_BASE.trim().replace(/\/+$/, "");
+  if (!base) return path;
+  // If deploy config uses VITE_API_URL ending with /api and caller already passes /api/*,
+  // avoid generating /api/api/* which causes 404 in hosted setups.
+  if (base.endsWith("/api") && path.startsWith("/api/")) {
+    return `${base}${path.slice(4)}`;
+  }
+  return `${base}${path}`;
+}
+
 export async function apiFetch<T>(
   path: string,
   opts: RequestInit & { token?: TokenKind } = {},
 ): Promise<T> {
   const tokenKind = opts.token ?? "company";
   const { token: _t, ...rest } = opts;
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(apiUrl(path), {
     ...rest,
     headers: {
       "Content-Type": "application/json",
@@ -61,7 +72,7 @@ export async function apiUpload(path: string, file: File, tokenKind: TokenKind =
   const t = localStorage.getItem(key);
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(apiUrl(path), {
     method: "POST",
     headers: t ? { Authorization: `Bearer ${t}` } : {},
     body: fd,
@@ -75,7 +86,7 @@ export async function apiUpload(path: string, file: File, tokenKind: TokenKind =
 
 export async function apiDownloadBlob(path: string): Promise<Blob> {
   const t = localStorage.getItem("fir_token");
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(apiUrl(path), {
     headers: t ? { Authorization: `Bearer ${t}` } : {},
   });
   if (!res.ok) throw new Error(await res.text());
@@ -104,7 +115,7 @@ export async function workspaceDownloadBlob(path: string): Promise<Blob> {
   const headers: Record<string, string> = {};
   if (t) headers.Authorization = `Bearer ${t}`;
   if (cid != null) headers["X-Customer-Id"] = String(cid);
-  const res = await fetch(`${API_BASE}${path}`, { headers });
+  const res = await fetch(apiUrl(path), { headers });
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -167,7 +178,7 @@ export async function workspaceFetch<T>(path: string, opts: RequestInit = {}): P
   if (cid != null) base["X-Customer-Id"] = String(cid);
   const isForm = opts.body instanceof FormData;
   if (!isForm) base["Content-Type"] = "application/json";
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(apiUrl(path), {
     ...opts,
     headers: { ...base, ...(opts.headers as Record<string, string>) },
   });
@@ -205,7 +216,7 @@ export async function workspacePostFile<T>(path: string, file: File, fieldName =
   if (cid != null) headers["X-Customer-Id"] = String(cid);
   const fd = new FormData();
   fd.append(fieldName, file);
-  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: fd });
+  const res = await fetch(apiUrl(path), { method: "POST", headers, body: fd });
   if (!res.ok) {
     let detail = res.statusText;
     try {

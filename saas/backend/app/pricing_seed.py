@@ -1,8 +1,8 @@
-"""Insert default module_pricing rows when the table is empty (dev / missed migration)."""
+"""Ensure default module_pricing rows exist (dev / missed migration)."""
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ModulePricing
@@ -103,9 +103,12 @@ _DEFAULT_ROWS: tuple[dict, ...] = (
 
 
 def ensure_module_pricing_seeded(db: Session) -> None:
-    n = db.execute(select(func.count()).select_from(ModulePricing)).scalar_one()
-    if int(n) > 0:
+    # Backfill missing defaults even if some rows already exist.
+    # Older deployments can have partial data after incremental releases.
+    existing = set(db.execute(select(ModulePricing.module_name)).scalars().all())
+    missing = [kwargs for kwargs in _DEFAULT_ROWS if kwargs["module_name"] not in existing]
+    if not missing:
         return
-    for kwargs in _DEFAULT_ROWS:
+    for kwargs in missing:
         db.add(ModulePricing(**kwargs))
     db.commit()

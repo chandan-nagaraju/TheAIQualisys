@@ -25,19 +25,13 @@ export default function SettingsPage() {
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const API_BASE = import.meta.env.VITE_API_URL ?? "";
-    const t = localStorage.getItem("fir_token");
-    const cid = localStorage.getItem("fir_workspace_customer_id");
-    const h: Record<string, string> = {};
-    if (t) h.Authorization = `Bearer ${t}`;
-    if (cid) h["X-Customer-Id"] = cid;
-    const res = await fetch(`${API_BASE}/api/app/settings`, { method: "POST", headers: h, body: fd });
-    if (!res.ok) {
-      setErr(await res.text());
-      return;
+    try {
+      const saved = await workspaceFetch<St>("/api/app/settings", { method: "POST", body: fd });
+      setS(saved);
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to save settings");
     }
-    setS(await res.json());
-    setErr(null);
   }
 
   if (err && !s) {
