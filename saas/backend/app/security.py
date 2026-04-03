@@ -1,41 +1,43 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
 from typing import Any
 
-import bcrypt as _bcrypt
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from werkzeug.security import check_password_hash as werkzeug_check_password_hash
 
 from app.config import get_settings
 
-# Passlib 1.7.x expects bcrypt.__about__.__version__, removed in newer bcrypt.
-# Add a tiny compatibility shim so startup doesn't emit noisy tracebacks.
-if not hasattr(_bcrypt, "__about__"):
-    class _BcryptAbout:
-        __version__ = getattr(_bcrypt, "__version__", "unknown")
+def _sha256_ascii(password: str) -> bytes:
+    # Pre-hash to fixed-length ASCII bytes so bcrypt never sees >72-byte input.
+    return hashlib.sha256(password.encode("utf-8")).hexdigest().encode("ascii")
 
-    _bcrypt.__about__ = _BcryptAbout()  # type: ignore[attr-defined]
 
-pwd_context = CryptContext(schemes=["bcrypt_sha256", "bcrypt"], deprecated="auto")
+def _bcrypt_check(secret: bytes, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(secret, hashed.encode("utf-8"))
+    except Exception:
+        return False
 
 
 def hash_password(password: str) -> str:
-    # bcrypt_sha256 avoids bcrypt's 72-byte input limit while verify() still
-    # accepts legacy bcrypt hashes already stored in the database.
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_sha256_ascii(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     if not hashed:
         return False
+    # New hashes (bcrypt over SHA256(password))
+    if _bcrypt_check(_sha256_ascii(plain), hashed):
+        return True
+    # Legacy bcrypt hashes (plain password, subject to old 72-byte truncation)
+    if _bcrypt_check(plain.encode("utf-8"), hashed):
+        return True
+    # Legacy hashes from older stacks (e.g. Werkzeug pbkdf2/scrypt).
     try:
-        return pwd_context.verify(plain, hashed)
+        return werkzeug_check_password_hash(hashed, plain)
     except Exception:
-        # Legacy hashes from older stacks (e.g. Werkzeug pbkdf2/scrypt).
-        try:
-            return werkzeug_check_password_hash(hashed, plain)
-        except Exception:
-            return False
+        return False
 
 
 def verify_password_and_upgrade(plain: str, hashed: str) -> tuple[bool, str | None]:
@@ -45,12 +47,13 @@ def verify_password_and_upgrade(plain: str, hashed: str) -> tuple[bool, str | No
     """
     if not hashed:
         return False, None
-    try:
-        ok, new_hash = pwd_context.verify_and_update(plain, hashed)
-        if ok:
-            return True, new_hash
-    except Exception:
-        pass
+    # Already current scheme.
+    if _bcrypt_check(_sha256_ascii(plain), hashed):
+        return True, None
+    # Legacy bcrypt hash: verify then upgrade.
+    if _bcrypt_check(plain.encode("utf-8"), hashed):
+        return True, hash_password(plain)
+    # Legacy werkzeug hash: verify then upgrade.
     try:
         if werkzeug_check_password_hash(hashed, plain):
             return True, hash_password(plain)
