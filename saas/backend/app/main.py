@@ -12,7 +12,7 @@ from app.pricing_seed import ensure_module_pricing_seeded
 from app.routers import admin, auth, billing, modules, pricing_public, subscription
 from app.routers.v2.endpoints import router as v2_router
 from app.routers.workspace import router as workspace_router
-from app.security import hash_password
+from app.security import hash_password, verify_password
 
 
 @asynccontextmanager
@@ -27,14 +27,18 @@ async def lifespan(_: FastAPI):
         ensure_module_pricing_seeded(db)
         if settings.bootstrap_admin_email and settings.bootstrap_admin_password:
             email = settings.bootstrap_admin_email.lower().strip()
-            exists = db.execute(select(PlatformAdmin).where(PlatformAdmin.email == email)).scalar_one_or_none()
-            if not exists:
+            admin = db.execute(select(PlatformAdmin).where(PlatformAdmin.email == email)).scalar_one_or_none()
+            if not admin:
                 db.add(
                     PlatformAdmin(
                         email=email,
                         password_hash=hash_password(settings.bootstrap_admin_password),
                     )
                 )
+                db.commit()
+            elif not verify_password(settings.bootstrap_admin_password, admin.password_hash):
+                admin.password_hash = hash_password(settings.bootstrap_admin_password)
+                db.add(admin)
                 db.commit()
     finally:
         db.close()
