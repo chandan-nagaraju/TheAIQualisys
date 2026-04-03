@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.deps import get_db_session, get_platform_admin
 from app.fir_analytics import build_fir_intelligence
 from app.models import Company, CompanyUser, Customer, InvoiceV2, ModulePricing, PlanType, PlatformAdmin, SubscriptionStatus
+from app.module_access import resync_qms_trials_after_pricing_change
 from app.pricing_catalog import list_all_pricing_rows
 from app.schemas import (
     AdminCompanyPatch,
@@ -303,9 +304,12 @@ def admin_patch_pricing_module(
     row = db.execute(select(ModulePricing).where(ModulePricing.module_name == module_name)).scalar_one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="Unknown module_name")
-    for k, v in body.model_dump(exclude_unset=True).items():
+    patch = body.model_dump(exclude_unset=True)
+    for k, v in patch.items():
         setattr(row, k, v)
     db.add(row)
+    if "trial_days" in patch or "usage_limit" in patch:
+        resync_qms_trials_after_pricing_change(db, row.module_name, row.trial_days, row.usage_limit)
     db.commit()
     db.refresh(row)
     return ModulePricingPublicOut.model_validate(row)

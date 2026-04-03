@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api";
+import SubscriptionStatusPill from "../components/SubscriptionStatusPill";
 
 type BillingOverview = {
   company_name: string;
@@ -101,9 +102,7 @@ export default function CompanyDashboardPage() {
           {data.modules.map((m) => (
             <li key={m.module_key} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
               <span className="font-medium text-slate-200">{m.display_name}</span>
-              <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-xs font-medium text-slate-300">
-                {m.subscription_status}
-              </span>
+              <SubscriptionStatusPill status={m.subscription_status} />
             </li>
           ))}
         </ul>

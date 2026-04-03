@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api";
 import { QMS_MODULES, type QmsModuleSlug } from "../moduleCatalog";
+import { useTheme } from "../theme/ThemeContext";
 
 type Me = {
   fir_reports_this_month: number;
@@ -28,11 +29,19 @@ type PricingRow = {
   usage_limit: number;
 };
 
-const badgeStyles: Record<string, string> = {
+const badgeStylesDark: Record<string, string> = {
   live: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30",
   trial: "bg-sky-500/15 text-sky-300 ring-sky-500/30",
   locked: "bg-slate-600/30 text-slate-400 ring-slate-500/30",
   coming_soon: "bg-amber-500/15 text-amber-200 ring-amber-500/30",
+};
+
+/** Light + grey: solid pastel chips so text/background pairs stay WCAG-friendly */
+const badgeStylesLight: Record<string, string> = {
+  live: "bg-emerald-100 text-emerald-900 ring-emerald-300/70",
+  trial: "bg-sky-100 text-sky-900 ring-sky-300/70",
+  locked: "bg-slate-200 text-slate-800 ring-slate-400/80",
+  coming_soon: "bg-amber-100 text-amber-950 ring-amber-300/80",
 };
 
 export default function ModulesDashboardPage() {
@@ -221,9 +230,18 @@ function ModuleCard({
   stats?: ReactNode;
   footer: ReactNode;
 }) {
-  const cls = badgeStyles[badgeKey] ?? badgeStyles.locked;
+  const { theme } = useTheme();
+  const badgeMap = theme === "dark" ? badgeStylesDark : badgeStylesLight;
+  const cls = badgeMap[badgeKey] ?? badgeMap.locked;
+
+  /** Dark: layered border + top highlight + depth — light/grey keep flat cards (CSS overrides handle surfaces). */
+  const cardClass =
+    theme === "dark"
+      ? "flex flex-col rounded-2xl border border-slate-500/55 bg-gradient-to-b from-slate-800/50 to-slate-950/80 p-5 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.75),inset_0_1px_0_0_rgba(255,255,255,0.08),0_0_0_1px_rgba(56,189,248,0.12)]"
+      : "flex flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5 shadow-lg shadow-black/20";
+
   return (
-    <div className="flex flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5 shadow-lg shadow-black/20">
+    <div className={cardClass}>
       <div className="flex items-start justify-between gap-2">
         <h2 className="text-lg font-semibold text-white">{title}</h2>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${cls}`}>

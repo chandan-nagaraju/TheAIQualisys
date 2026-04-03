@@ -7,24 +7,43 @@
   <style>
   @page { size: A4 landscape; margin: 10mm; }
   body { font-family: Calibri, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; }
-  body.generating-pdf { min-width: 297mm; width: 297mm; margin: 0 auto; }
+  body.generating-pdf { min-width: 297mm; width: 297mm; margin: 0 auto; background: #fff; }
 
   #reportRoot { width: 100%; max-width: 297mm; margin: 0 auto; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
   body.generating-pdf #reportRoot { width: 297mm !important; min-width: 297mm; max-width: 297mm; margin: 0 auto; }
 
   .report-container {
-    background: #ffffff;
-    border: 1px solid #000;
+    position: relative;
+    background: #fafaf7;
+    border: 1px solid #222;
     width: 100%;
     max-width: 297mm;
     margin: 10px auto;
     padding: 6px 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
     box-sizing: border-box;
     page-break-after: auto;
     overflow: hidden;
+    transform: rotate(-0.06deg);
+    filter: grayscale(100%) contrast(1.06);
   }
-  body.generating-pdf .report-container { overflow: visible; border: none; box-shadow: none; max-width: 270mm; }
+  /* Subtle scan / photocopy texture */
+  .report-container::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 1px,
+      rgba(0,0,0,0.04) 1px,
+      rgba(0,0,0,0.04) 2px
+    );
+    mix-blend-mode: multiply;
+    opacity: 0.85;
+  }
+  body.generating-pdf .report-container { overflow: visible; border: 1px solid #000; box-shadow: none; max-width: 270mm; transform: none; }
 
   .header-table, .data-table {
     border-collapse: collapse;
@@ -78,12 +97,19 @@
   .small-cell { font-size: 12px; text-align: left; padding: 3px 6px; }
   .bold { font-weight: bold; }
   .section-title {
-    background-color: #dbe5f1;
+    background: linear-gradient(180deg, #ececec 0%, #d4d4d4 100%);
+    color: #000;
     font-weight: bold;
     text-align: center;
     padding: 3px 5px;
     border: 1px solid #000;
     line-height: 1.3;
+  }
+  /* Table subheads — neutral B&W (no blue) */
+  .fir-col-head, .fir-col-head-num {
+    background: #dedede !important;
+    color: #000 !important;
+    font-weight: bold;
   }
   body.generating-pdf .section-title { page-break-after: avoid; border-width: 1px; }
   body.generating-pdf .data-table td, body.generating-pdf .data-table th { border: 1px solid #333; }
@@ -91,6 +117,19 @@
   body.generating-pdf .signatures-section td.status-btn,
   body.generating-pdf #status-accepted,
   body.generating-pdf #status-rejected { border: 1px solid #333 !important; }
+  /* html2canvas ignores CSS filter — PDF capture still showed color logos; force B&W in PDF pass */
+  body.generating-pdf #status-rejected.status-btn.highlight {
+    background: #404040 !important;
+    color: #fff !important;
+    border: 1px solid #000 !important;
+  }
+  body.generating-pdf input:focus,
+  body.generating-pdf textarea:focus {
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
 
   input[type="text"] {
     width: 100%;
@@ -109,7 +148,6 @@
   }
   input[type="text"]:focus {
     background: #e6f0ff;
-    
     text-align: left;
     border: 1px solid #007bff;
   }
@@ -142,7 +180,7 @@
   input.actual-value,
   input.remarks-value {
     font-family: 'Quali_1', sans-serif;
-    line-height: 1.5  ;
+    line-height: 1.5;
   }
   .data-table input.actual-value,
   .data-table input.remarks-value {
@@ -161,7 +199,8 @@
   button.upload-btn:hover { background-color: #0056b3; }
   .signature-cell { text-align: center; vertical-align: middle; padding: 10px; box-sizing: border-box; }
   .signature-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; }
-  .signature-preview { height: 50px; width: auto; max-width: 80%; object-fit: contain; margin-top: 6px; border: none; }
+  .signature-preview { height: 50px; width: auto; max-width: 80%; object-fit: contain; margin-top: 6px; border: none; filter: grayscale(100%) contrast(1.1); }
+  .fir-logo-img { filter: grayscale(100%) contrast(1.12) !important; }
   .download-btn {
     position: fixed; bottom: 20px; right: 20px;
     background-color: #28a745; color: white; border: none;
@@ -191,7 +230,7 @@
   @media print {
     body { background: none; }
     .download-btn, .autofill-btn { display: none; }
-    .report-container { box-shadow: none; border: none; overflow: visible; }
+    .report-container { box-shadow: none; border: none; overflow: visible; transform: none; }
     .data-table thead { display: table-header-group; }
     .signatures-section { page-break-inside: avoid; }
     #reportRoot { width: 297mm; margin: 0 auto; }
@@ -270,10 +309,10 @@
         <th rowspan="2" style="width:15%;">Specification</th>
         <th rowspan="2" style="width:5%;">Special Char.</th>
         <th rowspan="2" style="width:10%;">Method of Inspection</th>
-        <th colspan="5" style="width:41%; background-color:#dbe5f1;">Actual Measured Values</th>
+        <th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th>
         <th rowspan="2" style="width:8%;">Remarks</th></tr>
-        <tr><th style="background-color:#eef3fa;">1</th><th style="background-color:#eef3fa;">2</th>
-        <th style="background-color:#eef3fa;">3</th><th style="background-color:#eef3fa;">4</th><th style="background-color:#eef3fa;">5</th></tr>
+        <tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th>
+        <th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr>
       </thead><tbody>`;
 
     const actualInput = '<input type="text" class="actual-value quali-font">';
@@ -340,9 +379,9 @@
             <td class="section-title" rowspan="3">Sampling Plan</td>
             <td colspan="6" rowspan="3" style="text-align:left; vertical-align:top; padding:2px; width:100%;">
               <table style="width:100%; border-collapse:collapse; border:1px solid #333;">
-                <tr><td class="section-title" style="background-color:#dbe5f1;">Customer Complaint Parameter</td><td style="width:50%;">100% Inspection</td></tr>
-                <tr><td class="section-title" style="background-color:#dbe5f1;">Dimension Parameter</td><td style="width:50%;">Minimum 5 Nos</td></tr>
-                <tr><td class="section-title" style="background-color:#dbe5f1;">Visual Check</td><td style="width:50%;">100% Inspection</td></tr>
+                <tr><td class="section-title fir-sampling-label">Customer Complaint Parameter</td><td style="width:50%;">100% Inspection</td></tr>
+                <tr><td class="section-title fir-sampling-label">Dimension Parameter</td><td style="width:50%;">Minimum 5 Nos</td></tr>
+                <tr><td class="section-title fir-sampling-label">Visual Check</td><td style="width:50%;">100% Inspection</td></tr>
               </table>
             </td>
           </tr>
@@ -355,7 +394,7 @@
     if (companyCell && globalSettings) {
       let inner = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;">';
       if (globalSettings.logo_path) {
-        inner += `<div style="width:90px;height:90px;border:1px solid #000;overflow:hidden;margin-bottom:4px;display:flex;align-items:center;justify-content:center;"><img src="${globalSettings.logo_path}" style="width:100%;height:100%;object-fit:cover;"></div>`;
+        inner += `<div style="width:90px;height:90px;border:1px solid #000;overflow:hidden;margin-bottom:4px;display:flex;align-items:center;justify-content:center;background:#fff;"><img class="fir-logo-img" src="${globalSettings.logo_path}" style="width:100%;height:100%;object-fit:cover;"></div>`;
       }
       if (globalSettings.company_name) {
         inner += `<div style="font-weight:bold;font-style:italic;text-align:center;">${globalSettings.company_name}</div>`;
@@ -570,6 +609,72 @@
     }
   });
 
+  /** html2pdf/html2canvas does not reliably apply CSS filter: grayscale — rasterize imgs to grey JPEGs before capture */
+  function firGrayscaleImageForPdf(img) {
+    return new Promise(function(resolve) {
+      if (!img || !img.getAttribute("src")) {
+        resolve();
+        return;
+      }
+      if (img.dataset.firPdfOrigSrc) {
+        resolve();
+        return;
+      }
+      var finish = function() {
+        resolve();
+      };
+      var apply = function() {
+        try {
+          var w = img.naturalWidth || img.width;
+          var h = img.naturalHeight || img.height;
+          if (!w || !h) {
+            finish();
+            return;
+          }
+          var c = document.createElement("canvas");
+          c.width = w;
+          c.height = h;
+          var ctx = c.getContext("2d");
+          ctx.drawImage(img, 0, 0);
+          var idata = ctx.getImageData(0, 0, w, h);
+          var d = idata.data;
+          for (var i = 0; i < d.length; i += 4) {
+            var g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+            d[i] = d[i + 1] = d[i + 2] = g;
+          }
+          ctx.putImageData(idata, 0, 0);
+          img.dataset.firPdfOrigSrc = img.src;
+          img.src = c.toDataURL("image/jpeg", 0.92);
+        } catch (e) {
+          /* tainted canvas (cross-origin without CORS) — keep original */
+        }
+        finish();
+      };
+      if (img.complete && img.naturalWidth) {
+        apply();
+      } else {
+        img.onload = function() {
+          apply();
+        };
+        img.onerror = finish;
+      }
+    });
+  }
+
+  function firPrepareImagesForPdf(root) {
+    var imgs = Array.prototype.slice.call(root.querySelectorAll("img"));
+    return Promise.all(imgs.map(function(im) {
+      return firGrayscaleImageForPdf(im);
+    }));
+  }
+
+  function firRestoreImagesAfterPdf(root) {
+    Array.prototype.forEach.call(root.querySelectorAll("img[data-fir-pdf-orig-src]"), function(img) {
+      img.src = img.dataset.firPdfOrigSrc;
+      img.removeAttribute("data-fir-pdf-orig-src");
+    });
+  }
+
   // --- PDF Download ---
   var downloadBtn = document.getElementById("downloadPDF");
   if (downloadBtn) {
@@ -585,21 +690,24 @@
     const invoiceInput = [...document.querySelectorAll('input[type="text"]')].find(i => i.closest('td')?.previousElementSibling?.textContent?.includes("INVOICE"));
     const fileName = `${(invoiceInput?.value || 'Invoice').replace(/\W+/g,'_')}_${(partInput?.value || 'Part').replace(/\W+/g,'_')}_FIR.pdf`;
 
-    html2pdf().set({
-      margin: 0,
-      filename: fileName,
-      image: { type: 'jpeg', quality: 1 },
-      html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-      pagebreak: { mode: ['css'] }
-    }).from(el).save().then(() => {
+    function restorePdfUi() {
+      firRestoreImagesAfterPdf(el);
       document.body.classList.remove('generating-pdf');
       btn.style.display = "block";
       if (autofillBtn) autofillBtn.style.display = "block";
-    }).catch(function() {
-      document.body.classList.remove('generating-pdf');
-      btn.style.display = "block";
-      if (autofillBtn) autofillBtn.style.display = "block";
+    }
+
+    firPrepareImagesForPdf(el).then(function() {
+      return html2pdf().set({
+        margin: 0,
+        filename: fileName,
+        image: { type: 'jpeg', quality: 1 },
+        html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        pagebreak: { mode: ['css'] }
+      }).from(el).save();
+    }).then(restorePdfUi).catch(function() {
+      restorePdfUi();
     });
   });
   }
@@ -629,38 +737,44 @@
       var fileName = ((invoiceInput && invoiceInput.value) || 'Invoice').replace(/\W+/g,'_') + '_' + ((partInput && partInput.value) || 'Part').replace(/\W+/g,'_') + '_FIR.pdf';
 
       function restoreUi() {
+        firRestoreImagesAfterPdf(el);
         document.body.classList.remove('generating-pdf');
         if (btn) btn.style.display = "block";
         if (autofillBtnEl) autofillBtnEl.style.display = "block";
       }
 
-      var worker = html2pdf().set({
-        margin: 0,
-        filename: fileName,
-        image: { type: 'jpeg', quality: 1 },
-        html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-        pagebreak: { mode: ['css'] }
-      }).from(el);
+      firPrepareImagesForPdf(el).then(function() {
+        var worker = html2pdf().set({
+          margin: 0,
+          filename: fileName,
+          image: { type: 'jpeg', quality: 1 },
+          html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+          pagebreak: { mode: ['css'] }
+        }).from(el);
 
-      var out = null;
-      if (typeof worker.outputPdf === 'function') {
-        out = worker.outputPdf('blob');
-      } else if (typeof worker.output === 'function') {
-        out = worker.output('blob');
-      }
-      if (out && typeof out.then === 'function') {
-        out.then(function(blob) {
+        var out = null;
+        if (typeof worker.outputPdf === 'function') {
+          out = worker.outputPdf('blob');
+        } else if (typeof worker.output === 'function') {
+          out = worker.output('blob');
+        }
+        if (out && typeof out.then === 'function') {
+          out.then(function(blob) {
+            restoreUi();
+            resolve({ blob: blob, filename: fileName });
+          }).catch(function(err) {
+            restoreUi();
+            reject(err);
+          });
+        } else {
           restoreUi();
-          resolve({ blob: blob, filename: fileName });
-        }).catch(function(err) {
-          restoreUi();
-          reject(err);
-        });
-      } else {
+          reject(new Error('html2pdf blob output not available in this build'));
+        }
+      }).catch(function(err) {
         restoreUi();
-        reject(new Error('html2pdf blob output not available in this build'));
-      }
+        reject(err);
+      });
     });
   }
 

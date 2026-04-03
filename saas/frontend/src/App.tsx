@@ -33,12 +33,6 @@ import ChangePasswordPage from "./pages/ChangePasswordPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
-function HomeRoute() {
-  const t = localStorage.getItem("fir_token");
-  if (t) return <Navigate to="/dashboard" replace />;
-  return <LandingPage />;
-}
-
 export default function App() {
   return (
     <Routes>
@@ -68,7 +62,7 @@ export default function App() {
       </Route>
 
       <Route element={<Layout />}>
-        <Route path="/" element={<HomeRoute />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />

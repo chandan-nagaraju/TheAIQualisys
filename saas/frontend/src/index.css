@@ -5,3 +5,380 @@
 body {
   @apply antialiased;
 }
+
+html[data-theme="dark"] body {
+  @apply bg-slate-950 text-slate-100;
+}
+
+html[data-theme="light"] body {
+  @apply bg-slate-100 text-slate-900;
+}
+
+html[data-theme="grey"] body {
+  @apply bg-zinc-200 text-zinc-900;
+}
+
+/* --- Light: main column (Layout <Outlet />) --- */
+html[data-theme="light"] main.app-outlet .text-slate-400 {
+  color: rgb(71 85 105);
+}
+
+html[data-theme="light"] main.app-outlet .text-slate-300 {
+  color: rgb(51 65 85);
+}
+
+html[data-theme="light"] main.app-outlet .text-slate-200 {
+  color: rgb(30 41 59);
+}
+
+html[data-theme="light"] main.app-outlet .text-slate-500 {
+  color: rgb(100 116 139);
+}
+
+html[data-theme="light"] main.app-outlet .text-white {
+  color: rgb(15 23 42);
+}
+
+html[data-theme="light"] main.app-outlet .bg-brand-600.text-white,
+html[data-theme="light"] main.app-outlet .bg-brand-500.text-white,
+html[data-theme="light"] main.app-outlet .hover\:bg-brand-500.text-white {
+  color: rgb(255 255 255) !important;
+}
+
+html[data-theme="light"] main.app-outlet .border-slate-800 {
+  border-color: rgb(226 232 240);
+}
+
+html[data-theme="light"] main.app-outlet .border-slate-800\/80 {
+  border-color: rgb(226 232 240);
+}
+
+html[data-theme="light"] main.app-outlet .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(226 232 240);
+}
+
+html[data-theme="light"] main.app-outlet .bg-slate-900\/30,
+html[data-theme="light"] main.app-outlet .bg-slate-900\/40,
+html[data-theme="light"] main.app-outlet .bg-slate-900\/50,
+html[data-theme="light"] main.app-outlet .bg-slate-900\/60 {
+  background-color: rgb(255 255 255);
+}
+
+html[data-theme="light"] main.app-outlet .bg-slate-900\/80 {
+  background-color: rgb(241 245 249);
+}
+
+html[data-theme="light"] main.app-outlet .hover\:bg-slate-900\/40:hover {
+  background-color: rgb(241 245 249);
+}
+
+html[data-theme="light"] main.app-outlet .hover\:bg-slate-800:hover {
+  background-color: rgb(226 232 240);
+}
+
+html[data-theme="light"] main.app-outlet .bg-slate-950\/50,
+html[data-theme="light"] main.app-outlet .bg-slate-950\/40 {
+  background-color: rgb(248 250 252);
+}
+
+html[data-theme="light"] main.app-outlet .from-brand-950\/50 {
+  --tw-gradient-from: rgb(240 249 255 / 0.95) var(--tw-gradient-from-position);
+}
+
+html[data-theme="light"] main.app-outlet .to-slate-900\/80 {
+  --tw-gradient-to: rgb(248 250 252 / 0.98) var(--tw-gradient-to-position);
+}
+
+html[data-theme="light"] main.app-outlet .from-slate-950 {
+  --tw-gradient-from: rgb(241 245 249) var(--tw-gradient-from-position);
+}
+
+html[data-theme="light"] main.app-outlet .via-slate-900 {
+  --tw-gradient-via: rgb(248 250 252) var(--tw-gradient-via-position);
+}
+
+html[data-theme="light"] main.app-outlet .to-slate-950 {
+  --tw-gradient-to: rgb(241 245 249) var(--tw-gradient-to-position);
+}
+
+html[data-theme="light"] main.app-outlet .text-amber-50,
+html[data-theme="light"] main.app-outlet .text-amber-100 {
+  color: rgb(120 53 15);
+}
+
+html[data-theme="light"] main.app-outlet .bg-amber-50 {
+  background-color: rgb(255 251 235);
+}
+
+html[data-theme="light"] main.app-outlet .border-amber-300 {
+  border-color: rgb(252 211 77);
+}
+
+html[data-theme="light"] main.app-outlet .text-amber-500\/90,
+html[data-theme="light"] main.app-outlet .text-amber-500 {
+  color: rgb(180 83 9);
+}
+
+html[data-theme="light"] main.app-outlet .text-amber-900,
+html[data-theme="light"] main.app-outlet .text-amber-950 {
+  color: rgb(69 26 3);
+}
+
+html[data-theme="light"] main.app-outlet .text-blue-700,
+html[data-theme="light"] main.app-outlet .text-blue-800 {
+  color: rgb(29 78 216);
+}
+
+html[data-theme="light"] main.app-outlet .text-red-700 {
+  color: rgb(185 28 28);
+}
+
+html[data-theme="light"] main.app-outlet .hover\:bg-red-50:hover {
+  background-color: rgb(254 242 242);
+}
+
+html[data-theme="light"] main.app-outlet input,
+html[data-theme="light"] main.app-outlet textarea,
+html[data-theme="light"] main.app-outlet select {
+  @apply text-slate-900;
+}
+
+html[data-theme="light"] main.app-outlet .border-slate-700 {
+  border-color: rgb(203 213 225);
+}
+
+html[data-theme="light"] main.app-outlet .bg-slate-950 {
+  background-color: rgb(255 255 255);
+}
+
+html[data-theme="light"] main.app-outlet .bg-slate-900 {
+  background-color: rgb(248 250 252);
+}
+
+html[data-theme="light"] main.app-outlet .text-slate-100 {
+  color: rgb(15 23 42);
+}
+
+html[data-theme="light"] main.app-outlet .text-emerald-400 {
+  color: rgb(5 150 105);
+}
+
+html[data-theme="light"] main.app-outlet .text-amber-300 {
+  color: rgb(180 83 9);
+}
+
+html[data-theme="light"] main.app-outlet .border-slate-600 {
+  border-color: rgb(203 213 225);
+}
+
+html[data-theme="light"] main.app-outlet .text-red-400 {
+  color: rgb(220 38 38);
+}
+
+/*
+ * Grey theme = light grey canvas (not dark). Main column matches light theme
+ * so cards/lists (e.g. Product status) stay white / dark text on zinc-200 page bg.
+ */
+html[data-theme="grey"] main.app-outlet .text-slate-400 {
+  color: rgb(82 82 91);
+}
+
+html[data-theme="grey"] main.app-outlet .text-slate-300 {
+  color: rgb(63 63 70);
+}
+
+html[data-theme="grey"] main.app-outlet .text-slate-200 {
+  color: rgb(39 39 42);
+}
+
+html[data-theme="grey"] main.app-outlet .text-slate-500 {
+  color: rgb(113 113 122);
+}
+
+html[data-theme="grey"] main.app-outlet .text-white {
+  color: rgb(24 24 27);
+}
+
+html[data-theme="grey"] main.app-outlet .bg-brand-600.text-white,
+html[data-theme="grey"] main.app-outlet .bg-brand-500.text-white,
+html[data-theme="grey"] main.app-outlet .hover\:bg-brand-500.text-white {
+  color: rgb(255 255 255) !important;
+}
+
+html[data-theme="grey"] main.app-outlet .border-slate-800 {
+  border-color: rgb(212 212 216);
+}
+
+html[data-theme="grey"] main.app-outlet .border-slate-800\/80 {
+  border-color: rgb(212 212 216);
+}
+
+html[data-theme="grey"] main.app-outlet .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(212 212 216);
+}
+
+html[data-theme="grey"] main.app-outlet .bg-slate-900\/30,
+html[data-theme="grey"] main.app-outlet .bg-slate-900\/40,
+html[data-theme="grey"] main.app-outlet .bg-slate-900\/50,
+html[data-theme="grey"] main.app-outlet .bg-slate-900\/60 {
+  background-color: rgb(255 255 255);
+}
+
+html[data-theme="grey"] main.app-outlet .bg-slate-900\/80 {
+  background-color: rgb(244 244 245);
+}
+
+html[data-theme="grey"] main.app-outlet .hover\:bg-slate-900\/40:hover {
+  background-color: rgb(244 244 245);
+}
+
+html[data-theme="grey"] main.app-outlet .hover\:bg-slate-800:hover {
+  background-color: rgb(228 228 231);
+}
+
+html[data-theme="grey"] main.app-outlet .bg-slate-950\/50,
+html[data-theme="grey"] main.app-outlet .bg-slate-950\/40 {
+  background-color: rgb(250 250 250);
+}
+
+html[data-theme="grey"] main.app-outlet .from-brand-950\/50 {
+  --tw-gradient-from: rgb(244 244 245 / 0.98) var(--tw-gradient-from-position);
+}
+
+html[data-theme="grey"] main.app-outlet .to-slate-900\/80 {
+  --tw-gradient-to: rgb(250 250 250 / 0.98) var(--tw-gradient-to-position);
+}
+
+html[data-theme="grey"] main.app-outlet .from-slate-950 {
+  --tw-gradient-from: rgb(244 244 245) var(--tw-gradient-from-position);
+}
+
+html[data-theme="grey"] main.app-outlet .via-slate-900 {
+  --tw-gradient-via: rgb(250 250 250) var(--tw-gradient-via-position);
+}
+
+html[data-theme="grey"] main.app-outlet .to-slate-950 {
+  --tw-gradient-to: rgb(244 244 245) var(--tw-gradient-to-position);
+}
+
+html[data-theme="grey"] main.app-outlet .text-amber-50,
+html[data-theme="grey"] main.app-outlet .text-amber-100 {
+  color: rgb(120 53 15);
+}
+
+html[data-theme="grey"] main.app-outlet .bg-amber-50 {
+  background-color: rgb(255 251 235);
+}
+
+html[data-theme="grey"] main.app-outlet .border-amber-300 {
+  border-color: rgb(252 211 77);
+}
+
+html[data-theme="grey"] main.app-outlet .text-amber-500\/90,
+html[data-theme="grey"] main.app-outlet .text-amber-500 {
+  color: rgb(180 83 9);
+}
+
+html[data-theme="grey"] main.app-outlet .text-amber-900,
+html[data-theme="grey"] main.app-outlet .text-amber-950 {
+  color: rgb(69 26 3);
+}
+
+html[data-theme="grey"] main.app-outlet .text-blue-700,
+html[data-theme="grey"] main.app-outlet .text-blue-800 {
+  color: rgb(29 78 216);
+}
+
+html[data-theme="grey"] main.app-outlet .text-red-700 {
+  color: rgb(185 28 28);
+}
+
+html[data-theme="grey"] main.app-outlet .hover\:bg-red-50:hover {
+  background-color: rgb(254 242 242);
+}
+
+html[data-theme="grey"] main.app-outlet input,
+html[data-theme="grey"] main.app-outlet textarea,
+html[data-theme="grey"] main.app-outlet select {
+  @apply text-zinc-900;
+}
+
+html[data-theme="grey"] main.app-outlet .border-slate-700 {
+  border-color: rgb(212 212 216);
+}
+
+html[data-theme="grey"] main.app-outlet .bg-slate-950 {
+  background-color: rgb(255 255 255);
+}
+
+html[data-theme="grey"] main.app-outlet .bg-slate-900 {
+  background-color: rgb(250 250 250);
+}
+
+html[data-theme="grey"] main.app-outlet .text-slate-100 {
+  color: rgb(24 24 27);
+}
+
+/* Status chips: readable on white/light grey cards in grey theme */
+html[data-theme="grey"] main.app-outlet .text-emerald-400 {
+  color: rgb(4 120 87);
+}
+
+html[data-theme="grey"] main.app-outlet .text-amber-300 {
+  color: rgb(180 83 9);
+}
+
+html[data-theme="grey"] main.app-outlet .bg-emerald-500\/15 {
+  background-color: rgb(16 185 129 / 0.12);
+}
+
+html[data-theme="grey"] main.app-outlet .bg-amber-500\/15 {
+  background-color: rgb(245 158 11 / 0.15);
+}
+
+html[data-theme="grey"] main.app-outlet .border-slate-600 {
+  border-color: rgb(161 161 170);
+}
+
+html[data-theme="grey"] main.app-outlet .text-red-400 {
+  color: rgb(220 38 38);
+}
+
+/* --- Safety nets: dark UI atoms + global text overrides caused low contrast --- */
+
+html[data-theme="light"] main.app-outlet .bg-slate-800.text-slate-300,
+html[data-theme="light"] main.app-outlet .bg-slate-800.text-slate-200 {
+  background-color: rgb(226 232 240);
+  color: rgb(15 23 42);
+}
+
+html[data-theme="grey"] main.app-outlet .bg-slate-800.text-slate-300,
+html[data-theme="grey"] main.app-outlet .bg-slate-800.text-slate-200 {
+  background-color: rgb(228 228 231);
+  color: rgb(24 24 27);
+}
+
+/* Inline alerts (dashboard) were dark panels + light text; overrides flipped only text */
+html[data-theme="light"] main.app-outlet .border-amber-700\/50.bg-amber-950\/30,
+html[data-theme="grey"] main.app-outlet .border-amber-700\/50.bg-amber-950\/30 {
+  background-color: rgb(254 252 232);
+  border-color: rgb(245 158 11 / 0.45);
+  color: rgb(69 26 3);
+}
+
+html[data-theme="light"] main.app-outlet .border-sky-700\/40.bg-sky-950\/30,
+html[data-theme="grey"] main.app-outlet .border-sky-700\/40.bg-sky-950\/30 {
+  background-color: rgb(240 249 255);
+  border-color: rgb(14 165 233 / 0.45);
+  color: rgb(12 74 110);
+}
+
+html[data-theme="light"] main.app-outlet .text-emerald-300,
+html[data-theme="grey"] main.app-outlet .text-emerald-300 {
+  color: rgb(6 78 59);
+}
+
+html[data-theme="light"] main.app-outlet .text-sky-300,
+html[data-theme="grey"] main.app-outlet .text-sky-300 {
+  color: rgb(12 74 110);
+}

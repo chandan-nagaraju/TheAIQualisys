@@ -20,6 +20,8 @@ SLUG_TO_MODULE: dict[str, str] = {
 
 MODULE_TO_SLUG: dict[str, str] = {v: k for k, v in SLUG_TO_MODULE.items()}
 
+QMS_MODULE_NAMES: frozenset[str] = frozenset(SLUG_TO_MODULE.values())
+
 
 def utc_today() -> date:
     return datetime.now(timezone.utc).date()
@@ -81,6 +83,29 @@ def trial_is_usable(trial: ModuleTrial, today: date) -> bool:
 
 def days_remaining_trial(trial: ModuleTrial, today: date) -> int:
     return max(0, (trial.trial_end - today).days)
+
+
+def resync_qms_trials_after_pricing_change(
+    db: Session,
+    module_name: str,
+    trial_days: int,
+    usage_limit: int,
+) -> int:
+    """
+    After admin updates module_pricing.trial_days or usage_limit for a QMS module,
+    realign every module_trials row for that module.
+
+    trial_end = trial_start + trial_days (length is always from original enrollment date).
+    usage_limit is replaced with the catalog value (existing actions_used unchanged).
+    """
+    if module_name not in QMS_MODULE_NAMES:
+        return 0
+    trials = db.execute(select(ModuleTrial).where(ModuleTrial.module_name == module_name)).scalars().all()
+    for t in trials:
+        t.trial_end = t.trial_start + timedelta(days=trial_days)
+        t.usage_limit = usage_limit
+        db.add(t)
+    return len(trials)
 
 
 def actions_remaining_trial(trial: ModuleTrial) -> int:

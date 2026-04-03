@@ -24,6 +24,7 @@ export default function LandingPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [pricingMods, setPricingMods] = useState<PricingModule[]>([]);
   const [planErr, setPlanErr] = useState<string | null>(null);
+  const signedIn = typeof localStorage !== "undefined" && !!localStorage.getItem("fir_token");
 
   useEffect(() => {
     (async () => {
@@ -47,25 +48,44 @@ export default function LandingPage() {
     <div className="space-y-20 pb-16">
       <section className="text-center">
         <p className="text-sm font-medium uppercase tracking-[0.2em] text-brand-500">TheAIQualisys</p>
-        <h1 className="mt-4 text-4xl font-bold tracking-tight text-white sm:text-5xl">
+        <h1 className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl">
           AI-Powered Quality Management System
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-400">
           Automate FIR, RC2A, PPAP &amp; IATF documentation — modular subscriptions so you only pay for what you use.
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <Link
-            to="/signup"
-            className="inline-flex rounded-xl bg-brand-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:bg-brand-500"
-          >
-            Get Started
-          </Link>
-          <Link
-            to="/login"
-            className="inline-flex rounded-xl border border-slate-600 bg-slate-900/40 px-8 py-3 text-sm font-semibold text-white hover:border-slate-500"
-          >
-            Login
-          </Link>
+          {signedIn ? (
+            <>
+              <Link
+                to="/dashboard"
+                className="inline-flex rounded-xl bg-brand-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:bg-brand-500"
+              >
+                Module dashboard
+              </Link>
+              <Link
+                to="/workspace/dashboard"
+                className="inline-flex rounded-xl border border-slate-600 bg-slate-900/40 px-8 py-3 text-sm font-semibold text-white hover:border-slate-500"
+              >
+                Open FIR workspace
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                to="/signup"
+                className="inline-flex rounded-xl bg-brand-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:bg-brand-500"
+              >
+                Get Started
+              </Link>
+              <Link
+                to="/login"
+                className="inline-flex rounded-xl border border-slate-600 bg-slate-900/40 px-8 py-3 text-sm font-semibold text-white hover:border-slate-500"
+              >
+                Login
+              </Link>
+            </>
+          )}
         </div>
       </section>
 

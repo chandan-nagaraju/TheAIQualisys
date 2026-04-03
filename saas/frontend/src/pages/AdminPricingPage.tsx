@@ -228,8 +228,10 @@ export default function AdminPricingPage() {
         </Link>
       </div>
       <p className="text-sm text-slate-400">
-        Changes apply immediately to landing pages, FIR plans, module trials, and usage caps. Existing user trial rows
-        keep their original limits until a new trial is started.
+        FIR plan <strong className="text-slate-300">Trial (days)</strong> applies to FIR tiers only, not the QMS module
+        cards on the user dashboard — change trial length for Drawings, RC2A, PPAP, or IATF under{" "}
+        <strong className="text-slate-300">QMS modules</strong> below. Saving QMS trial days or usage limits updates all
+        existing trial rows for that module (end date = that user’s trial start + new days).
       </p>
 
       {loading && <p className="text-sm text-slate-500">Loading pricing catalog…</p>}
