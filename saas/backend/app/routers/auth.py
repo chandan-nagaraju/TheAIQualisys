@@ -22,7 +22,13 @@ from app.schemas import (
     TokenResponse,
     UnifiedLoginResponse,
 )
-from app.security import create_access_token, create_admin_token, hash_password, verify_password
+from app.security import (
+    create_access_token,
+    create_admin_token,
+    hash_password,
+    verify_password,
+    verify_password_and_upgrade,
+)
 from app.subscription_logic import (
     can_access_fir_workspace,
     can_create_invoice,
@@ -118,7 +124,11 @@ def unified_login(body: LoginRequest, db: Session = Depends(get_db_session)):
             select(PlatformAdmin).where(PlatformAdmin.email == ident.lower())
         ).scalar_one_or_none()
         if admin:
-            if verify_password(password, admin.password_hash):
+            ok, upgraded_hash = verify_password_and_upgrade(password, admin.password_hash)
+            if ok:
+                if upgraded_hash:
+                    admin.password_hash = upgraded_hash
+                    db.commit()
                 return UnifiedLoginResponse(
                     access_token=create_admin_token(str(admin.id)),
                     role="platform_admin",
@@ -128,15 +138,25 @@ def unified_login(body: LoginRequest, db: Session = Depends(get_db_session)):
     user: CompanyUser | None = None
     if "@" in ident:
         user = db.execute(select(CompanyUser).where(CompanyUser.email == ident.lower())).scalar_one_or_none()
-        if not user or not verify_password(password, user.password_hash):
+        if not user:
             raise HTTPException(status_code=401, detail="Invalid credentials")
+        ok, upgraded_hash = verify_password_and_upgrade(password, user.password_hash)
+        if not ok:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if upgraded_hash:
+            user.password_hash = upgraded_hash
+            db.commit()
     else:
         company = db.execute(select(Company).where(Company.vendor_code == ident)).scalar_one_or_none()
         if not company:
             raise HTTPException(status_code=401, detail="Invalid credentials")
         users = db.execute(select(CompanyUser).where(CompanyUser.company_id == company.id)).scalars().all()
         for u in users:
-            if verify_password(password, u.password_hash):
+            ok, upgraded_hash = verify_password_and_upgrade(password, u.password_hash)
+            if ok:
+                if upgraded_hash:
+                    u.password_hash = upgraded_hash
+                    db.commit()
                 user = u
                 break
         if not user:

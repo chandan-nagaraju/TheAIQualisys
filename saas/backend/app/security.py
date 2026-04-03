@@ -4,6 +4,7 @@ from typing import Any
 import bcrypt as _bcrypt
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from werkzeug.security import check_password_hash as werkzeug_check_password_hash
 
 from app.config import get_settings
 
@@ -25,7 +26,37 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    if not hashed:
+        return False
+    try:
+        return pwd_context.verify(plain, hashed)
+    except Exception:
+        # Legacy hashes from older stacks (e.g. Werkzeug pbkdf2/scrypt).
+        try:
+            return werkzeug_check_password_hash(hashed, plain)
+        except Exception:
+            return False
+
+
+def verify_password_and_upgrade(plain: str, hashed: str) -> tuple[bool, str | None]:
+    """
+    Verify a password and return (ok, upgraded_hash).
+    upgraded_hash is set when a legacy hash should be replaced.
+    """
+    if not hashed:
+        return False, None
+    try:
+        ok, new_hash = pwd_context.verify_and_update(plain, hashed)
+        if ok:
+            return True, new_hash
+    except Exception:
+        pass
+    try:
+        if werkzeug_check_password_hash(hashed, plain):
+            return True, hash_password(plain)
+    except Exception:
+        pass
+    return False, None
 
 
 def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:

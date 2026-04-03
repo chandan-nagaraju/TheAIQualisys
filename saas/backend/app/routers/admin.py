@@ -21,7 +21,11 @@ from app.schemas import (
     ModulePricingPublicOut,
     TokenResponse,
 )
-from app.security import create_access_token, create_admin_token, hash_password, verify_password
+from app.security import (
+    create_access_token,
+    create_admin_token,
+    verify_password_and_upgrade,
+)
 from app.subscription_logic import count_fir_reports_this_month, count_invoices_this_month
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -34,8 +38,15 @@ def _company_out(c: Company) -> CompanyOut:
 @router.post("/login", response_model=TokenResponse)
 def admin_login(body: AdminLoginRequest, db: Session = Depends(get_db_session)):
     admin = db.execute(select(PlatformAdmin).where(PlatformAdmin.email == str(body.email).lower())).scalar_one_or_none()
-    if not admin or not verify_password(body.password, admin.password_hash):
+    if not admin:
         raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    ok, upgraded_hash = verify_password_and_upgrade(body.password, admin.password_hash)
+    if not ok:
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    if upgraded_hash:
+        admin.password_hash = upgraded_hash
+        db.add(admin)
+        db.commit()
     token = create_admin_token(str(admin.id))
     return TokenResponse(access_token=token)
 
