@@ -1,15 +1,26 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import bcrypt as _bcrypt
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.config import get_settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Passlib 1.7.x expects bcrypt.__about__.__version__, removed in newer bcrypt.
+# Add a tiny compatibility shim so startup doesn't emit noisy tracebacks.
+if not hasattr(_bcrypt, "__about__"):
+    class _BcryptAbout:
+        __version__ = getattr(_bcrypt, "__version__", "unknown")
+
+    _bcrypt.__about__ = _BcryptAbout()  # type: ignore[attr-defined]
+
+pwd_context = CryptContext(schemes=["bcrypt_sha256", "bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
+    # bcrypt_sha256 avoids bcrypt's 72-byte input limit while verify() still
+    # accepts legacy bcrypt hashes already stored in the database.
     return pwd_context.hash(password)
 
 
