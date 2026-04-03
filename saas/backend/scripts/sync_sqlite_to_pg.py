@@ -93,6 +93,11 @@ def main() -> int:
             f"Done. SQLite parts seen: {result.sqlite_parts_seen}; "
             f"PG parts upserted: {result.parts_upserted}; "
             f"spec rows written: {result.specs_written}; "
+            f"complaint rows written: {result.complaints_written}; "
+            f"material rows written: {result.materials_written}; "
+            f"coating rows written: {result.coatings_written}; "
+            f"customers upserted: {result.customers_upserted}; "
+            f"settings rows written: {result.settings_written}; "
             f"invoices written: {result.invoices_written}"
         )
     except Exception as e:

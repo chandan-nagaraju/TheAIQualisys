@@ -1,9 +1,15 @@
 """
-Copy master data from the legacy SQLite FIR database into PostgreSQL (SaaS v2 tables).
+Copy legacy SQLite FIR data into PostgreSQL (SaaS v2 tables).
 
 Maps:
-  parts_master + part_spec_data -> parts_v2 + part_specs_v2
-  Invoices (optional)         -> invoices_v2
+  parts_master                  -> parts_v2
+  part_spec_data                -> part_specs_v2
+  customer_complaint_parameters -> part_complaints_v2
+  material_grade                -> part_materials_v2
+  surface_coating_master        -> part_coatings_v2
+  Customers                     -> fir_customers
+  Settings                      -> company_settings
+  Invoices (optional)           -> invoices_v2
 
 Always scopes writes to a single target company row in PostgreSQL (multi-tenant safe).
 """
@@ -18,7 +24,17 @@ from pathlib import Path
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import Company, InvoiceV2, PartSpecV2, PartV2
+from app.models import (
+    Company,
+    CompanySettings,
+    Customer,
+    InvoiceV2,
+    PartCoatingV2,
+    PartComplaintV2,
+    PartMaterialV2,
+    PartSpecV2,
+    PartV2,
+)
 
 
 def _sqlite_table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -60,6 +76,11 @@ def _parse_upload_date(raw: str | None) -> datetime:
 class SyncResult:
     parts_upserted: int
     specs_written: int
+    complaints_written: int
+    materials_written: int
+    coatings_written: int
+    customers_upserted: int
+    settings_written: int
     invoices_written: int
     sqlite_parts_seen: int
 
@@ -110,6 +131,11 @@ def sync_sqlite_to_postgres(
         raise RuntimeError("SQLite has no parts_master table")
 
     ps_cols = _sqlite_table_columns(conn, "part_spec_data")
+    cc_cols = _sqlite_table_columns(conn, "customer_complaint_parameters")
+    mg_cols = _sqlite_table_columns(conn, "material_grade")
+    sc_cols = _sqlite_table_columns(conn, "surface_coating_master")
+    cust_cols = _sqlite_table_columns(conn, "Customers")
+    settings_cols = _sqlite_table_columns(conn, "Settings")
     wh_parts, args_parts = _pick_sqlite_company_filter(pm_cols, sqlite_company_id)
     sql_parts = f"SELECT * FROM parts_master WHERE {wh_parts} ORDER BY part_no"
     part_rows = conn.execute(sql_parts, args_parts).fetchall()
@@ -117,6 +143,9 @@ def sync_sqlite_to_postgres(
 
     parts_upserted = 0
     specs_written = 0
+    complaints_written = 0
+    materials_written = 0
+    coatings_written = 0
 
     for row in part_rows:
         part_no = str(row["part_no"]).strip()
@@ -149,33 +178,173 @@ def sync_sqlite_to_postgres(
 
         parts_upserted += 1
 
-        if replace_existing_parts and ps_cols:
-            wh_spec = "part_id = ?"
-            spec_args: list = [sqlite_pid]
-            if "company_id" in ps_cols:
-                if sqlite_company_id == 1:
-                    wh_spec += " AND (company_id IS NULL OR company_id = ?)"
-                else:
-                    wh_spec += " AND company_id = ?"
-                spec_args.append(sqlite_company_id)
-            spec_rows = conn.execute(
-                f"SELECT * FROM part_spec_data WHERE {wh_spec} ORDER BY id",
-                spec_args,
-            ).fetchall()
+        if replace_existing_parts:
+            # part_spec_data -> part_specs_v2
+            if ps_cols:
+                wh_spec = "part_id = ?"
+                spec_args: list = [sqlite_pid]
+                if "company_id" in ps_cols:
+                    if sqlite_company_id == 1:
+                        wh_spec += " AND (company_id IS NULL OR company_id = ?)"
+                    else:
+                        wh_spec += " AND company_id = ?"
+                    spec_args.append(sqlite_company_id)
+                spec_rows = conn.execute(
+                    f"SELECT * FROM part_spec_data WHERE {wh_spec} ORDER BY id",
+                    spec_args,
+                ).fetchall()
 
-            pg.execute(delete(PartSpecV2).where(PartSpecV2.part_id == pg_part.id))
-            for sr in spec_rows:
-                param = (sr["parameter"] or "").strip() or "—"
-                pg.add(
-                    PartSpecV2(
-                        part_id=pg_part.id,
-                        parameter=param,
-                        specification=sr["specification"],
-                        special_char=sr["special_char"],
-                        method_of_inspection=sr["method_of_inspection"],
+                pg.execute(delete(PartSpecV2).where(PartSpecV2.part_id == pg_part.id))
+                for sr in spec_rows:
+                    param = (sr["parameter"] or "").strip() or "—"
+                    pg.add(
+                        PartSpecV2(
+                            part_id=pg_part.id,
+                            parameter=param,
+                            specification=sr["specification"],
+                            special_char=sr["special_char"],
+                            method_of_inspection=sr["method_of_inspection"],
+                        )
                     )
+                    specs_written += 1
+
+            # customer_complaint_parameters -> part_complaints_v2
+            if cc_cols:
+                wh_cc = "part_id = ?"
+                cc_args: list = [sqlite_pid]
+                if "company_id" in cc_cols:
+                    if sqlite_company_id == 1:
+                        wh_cc += " AND (company_id IS NULL OR company_id = ?)"
+                    else:
+                        wh_cc += " AND company_id = ?"
+                    cc_args.append(sqlite_company_id)
+                cc_rows = conn.execute(
+                    f"SELECT * FROM customer_complaint_parameters WHERE {wh_cc} ORDER BY id",
+                    cc_args,
+                ).fetchall()
+
+                pg.execute(delete(PartComplaintV2).where(PartComplaintV2.part_id == pg_part.id))
+                for cr in cc_rows:
+                    param = (cr["parameter"] or "").strip() or "—"
+                    pg.add(
+                        PartComplaintV2(
+                            part_id=pg_part.id,
+                            parameter=param,
+                            specification=cr["specification"],
+                            special_char=cr["special_char"],
+                            method_of_inspection=cr["method_of_inspection"],
+                        )
+                    )
+                    complaints_written += 1
+
+            # material_grade -> part_materials_v2
+            if mg_cols:
+                wh_mg = "part_id = ?"
+                mg_args: list = [sqlite_pid]
+                if "company_id" in mg_cols:
+                    if sqlite_company_id == 1:
+                        wh_mg += " AND (company_id IS NULL OR company_id = ?)"
+                    else:
+                        wh_mg += " AND company_id = ?"
+                    mg_args.append(sqlite_company_id)
+                mg_rows = conn.execute(
+                    f"SELECT * FROM material_grade WHERE {wh_mg} ORDER BY id",
+                    mg_args,
+                ).fetchall()
+
+                pg.execute(delete(PartMaterialV2).where(PartMaterialV2.part_id == pg_part.id))
+                for mr in mg_rows:
+                    grade = (mr["material_grade"] or "").strip()
+                    if not grade:
+                        continue
+                    pg.add(
+                        PartMaterialV2(
+                            part_id=pg_part.id,
+                            material_grade=grade,
+                        )
+                    )
+                    materials_written += 1
+
+            # surface_coating_master -> part_coatings_v2
+            if sc_cols:
+                wh_sc = "part_id = ?"
+                sc_args: list = [sqlite_pid]
+                if "company_id" in sc_cols:
+                    if sqlite_company_id == 1:
+                        wh_sc += " AND (company_id IS NULL OR company_id = ?)"
+                    else:
+                        wh_sc += " AND company_id = ?"
+                    sc_args.append(sqlite_company_id)
+                sc_rows = conn.execute(
+                    f"SELECT * FROM surface_coating_master WHERE {wh_sc} ORDER BY id",
+                    sc_args,
+                ).fetchall()
+
+                pg.execute(delete(PartCoatingV2).where(PartCoatingV2.part_id == pg_part.id))
+                for sr in sc_rows:
+                    param = (sr["parameter"] or "").strip() or "—"
+                    pg.add(
+                        PartCoatingV2(
+                            part_id=pg_part.id,
+                            parameter=param,
+                            specification=sr["specification"],
+                            special_char=sr["special_char"],
+                            method_of_inspection=sr["method_of_inspection"],
+                        )
+                    )
+                    coatings_written += 1
+
+    customers_upserted = 0
+    if cust_cols and "vendor_code" in cust_cols and "name" in cust_cols:
+        wh_cust, args_cust = _pick_sqlite_company_filter(cust_cols, sqlite_company_id)
+        cust_rows = conn.execute(
+            f"SELECT vendor_code, name FROM Customers WHERE {wh_cust} ORDER BY id",
+            args_cust,
+        ).fetchall()
+        for row in cust_rows:
+            vendor_code = str(row["vendor_code"] or "").strip()
+            name = str(row["name"] or "").strip()
+            if not vendor_code or not name:
+                continue
+            existing = pg.execute(
+                select(Customer).where(
+                    Customer.company_id == target_cid,
+                    Customer.vendor_code == vendor_code,
                 )
-                specs_written += 1
+            ).scalar_one_or_none()
+            if existing:
+                existing.name = name
+            else:
+                pg.add(Customer(company_id=target_cid, vendor_code=vendor_code, name=name))
+            customers_upserted += 1
+
+    settings_written = 0
+    if settings_cols:
+        row = conn.execute("SELECT * FROM Settings WHERE id = 1").fetchone()
+        if row:
+            settings = pg.get(CompanySettings, target_cid)
+            if not settings:
+                settings = CompanySettings(company_id=target_cid)
+                pg.add(settings)
+
+            def _txt(col: str) -> str | None:
+                if col not in settings_cols:
+                    return None
+                raw = row[col]
+                if raw is None:
+                    return None
+                text = str(raw).strip()
+                return text or None
+
+            settings.company_name = _txt("company_name")
+            settings.logo_path = _txt("logo_path")
+            settings.inspector_signature_path = _txt("inspector_signature_path")
+            settings.quality_signature_path = _txt("quality_signature_path")
+            settings.format_no = _txt("format_no")
+            settings.issue_date = _txt("issue_date")
+            settings.doc_rev_no = _txt("doc_rev_no")
+            settings.rev_date = _txt("rev_date")
+            settings_written = 1
 
     invoices_written = 0
     if sync_invoices:
@@ -205,6 +374,11 @@ def sync_sqlite_to_postgres(
     return SyncResult(
         parts_upserted=parts_upserted,
         specs_written=specs_written,
+        complaints_written=complaints_written,
+        materials_written=materials_written,
+        coatings_written=coatings_written,
+        customers_upserted=customers_upserted,
+        settings_written=settings_written,
         invoices_written=invoices_written,
         sqlite_parts_seen=seen,
     )
