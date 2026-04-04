@@ -144,6 +144,12 @@ export default function Layout() {
                 <NavLink className={navItemCls} to="/dashboard/billing">
                   Usage &amp; billing
                 </NavLink>
+                <NavLink className={navItemCls} to="/upgrade">
+                  Upgrade
+                </NavLink>
+                <NavLink className={navItemCls} to="/profile">
+                  Profile
+                </NavLink>
                 <button type="button" className={logoutBtn} onClick={logoutCompany}>
                   Log out
                 </button>

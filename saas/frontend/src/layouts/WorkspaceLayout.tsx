@@ -86,15 +86,6 @@ export default function WorkspaceLayout() {
             <NavLink to="/workspace/pricing" className={navCls}>
               FIR pricing
             </NavLink>
-            <NavLink to="/dashboard/billing" className={navCls}>
-              Usage &amp; billing
-            </NavLink>
-            <NavLink to="/upgrade" className={navCls}>
-              Upgrade
-            </NavLink>
-            <NavLink to="/workspace/change-password" end className={navCls}>
-              Change password
-            </NavLink>
             <button type="button" onClick={logout} className={logoutBtn}>
               Log out
             </button>

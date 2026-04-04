@@ -36,8 +36,8 @@ export default function ChangePasswordPage() {
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold text-slate-900">Change password</h1>
       <p className="mt-2 text-sm text-slate-600">
-        <Link className="text-blue-700 underline" to="/workspace/dashboard">
-          Back to dashboard
+        <Link className="text-blue-700 underline" to="/profile">
+          Back to profile
         </Link>
       </p>
       <form onSubmit={onSubmit} className="mt-6 max-w-md space-y-4">

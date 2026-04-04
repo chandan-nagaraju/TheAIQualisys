@@ -31,6 +31,7 @@ import UploadPage from "./pages/workspace/UploadPage";
 import WorkspaceDashboard from "./pages/workspace/WorkspaceDashboard";
 import ManualEntryPage from "./pages/workspace/ManualEntryPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
+import ProfilePage from "./pages/workspace/ProfilePage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
@@ -45,7 +46,6 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="change-password" element={<ChangePasswordPage />} />
         <Route path="pricing" element={<PricingPage variant="workspace" />} />
         <Route element={<WorkspaceSubscriptionGate />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -72,6 +72,22 @@ export default function App() {
         <Route path="/pricing" element={<PublicPricingGate />} />
         <Route path="/pricing/all-modules" element={<AllModulesPricingPage />} />
         <Route path="/pricing/modules/:slug" element={<ModuleProductPricingPage />} />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile/change-password"
+          element={
+            <ProtectedRoute>
+              <ChangePasswordPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/dashboard"
           element={
