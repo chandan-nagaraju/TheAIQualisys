@@ -53,7 +53,8 @@ from app.models import (
 )
 
 router = APIRouter(prefix="/api/app", tags=["workspace"])
-templates = Jinja2Templates(directory=str(LEGACY_ROOT / "templates"))
+_BACKEND_TEMPLATES = Path(__file__).resolve().parents[2] / "templates"
+templates = Jinja2Templates(directory=[str(_BACKEND_TEMPLATES), str(LEGACY_ROOT / "templates")])
 
 
 @dataclass
