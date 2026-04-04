@@ -1,8 +1,11 @@
 /** Long-form company narrative — guest About route (`/pricing`) only; not on the home page. */
 export default function CompanyAboutStory() {
+  const sectionTitle = "text-xl font-semibold tracking-tight text-slate-900";
+  const sectionCard = "space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6";
+
   return (
-    <div className="mx-auto max-w-3xl space-y-10 text-slate-300">
-      <section className="space-y-4">
+    <div className="space-y-6 text-slate-700">
+      <section className={sectionCard}>
         <p>
           At TheAIQualisys, we believe that manufacturing excellence should not be limited by paperwork.
         </p>
@@ -10,23 +13,19 @@ export default function CompanyAboutStory() {
           Today, quality teams spend a significant amount of time handling documentation—FIRs, RCAs, PPAPs,
           audits—leaving less time for what truly matters: improving the product itself.
         </p>
-        <p className="font-medium text-slate-200">We are changing that.</p>
+        <p className="font-semibold text-slate-900">We are changing that.</p>
       </section>
 
-      <hr className="border-slate-800" />
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-white">Our Vision</h2>
+      <section className={sectionCard}>
+        <h2 className={sectionTitle}>Our Vision</h2>
         <p>To build a future where:</p>
-        <p className="text-lg font-semibold text-slate-100">
+        <p className="text-lg font-semibold text-slate-900">
           AI takes care of documentation, and humans focus on quality, precision, and innovation.
         </p>
       </section>
 
-      <hr className="border-slate-800" />
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-white">What We Do</h2>
+      <section className={sectionCard}>
+        <h2 className={sectionTitle}>What We Do</h2>
         <p>We develop an AI-powered Quality Management System that:</p>
         <ul className="list-inside list-disc space-y-2 pl-1">
           <li>Automates FIR, RC2A, PPAP, and IATF documentation</li>
@@ -36,12 +35,10 @@ export default function CompanyAboutStory() {
         </ul>
       </section>
 
-      <hr className="border-slate-800" />
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-white">Our Philosophy</h2>
+      <section className={sectionCard}>
+        <h2 className={sectionTitle}>Our Philosophy</h2>
         <p>We strongly believe:</p>
-        <blockquote className="border-l-4 border-brand-500/60 pl-4 italic text-slate-400">
+        <blockquote className="rounded-r-xl border-l-4 border-brand-500/70 bg-brand-50/60 pl-4 py-2 italic text-slate-700">
           “Machines should handle repetitive work. Humans should create value.”
         </blockquote>
         <p>By automating documentation through AI, we enable engineers and operators to:</p>
@@ -53,19 +50,15 @@ export default function CompanyAboutStory() {
         </ul>
       </section>
 
-      <hr className="border-slate-800" />
-
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold text-white">Why We Exist</h2>
+      <section className={sectionCard}>
+        <h2 className={sectionTitle}>Why We Exist</h2>
         <p>
           Because quality is not just about reports — it’s about delivering perfect parts, every time.
         </p>
       </section>
 
-      <hr className="border-slate-800" />
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-white">Our Mission</h2>
+      <section className={sectionCard}>
+        <h2 className={sectionTitle}>Our Mission</h2>
         <p>To empower manufacturing teams with intelligent systems that:</p>
         <ul className="list-inside list-disc space-y-2 pl-1">
           <li>Eliminate documentation burden</li>
@@ -74,10 +67,8 @@ export default function CompanyAboutStory() {
         </ul>
       </section>
 
-      <hr className="border-slate-800" />
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold text-white">The Future We Are Building</h2>
+      <section className={sectionCard}>
+        <h2 className={sectionTitle}>The Future We Are Building</h2>
         <p>A connected quality ecosystem where:</p>
         <ul className="list-inside list-disc space-y-2 pl-1">
           <li>Every defect is tracked intelligently</li>
@@ -86,7 +77,7 @@ export default function CompanyAboutStory() {
         </ul>
       </section>
 
-      <p className="pt-2 text-base font-semibold leading-relaxed text-slate-100">
+      <p className="rounded-2xl border border-brand-100 bg-brand-50/70 p-5 text-base font-semibold leading-relaxed text-slate-900 sm:p-6">
         TheAIQualisys is not just software. It is the operating system for modern manufacturing quality.
       </p>
     </div>
