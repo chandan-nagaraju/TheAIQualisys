@@ -37,20 +37,20 @@ export default function WorkspaceLayout() {
 
   const navCls = ({ isActive }: { isActive: boolean }) => {
     if (theme === "light") {
-      return `inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200"}`;
+      return `inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200"}`;
     }
     if (theme === "grey") {
-      return `inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80"}`;
+      return `inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80"}`;
     }
-    return `inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800/80"}`;
+    return `inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800/80"}`;
   };
 
   const logoutBtn =
     theme === "light"
-      ? "inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+      ? "inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none text-red-700 hover:bg-red-50"
       : theme === "grey"
-        ? "inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-        : "inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium text-red-400 hover:bg-slate-800";
+        ? "inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none text-red-700 hover:bg-red-50"
+        : "inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none text-red-400 hover:bg-slate-800";
 
   const footerBar =
     theme === "light"
