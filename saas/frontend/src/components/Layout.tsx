@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { setWorkspaceCustomerId } from "../api";
 import { exitTenantImpersonation, isTenantImpersonation } from "../impersonation";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -54,19 +54,29 @@ export default function Layout() {
   const brand =
     theme === "light" ? "text-slate-900" : theme === "grey" ? "text-zinc-900" : "text-white";
 
-  const navLink =
+  const navWrap =
     theme === "light"
-      ? "text-slate-600 hover:text-slate-900"
+      ? "rounded-lg border border-slate-200 bg-slate-50/90 p-2"
       : theme === "grey"
-        ? "text-zinc-600 hover:text-zinc-900"
-        : "text-slate-300 hover:text-white";
+        ? "rounded-lg border border-zinc-300 bg-zinc-100/90 p-2"
+        : "rounded-lg border border-slate-700/80 bg-slate-900/70 p-2";
 
-  const btnOutline =
+  const navItemCls = ({ isActive }: { isActive: boolean }) => {
+    if (theme === "light") {
+      return `rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"}`;
+    }
+    if (theme === "grey") {
+      return `rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80 hover:text-zinc-900"}`;
+    }
+    return `rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/80 hover:text-white"}`;
+  };
+
+  const logoutBtn =
     theme === "light"
-      ? "rounded border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-100"
+      ? "rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
       : theme === "grey"
-        ? "rounded border border-zinc-400 px-2 py-1 text-zinc-800 hover:bg-zinc-200"
-        : "rounded border border-slate-600 px-2 py-1 text-slate-200 hover:bg-slate-800";
+        ? "rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+        : "rounded-md px-3 py-2 text-sm font-medium text-red-400 hover:bg-slate-800";
 
   const footerBar =
     theme === "light"
@@ -104,52 +114,52 @@ export default function Layout() {
             </Link>
             <ThemeSwitcher />
           </div>
-          <nav className={`flex w-full items-center gap-2 overflow-x-auto whitespace-nowrap pb-1 text-sm sm:w-auto sm:flex-wrap sm:overflow-visible sm:whitespace-normal sm:pb-0 ${navLink}`}>
+          <nav className={`flex w-full items-center gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:w-auto sm:flex-wrap sm:overflow-visible sm:whitespace-normal sm:pb-0 ${navWrap}`}>
             {isAdminRoute && adminTok ? (
               <>
-                <span className="text-xs uppercase tracking-wide text-amber-500/90">Platform admin</span>
-                <Link className={navLink} to="/admin">
+                <span className="px-2 text-xs uppercase tracking-wide text-amber-500/90">Platform admin</span>
+                <NavLink end className={navItemCls} to="/admin">
                   All companies
-                </Link>
-                <Link className={navLink} to="/admin/users">
+                </NavLink>
+                <NavLink className={navItemCls} to="/admin/users">
                   Users &amp; customers
-                </Link>
-                <Link className={navLink} to="/admin/pricing">
+                </NavLink>
+                <NavLink className={navItemCls} to="/admin/pricing">
                   Pricing management
-                </Link>
-                <button type="button" className={btnOutline} onClick={logoutAdmin}>
+                </NavLink>
+                <button type="button" className={logoutBtn} onClick={logoutAdmin}>
                   Log out
                 </button>
               </>
             ) : companyTok ? (
               <>
-                <Link className={navLink} to="/">
+                <NavLink end className={navItemCls} to="/">
                   Home
-                </Link>
-                <Link className={navLink} to="/dashboard">
+                </NavLink>
+                <NavLink end className={navItemCls} to="/dashboard">
                   Dashboard
-                </Link>
-                <Link className={navLink} to="/dashboard/billing">
+                </NavLink>
+                <NavLink className={navItemCls} to="/dashboard/billing">
                   Usage &amp; billing
-                </Link>
-                <button type="button" className={btnOutline} onClick={logoutCompany}>
+                </NavLink>
+                <button type="button" className={logoutBtn} onClick={logoutCompany}>
                   Log out
                 </button>
               </>
             ) : (
               <>
-                <Link className={navLink} to="/pricing">
+                <NavLink className={navItemCls} to="/pricing">
                   About
-                </Link>
-                <Link className={navLink} to="/pricing/all-modules">
+                </NavLink>
+                <NavLink className={navItemCls} to="/pricing/all-modules">
                   Pricing
-                </Link>
-                <Link className={navLink} to="/login">
+                </NavLink>
+                <NavLink className={navItemCls} to="/login">
                   Login
-                </Link>
-                <Link className={navLink} to="/signup">
+                </NavLink>
+                <NavLink className={navItemCls} to="/signup">
                   Sign up
-                </Link>
+                </NavLink>
               </>
             )}
           </nav>
