@@ -86,6 +86,24 @@ def parse_invoice_excel(content: bytes) -> tuple[list[dict[str, Any]], list[str]
     extracted = extracted[
         extracted.apply(lambda r: any(str(v).strip() for v in r.values), axis=1)
     ]
+    # Business rule: Part Number can repeat, Invoice Number must be unique.
+    # Ignore blank invoice numbers here; required-field validation happens in UI/workflow.
+    invoice_series = extracted["Invoice Number"].map(lambda v: str(v).strip())
+    seen: set[str] = set()
+    dupes: list[str] = []
+    for inv in invoice_series:
+        if not inv:
+            continue
+        if inv in seen and inv not in dupes:
+            dupes.append(inv)
+        seen.add(inv)
+    if dupes:
+        dupes_str = ", ".join(dupes[:5])
+        extra = f" (+{len(dupes) - 5} more)" if len(dupes) > 5 else ""
+        raise ValueError(
+            "Invoice Number must be unique. Duplicate invoice number(s): "
+            f"{dupes_str}{extra}"
+        )
     rows = extracted.to_dict(orient="records")
     return rows, DISPLAY_COLS
 

@@ -103,6 +103,15 @@ export default function ManualEntryPage() {
         return;
       }
     }
+    const invoiceSeen = new Set<string>();
+    for (let i = 0; i < sanitized.length; i++) {
+      const inv = sanitized[i]["Invoice Number"].trim().toLowerCase();
+      if (invoiceSeen.has(inv)) {
+        setErr(`Invoice Number must be unique. Duplicate found at row ${i + 1}.`);
+        return;
+      }
+      invoiceSeen.add(inv);
+    }
 
     setBusy(true);
     try {
