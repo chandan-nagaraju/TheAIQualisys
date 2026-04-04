@@ -382,3 +382,93 @@ html[data-theme="light"] main.app-outlet .text-sky-300,
 html[data-theme="grey"] main.app-outlet .text-sky-300 {
   color: rgb(12 74 110);
 }
+
+/* --- Dark theme safety net for light-surface utility classes ---
+   Many workspace pages use bg-white / border-slate-200 / text-slate-900.
+   Keep those readable on dark mode without per-page rewrites. */
+html[data-theme="dark"] main.app-outlet .bg-white {
+  background-color: rgb(15 23 42);
+}
+
+html[data-theme="dark"] main.app-outlet .bg-slate-50 {
+  background-color: rgb(30 41 59);
+}
+
+html[data-theme="dark"] main.app-outlet .bg-slate-100 {
+  background-color: rgb(51 65 85);
+}
+
+html[data-theme="dark"] main.app-outlet .border-slate-100,
+html[data-theme="dark"] main.app-outlet .border-slate-200,
+html[data-theme="dark"] main.app-outlet .border-slate-300 {
+  border-color: rgb(71 85 105);
+}
+
+html[data-theme="dark"] main.app-outlet .text-slate-900,
+html[data-theme="dark"] main.app-outlet .text-slate-800,
+html[data-theme="dark"] main.app-outlet .text-slate-700 {
+  color: rgb(226 232 240);
+}
+
+html[data-theme="dark"] main.app-outlet .text-slate-600,
+html[data-theme="dark"] main.app-outlet .text-slate-500 {
+  color: rgb(203 213 225);
+}
+
+html[data-theme="dark"] main.app-outlet .text-slate-400 {
+  color: rgb(148 163 184);
+}
+
+html[data-theme="dark"] main.app-outlet .hover\:bg-slate-100:hover {
+  background-color: rgb(51 65 85);
+}
+
+html[data-theme="dark"] main.app-outlet .hover\:bg-slate-50:hover {
+  background-color: rgb(30 41 59);
+}
+
+html[data-theme="dark"] main.app-outlet .hover\:bg-white:hover {
+  background-color: rgb(30 41 59);
+}
+
+html[data-theme="dark"] main.app-outlet .text-blue-700,
+html[data-theme="dark"] main.app-outlet .text-blue-800 {
+  color: rgb(147 197 253);
+}
+
+html[data-theme="dark"] main.app-outlet .text-red-700 {
+  color: rgb(252 165 165);
+}
+
+html[data-theme="dark"] main.app-outlet .text-slate-300 {
+  color: rgb(203 213 225);
+}
+
+html[data-theme="dark"] main.app-outlet .text-slate-200 {
+  color: rgb(226 232 240);
+}
+
+html[data-theme="dark"] main.app-outlet .text-zinc-900,
+html[data-theme="dark"] main.app-outlet .text-zinc-800,
+html[data-theme="dark"] main.app-outlet .text-zinc-700 {
+  color: rgb(226 232 240);
+}
+
+html[data-theme="dark"] main.app-outlet .text-zinc-600,
+html[data-theme="dark"] main.app-outlet .text-zinc-500 {
+  color: rgb(203 213 225);
+}
+
+html[data-theme="dark"] main.app-outlet .text-zinc-400 {
+  color: rgb(148 163 184);
+}
+
+html[data-theme="dark"] main.app-outlet .border-zinc-200,
+html[data-theme="dark"] main.app-outlet .border-zinc-300 {
+  border-color: rgb(71 85 105);
+}
+
+html[data-theme="dark"] main.app-outlet .bg-zinc-50,
+html[data-theme="dark"] main.app-outlet .bg-zinc-100 {
+  background-color: rgb(30 41 59);
+}
