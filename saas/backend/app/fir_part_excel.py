@@ -38,6 +38,65 @@ def _cell(v: Any) -> str:
     return str(v).strip()
 
 
+_SEPARATOR_TOKENS = {":", "-", "--", "---", ":", "："}
+
+
+def _is_separator_token(v: str) -> bool:
+    return (v or "").strip() in _SEPARATOR_TOKENS
+
+
+def _is_separator_token(v: str) -> bool:
+    t = str(v).strip()
+    if not t:
+        return True
+    return bool(re.fullmatch(r"[:;,\-–—./\\|]+", t))
+
+
+def _looks_like_section_label(v: str) -> bool:
+    n = _norm(v)
+    if not n:
+        return False
+    return n.startswith(
+        (
+            "a)",
+            "b)",
+            "c)",
+            "d)",
+            "section a",
+            "section b",
+            "section c",
+            "section d",
+            "a) ",
+            "b) ",
+            "c) ",
+            "d) ",
+        )
+    )
+
+
+def _is_material_grade_candidate(v: str) -> bool:
+    t = _cell(v)
+    if not t or _is_separator_token(t):
+        return False
+    if _looks_like_section_label(t):
+        return False
+    n = _norm(t).rstrip(":.- ")
+    if n in {
+        "material",
+        "material grade",
+        "c material grade",
+        "grade",
+        "parameter",
+        "specification",
+        "method",
+    }:
+        return False
+    # Avoid picking serial numbers like "18" as material grade.
+    if re.fullmatch(r"\d+(\.\d+)?", t):
+        return False
+    return any(ch.isalpha() for ch in t)
+
+
 def _resolve_sheet(xl: dict[str, pd.DataFrame], aliases: list[str]) -> str | None:
     norm_map = {_norm(k): k for k in xl.keys()}
     for a in aliases:
@@ -141,11 +200,19 @@ def _ad_rows_from_df(df: pd.DataFrame) -> list[dict[str, Any]]:
     return rows
 
 
+def _is_serial_only(value: str) -> bool:
+    v = (value or "").strip()
+    if not v:
+        return False
+    # 1 / 1.0 / 01 style serials
+    return bool(re.fullmatch(r"\d+(?:\.0+)?", v))
+
+
 def _mat_rows_from_df(df: pd.DataFrame) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for _, r in df.iterrows():
         g = _cell(r.get("material_grade"))
-        if g:
+        if g and not _is_serial_only(g):
             rows.append({"material_grade": g})
     return rows
 
@@ -183,11 +250,11 @@ def _guess_part_no_from_sheet_name(name: str, all_sheet_names: list[str]) -> str
 
 def _kv_cell_right(df: pd.DataFrame, r: int, c: int) -> str:
     """Value to the right of a label: next non-empty cell within 4 columns."""
-    for dc in (1, 2, 3, 4):
+    for dc in (1, 2, 3, 4, 5, 6):
         if c + dc >= df.shape[1]:
             break
         v = _cell(df.iloc[r, c + dc])
-        if v:
+        if v and not _is_separator_token(v):
             return v
     return ""
 
@@ -218,7 +285,25 @@ def _scan_fir_key_values(df: pd.DataFrame) -> dict[str, str]:
             raw = df.iloc[r, c]
             if raw is None or (isinstance(raw, float) and pd.isna(raw)):
                 continue
-            lab = _norm(str(raw)).rstrip(":.- ")
+            raw_text = str(raw).strip()
+            # Inline form: "PART NO : B1V24302", "DRAW.REV NO - #1", etc.
+            inline = re.match(
+                r"^\s*(part\s*no(?:\.|umber)?|fir\s*part\s*no|draw(?:ing)?\.?\s*rev(?:ision)?\.?\s*no\.?|draw\s*rev\s*no|description|part\s*name|desc)\s*[:\-]\s*(.+?)\s*$",
+                raw_text,
+                flags=re.IGNORECASE,
+            )
+            if inline:
+                k = _norm(inline.group(1)).rstrip(":.- ")
+                v_inline = inline.group(2).strip()
+                if v_inline and not _is_separator_token(v_inline):
+                    if "part" in k and "no" in k:
+                        out.setdefault("part_no", v_inline)
+                    elif "draw" in k or "rev" in k:
+                        out.setdefault("drawing_rev", v_inline)
+                    elif k in ("description", "part name", "desc"):
+                        out.setdefault("description", v_inline)
+
+            lab = _norm(raw_text).rstrip(":.- ")
             if not lab:
                 continue
             val = _value_for_label(df, r, c)
@@ -315,6 +400,17 @@ def _parse_loose_ad_table(df: pd.DataFrame) -> list[dict[str, Any]]:
 
 def _scan_material_grade_cells(df: pd.DataFrame) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add_grade(v: str) -> None:
+        vv = _cell(v)
+        if not _is_material_grade_candidate(vv):
+            return
+        if vv in seen:
+            return
+        seen.add(vv)
+        out.append({"material_grade": vv})
+
     max_r = min(120, len(df))
     max_c = min(25, df.shape[1] - 1)
     for r in range(max_r):
@@ -324,10 +420,229 @@ def _scan_material_grade_cells(df: pd.DataFrame) -> list[dict[str, Any]]:
                 continue
             lab = _norm(str(raw)).rstrip(":.- ")
             if "material" in lab and "grade" in lab:
-                v = _value_for_label(df, r, c)
-                if v:
-                    out.append({"material_grade": v})
+                # Prefer textual grade candidates near the label, not serial numbers.
+                local_candidates: list[str] = []
+                for dc in range(1, min(12, df.shape[1] - c)):
+                    v_right = _cell(df.iloc[r, c + dc])
+                    if v_right:
+                        local_candidates.append(v_right)
+                for rr in range(r + 1, min(r + 6, len(df))):
+                    for cc in range(0, min(25, df.shape[1])):
+                        v_near = _cell(df.iloc[rr, cc])
+                        if v_near:
+                            local_candidates.append(v_near)
+                picked = False
+                for cand in local_candidates:
+                    if _is_material_grade_candidate(cand):
+                        add_grade(cand)
+                        picked = True
+                        break
+                if not picked:
+                    add_grade(_value_for_label(df, r, c))
+
+    # Section-C block fallback: after "C) Material Grade", collect textual values until next section.
+    for r in range(max_r):
+        row_cells = [_cell(df.iloc[r, c]) for c in range(min(25, df.shape[1]))]
+        row_text = " ".join(x for x in row_cells if x)
+        if "material" not in _norm(row_text) or "grade" not in _norm(row_text):
+            continue
+        for rr in range(r + 1, min(r + 12, len(df))):
+            next_cells = [_cell(df.iloc[rr, cc]) for cc in range(min(25, df.shape[1]))]
+            joined = " ".join(x for x in next_cells if x).strip()
+            if not joined:
+                continue
+            if _looks_like_section_label(joined) or _norm(joined).startswith("d "):
+                break
+            for cand in next_cells:
+                if _is_material_grade_candidate(cand):
+                    add_grade(cand)
     return out
+
+
+def _normalize_material_grade(raw: str) -> str | None:
+    """
+    Normalize material-grade candidates and drop obvious non-grade tokens
+    (e.g. serial numbers, row counters, section labels).
+    """
+    v = (raw or "").strip()
+    if not v:
+        return None
+    n = _norm(v)
+    # Skip common non-data tokens from Section C rows
+    if n in {
+        "sl no",
+        "sl.no",
+        "s no",
+        "parameter",
+        "material grade",
+        "material",
+        "grade",
+        "c",
+        "section c",
+    }:
+        return None
+    # Pure serial numbers are not material grades
+    if re.fullmatch(r"\d+(?:\.\d+)?", v):
+        return None
+    return v
+
+
+def _scan_section_c_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """
+    Parse Section C from loose FIR sheets where key/value may be split across cells.
+    Handles rows like:
+      [sl_no, material_grade] -> [18, "IS 2062 ..."]
+      [label, value]          -> ["Material Grade", "BSK46"]
+      [single cell value]     -> ["BSK46"]
+    """
+    out: list[dict[str, Any]] = []
+    max_r = min(200, len(df))
+    max_c = min(25, df.shape[1])
+
+    # Try anchor-based scan near "Section C" headers first.
+    section_c_rows: list[int] = []
+    for r in range(max_r):
+        row_vals = [_norm(_cell(df.iloc[r, c])) for c in range(max_c)]
+        joined = " ".join([x for x in row_vals if x])
+        if "section c" in joined or ("material" in joined and "grade" in joined):
+            section_c_rows.append(r)
+
+    def add_candidate(raw_val: str) -> None:
+        g = _normalize_material_grade(raw_val)
+        if g:
+            out.append({"material_grade": g})
+
+    def parse_row_values(r: int) -> None:
+        vals = [_cell(df.iloc[r, c]) for c in range(max_c)]
+        non_empty = [v for v in vals if v]
+        if not non_empty:
+            return
+        # Case: slno in first cell + actual grade in later cell.
+        if len(non_empty) >= 2 and re.fullmatch(r"\d+(?:\.\d+)?", non_empty[0]):
+            for v in non_empty[1:]:
+                add_candidate(v)
+            return
+        # Case: label + value split.
+        if len(non_empty) >= 2 and ("material" in _norm(non_empty[0]) or "grade" in _norm(non_empty[0])):
+            for v in non_empty[1:]:
+                add_candidate(v)
+            return
+        # Fallback: any non-empty token in row can be a grade candidate.
+        for v in non_empty:
+            add_candidate(v)
+
+    # Parse rows after section headers (up to a small window).
+    for sr in section_c_rows:
+        for r in range(sr + 1, min(sr + 20, max_r)):
+            # Stop when another section starts.
+            first_cells = " ".join(_norm(_cell(df.iloc[r, c])) for c in range(min(4, max_c)))
+            if "section d" in first_cells or "surface coating" in first_cells or "section b" in first_cells:
+                break
+            parse_row_values(r)
+
+    # Fallback to original label-based scan across whole sheet.
+    for row in _scan_material_grade_cells(df):
+        add_candidate(str(row.get("material_grade") or ""))
+
+    # Dedupe
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for r in out:
+        g = r["material_grade"]
+        key = _norm(g)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(r)
+    return deduped
+
+
+def _normalize_spec_value(raw: str) -> str | None:
+    v = (raw or "").strip()
+    if not v:
+        return None
+    n = _norm(v)
+    if n in {"specification", "spec", "parameter", "special char", "method"}:
+        return None
+    # Reject simple serial numbers accidentally captured as spec
+    if re.fullmatch(r"\d+(?:\.\d+)?", v):
+        return None
+    return v
+
+
+def _scan_section_d_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """
+    Parse Section D from loose FIR sheets when header mapping fails.
+    Supports row forms where parameter/spec/method may be split across cells.
+    """
+    out: list[dict[str, Any]] = []
+    max_r = min(220, len(df))
+    max_c = min(25, df.shape[1])
+
+    section_d_rows: list[int] = []
+    for r in range(max_r):
+        row_vals = [_norm(_cell(df.iloc[r, c])) for c in range(max_c)]
+        joined = " ".join([x for x in row_vals if x])
+        if "section d" in joined or "surface coating" in joined:
+            section_d_rows.append(r)
+
+    def parse_candidate_row(r: int) -> None:
+        vals = [_cell(df.iloc[r, c]) for c in range(max_c)]
+        non_empty = [v for v in vals if v]
+        if not non_empty:
+            return
+        # Skip obvious section/meta rows
+        joined_norm = " ".join(_norm(v) for v in non_empty)
+        if "sampling plan" in joined_norm or "inspector" in joined_norm or "status of inspection" in joined_norm:
+            return
+
+        # Typical row: [slno, parameter, specification, special_char, method, ...]
+        idx = 0
+        if re.fullmatch(r"\d+(?:\.\d+)?", non_empty[0]):
+            idx = 1
+        if idx >= len(non_empty):
+            return
+        parameter = non_empty[idx].strip()
+        specification = _normalize_spec_value(non_empty[idx + 1]) if idx + 1 < len(non_empty) else None
+        special_char = non_empty[idx + 2].strip() if idx + 2 < len(non_empty) else None
+        method = non_empty[idx + 3].strip() if idx + 3 < len(non_empty) else None
+
+        if not parameter:
+            return
+        if _norm(parameter) in {"parameter", "part", "part no", "part number"}:
+            return
+
+        out.append(
+            {
+                "parameter": parameter,
+                "specification": specification,
+                "special_char": special_char or None,
+                "method_of_inspection": method or None,
+            }
+        )
+
+    for sr in section_d_rows:
+        for r in range(sr + 1, min(sr + 60, max_r)):
+            first_cells = " ".join(_norm(_cell(df.iloc[r, c])) for c in range(min(4, max_c)))
+            if "inspector name" in first_cells or "sampling plan" in first_cells:
+                break
+            parse_candidate_row(r)
+
+    # Dedupe by key tuple
+    seen: set[tuple[str, str | None, str | None, str | None]] = set()
+    deduped: list[dict[str, Any]] = []
+    for row in out:
+        key = (
+            row["parameter"],
+            row.get("specification"),
+            row.get("special_char"),
+            row.get("method_of_inspection"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    return deduped
 
 
 def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = None) -> dict[str, Any] | None:
@@ -377,11 +692,14 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
         for row in rows:
             p = (row.get("parameter") or "").lower()
             s = (row.get("specification") or "").lower()
+            m = (row.get("method_of_inspection") or "").lower()
             if (
                 "coat" in p
                 or "powder" in p
                 or "dft" in p
                 or "electro" in p
+                or "dft" in m
+                or "coat" in m
                 or ("thickness" in p and ("µ" in s or "micron" in s or "um" in s))
             ):
                 coat.append(row)
@@ -396,14 +714,15 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
         pn_kv = kv.get("part_no")
         pn_sheet = _guess_part_no_from_sheet_name(sname, names)
         ad_rows = _parse_loose_ad_table(df)
-        mats = _scan_material_grade_cells(df)
+        mats = _scan_section_c_rows(df)
+        d_rows = _scan_section_d_rows(df)
 
         pn = pn_kv or global_pn or pn_sheet
-        if not pn and filename_pn and (ad_rows or mats or kv):
+        if not pn and filename_pn and (ad_rows or mats or d_rows or kv):
             pn = filename_pn
         if not pn:
             continue
-        if not ad_rows and not mats and not kv:
+        if not ad_rows and not mats and not d_rows and not kv:
             continue
 
         b = ensure(pn)
@@ -412,6 +731,8 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
         if kv.get("description"):
             b["description"] = kv["description"]
         spec_part, coat_part = _split_spec_coating(ad_rows)
+        if d_rows:
+            coat_part.extend(d_rows)
         b["spec_rows"].extend(spec_part)
         b["coating_rows"].extend(coat_part)
         b["material_rows"].extend(mats)
