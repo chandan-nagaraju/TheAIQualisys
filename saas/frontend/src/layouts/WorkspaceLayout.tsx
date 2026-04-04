@@ -37,20 +37,20 @@ export default function WorkspaceLayout() {
 
   const navCls = ({ isActive }: { isActive: boolean }) => {
     if (theme === "light") {
-      return `inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200"}`;
+      return `inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200"}`;
     }
     if (theme === "grey") {
-      return `inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80"}`;
+      return `inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80"}`;
     }
-    return `inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800/80"}`;
+    return `inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800/80"}`;
   };
 
   const logoutBtn =
     theme === "light"
-      ? "inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none text-red-700 hover:bg-red-50"
+      ? "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none text-red-700 hover:bg-red-50"
       : theme === "grey"
-        ? "inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none text-red-700 hover:bg-red-50"
-        : "inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-medium leading-none text-red-400 hover:bg-slate-800";
+        ? "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none text-red-700 hover:bg-red-50"
+        : "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none text-red-400 hover:bg-slate-800";
 
   const footerBar =
     theme === "light"
@@ -76,7 +76,7 @@ export default function WorkspaceLayout() {
             </Link>
             <ThemeSwitcher />
           </div>
-          <nav className={`flex w-full flex-wrap items-stretch justify-start gap-1 md:w-auto ${navWrap}`}>
+          <nav className={`flex w-full flex-nowrap items-center justify-start gap-1 overflow-x-auto whitespace-nowrap ${navWrap}`}>
             <NavLink to="/dashboard" className={navCls}>
               QMS dashboard
             </NavLink>

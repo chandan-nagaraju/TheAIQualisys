@@ -114,7 +114,9 @@ export default function Layout() {
             </Link>
             <ThemeSwitcher />
           </div>
-          <nav className={`flex w-full items-center justify-start gap-1 overflow-x-auto whitespace-nowrap sm:w-auto sm:flex-wrap sm:overflow-visible sm:whitespace-normal ${navWrap}`}>
+          <nav
+            className={`flex w-full items-center justify-start gap-1 overflow-x-auto whitespace-nowrap scrollbar-thin sm:w-auto sm:max-w-full sm:flex-nowrap ${navWrap}`}
+          >
             {isAdminRoute && adminTok ? (
               <>
                 <span className="px-2 text-xs uppercase tracking-wide text-amber-500/90">Platform admin</span>
