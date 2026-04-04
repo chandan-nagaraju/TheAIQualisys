@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
 from app.config import get_settings
@@ -11,7 +12,7 @@ from app.models import PlatformAdmin
 from app.pricing_seed import ensure_module_pricing_seeded
 from app.routers import admin, auth, billing, modules, pricing_public, subscription
 from app.routers.v2.endpoints import router as v2_router
-from app.routers.workspace import router as workspace_router
+from app.routers.workspace import fir_preview as legacy_fir_preview_alias, router as workspace_router
 from app.security import hash_password, verify_password
 
 
@@ -69,9 +70,15 @@ def create_app() -> FastAPI:
     app.include_router(admin.router, prefix="/api")
     app.include_router(v2_router)
     app.include_router(workspace_router)
-    # Backward-compatible alias for older frontend builds that used /api/ap/*
-    # instead of /api/app/* for workspace routes.
-    app.include_router(workspace_router, prefix="/api")
+    # Backward-compatible alias for older frontend bundles that call
+    # /api/ap/fir-preview (missing one "p" in "app").
+    app.add_api_route(
+        "/api/ap/fir-preview",
+        legacy_fir_preview_alias,
+        methods=["GET"],
+        response_class=HTMLResponse,
+        include_in_schema=False,
+    )
 
     @app.get("/health")
     def health():
