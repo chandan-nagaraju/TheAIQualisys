@@ -63,20 +63,20 @@ export default function Layout() {
 
   const navItemCls = ({ isActive }: { isActive: boolean }) => {
     if (theme === "light") {
-      return `rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"}`;
+      return `inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"}`;
     }
     if (theme === "grey") {
-      return `rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80 hover:text-zinc-900"}`;
+      return `inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80 hover:text-zinc-900"}`;
     }
-    return `rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/80 hover:text-white"}`;
+    return `inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/80 hover:text-white"}`;
   };
 
   const logoutBtn =
     theme === "light"
-      ? "rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+      ? "inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
       : theme === "grey"
-        ? "rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-        : "rounded-md px-3 py-2 text-sm font-medium text-red-400 hover:bg-slate-800";
+        ? "inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+        : "inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium text-red-400 hover:bg-slate-800";
 
   const footerBar =
     theme === "light"
@@ -114,7 +114,7 @@ export default function Layout() {
             </Link>
             <ThemeSwitcher />
           </div>
-          <nav className={`flex w-full items-center gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:w-auto sm:flex-wrap sm:overflow-visible sm:whitespace-normal sm:pb-0 ${navWrap}`}>
+          <nav className={`flex w-full items-stretch justify-start gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:w-auto sm:flex-wrap sm:overflow-visible sm:whitespace-normal sm:pb-0 ${navWrap}`}>
             {isAdminRoute && adminTok ? (
               <>
                 <span className="px-2 text-xs uppercase tracking-wide text-amber-500/90">Platform admin</span>

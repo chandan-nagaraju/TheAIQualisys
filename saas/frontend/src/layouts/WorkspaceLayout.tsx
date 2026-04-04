@@ -37,20 +37,20 @@ export default function WorkspaceLayout() {
 
   const navCls = ({ isActive }: { isActive: boolean }) => {
     if (theme === "light") {
-      return `rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200"}`;
+      return `inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200"}`;
     }
     if (theme === "grey") {
-      return `rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80"}`;
+      return `inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80"}`;
     }
-    return `rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800/80"}`;
+    return `inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium ${isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800/80"}`;
   };
 
   const logoutBtn =
     theme === "light"
-      ? "rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50"
+      ? "inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
       : theme === "grey"
-        ? "rounded-md px-3 py-2 text-sm text-red-700 hover:bg-red-50"
-        : "rounded-md px-3 py-2 text-sm text-red-400 hover:bg-slate-800";
+        ? "inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+        : "inline-flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium text-red-400 hover:bg-slate-800";
 
   const footerBar =
     theme === "light"
@@ -76,7 +76,7 @@ export default function WorkspaceLayout() {
             </Link>
             <ThemeSwitcher />
           </div>
-          <nav className={`flex w-full flex-wrap items-center gap-1 md:w-auto ${navWrap}`}>
+          <nav className={`flex w-full flex-wrap items-stretch justify-start gap-1 md:w-auto ${navWrap}`}>
             <NavLink to="/dashboard" className={navCls}>
               QMS dashboard
             </NavLink>
