@@ -46,30 +46,34 @@ export default function PricingPage({ variant = "marketing" }: Props) {
   }, []);
 
   const t = {
-    h1: ws ? "text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl" : "text-3xl font-bold tracking-tight text-white sm:text-4xl",
-    lead: ws ? "mx-auto mt-4 max-w-2xl text-slate-600" : "mx-auto mt-4 max-w-2xl text-slate-400",
+    h1: ws ? "text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl" : "text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl",
+    lead: ws ? "mx-auto mt-5 max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg" : "mx-auto mt-5 max-w-3xl text-base leading-relaxed text-slate-400 sm:text-lg",
     leadAccent: ws ? "font-semibold text-brand-600" : "font-semibold text-brand-600",
-    err: ws ? "mt-6 text-center text-sm text-red-600" : "mt-6 text-center text-sm text-red-400",
-    cardBase: ws ? "relative flex flex-col rounded-2xl border p-6" : "relative flex flex-col rounded-2xl border p-6",
+    err: ws ? "mt-8 text-center text-sm text-red-600" : "mt-8 text-center text-sm text-red-400",
+    cardBase: ws
+      ? "relative flex h-full flex-col rounded-2xl border p-7 sm:p-8"
+      : "relative flex h-full flex-col rounded-2xl border p-7 sm:p-8",
     cardEnt: ws
       ? "border-amber-200 bg-gradient-to-b from-amber-50 to-white shadow-md shadow-amber-100/50"
       : "border-amber-500/50 bg-gradient-to-b from-amber-500/10 to-slate-900/40 shadow-lg shadow-amber-500/10",
-    cardStd: ws ? "border-slate-200 bg-white shadow-sm" : "border-slate-800 bg-slate-900/50",
-    badgeEnt: ws ? "bg-amber-100 px-3 py-0.5 text-xs font-medium text-amber-900" : "bg-amber-500/20 px-3 py-0.5 text-xs font-medium text-amber-200",
+    cardStd: ws ? "border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md" : "border-slate-800 bg-slate-900/50",
+    badgeEnt: ws ? "inline-flex w-fit rounded-full bg-amber-100 px-3 py-0.5 text-xs font-medium text-amber-900" : "inline-flex w-fit rounded-full bg-amber-500/20 px-3 py-0.5 text-xs font-medium text-amber-200",
     h2: ws ? "text-lg font-semibold text-slate-900" : "text-lg font-semibold text-white",
-    price: ws ? "mt-2 text-3xl font-bold text-slate-900" : "mt-2 text-3xl font-bold text-white",
+    price: ws ? "mt-4 text-3xl font-bold text-slate-900 sm:text-4xl" : "mt-4 text-3xl font-bold text-white sm:text-4xl",
     priceSub: ws ? "text-base font-normal text-slate-500" : "text-base font-normal text-slate-400",
-    meta: ws ? "mt-2 text-sm text-slate-600" : "mt-2 text-sm text-slate-400",
-    highlight: ws ? "mt-3 text-sm text-amber-900/90" : "mt-3 text-sm text-amber-100/90",
-    upgradeBox: ws ? "mt-12 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center" : "mt-12 rounded-2xl border border-slate-800 bg-slate-900/40 p-6 text-center",
-    upgradeH: ws ? "text-lg font-semibold text-slate-900" : "text-lg font-semibold text-white",
-    upgradeP: ws ? "mt-2 text-sm text-slate-600" : "mt-2 text-sm text-slate-400",
-    upgradeFoot: ws ? "mt-3 text-xs text-slate-500" : "mt-3 text-xs text-slate-500",
+    meta: ws ? "mt-4 text-sm text-slate-600" : "mt-4 text-sm text-slate-400",
+    highlight: ws ? "mt-4 text-sm text-amber-900/90" : "mt-4 text-sm text-amber-100/90",
+    upgradeBox: ws
+      ? "mx-auto mt-16 max-w-4xl rounded-2xl border border-slate-200 bg-slate-50 p-7 text-center sm:p-8"
+      : "mx-auto mt-16 max-w-4xl rounded-2xl border border-slate-800 bg-slate-900/40 p-7 text-center sm:p-8",
+    upgradeH: ws ? "text-xl font-semibold text-slate-900" : "text-xl font-semibold text-white",
+    upgradeP: ws ? "mt-3 text-sm text-slate-600 sm:text-base" : "mt-3 text-sm text-slate-400 sm:text-base",
+    upgradeFoot: ws ? "mt-4 text-xs text-slate-500 sm:text-sm" : "mt-4 text-xs text-slate-500 sm:text-sm",
   };
 
   return (
-    <div>
-      <div className="text-center">
+    <div className="space-y-10 pb-6">
+      <div className="mx-auto max-w-3xl text-center">
         <h1 className={t.h1}>Simple usage-based pricing</h1>
         <p className={t.lead}>
           Start with a{" "}
@@ -83,7 +87,7 @@ export default function PricingPage({ variant = "marketing" }: Props) {
 
       {err && <p className={t.err}>{err}</p>}
 
-      <div className="mt-12 grid gap-6 md:grid-cols-3">
+      <div className="mt-14 grid gap-8 md:grid-cols-2 xl:grid-cols-3">
         {plans.map((plan) => {
           const isEnterprise = plan.plan_type === "enterprise";
           return (
@@ -92,7 +96,7 @@ export default function PricingPage({ variant = "marketing" }: Props) {
               className={`${t.cardBase} ${isEnterprise ? t.cardEnt : t.cardStd}`}
             >
               {isEnterprise && (
-                <span className={`absolute right-4 top-4 rounded-full ${t.badgeEnt}`}>Best for growing companies</span>
+                <span className={t.badgeEnt}>Best for growing companies</span>
               )}
               <h2 className={t.h2}>{plan.name}</h2>
               <p className={t.price}>
@@ -108,14 +112,14 @@ export default function PricingPage({ variant = "marketing" }: Props) {
               {ws ? (
                 <Link
                   to="/dashboard/billing"
-                  className="mt-6 inline-flex justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+                  className="mt-8 inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
                 >
                   Usage &amp; billing
                 </Link>
               ) : (
                 <Link
                   to="/signup"
-                  className="mt-6 inline-flex justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+                  className="mt-8 inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
                 >
                   Start trial
                 </Link>
