@@ -69,6 +69,9 @@ def create_app() -> FastAPI:
     app.include_router(admin.router, prefix="/api")
     app.include_router(v2_router)
     app.include_router(workspace_router)
+    # Backward-compatible alias for older frontend builds that used /api/ap/*
+    # instead of /api/app/* for workspace routes.
+    app.include_router(workspace_router, prefix="/api")
 
     @app.get("/health")
     def health():
