@@ -54,14 +54,34 @@ DISPLAY_COLS = [
 
 def parse_invoice_excel(content: bytes) -> tuple[list[dict[str, Any]], list[str]]:
     df = pd.read_excel(io.BytesIO(content))
-    normalized_cols = {}
+    # Build target columns explicitly so multiple source columns can map to the
+    # same canonical field without creating duplicate labels.
+    matched_sources: dict[str, list[Any]] = {k: [] for k in DISPLAY_COLS}
     for col in df.columns:
         key = _norm_header(col)
-        if key in COLUMN_MAPPING:
-            normalized_cols[col] = COLUMN_MAPPING[key]
-    df_renamed = df.rename(columns=normalized_cols)
-    extracted = df_renamed.reindex(columns=DISPLAY_COLS)
-    extracted = extracted.fillna("")
+        canon = COLUMN_MAPPING.get(key)
+        if canon:
+            matched_sources[canon].append(col)
+
+    extracted = pd.DataFrame(index=df.index)
+    for canon in DISPLAY_COLS:
+        src_cols = matched_sources.get(canon, [])
+        if not src_cols:
+            extracted[canon] = ""
+            continue
+        if len(src_cols) == 1:
+            extracted[canon] = df[src_cols[0]].fillna("")
+            continue
+        # If multiple source columns map to the same canonical column (e.g. Date + DC Date),
+        # keep the first non-empty value per row.
+        sub = df[src_cols].fillna("")
+        extracted[canon] = sub.apply(
+            lambda row: next((str(v).strip() for v in row if str(v).strip()), ""),
+            axis=1,
+        )
+
+    for col in DISPLAY_COLS:
+        extracted[col] = extracted[col].map(lambda v: "" if v is None else str(v).strip())
     # Keep only rows that contain at least one of the required output values.
     extracted = extracted[
         extracted.apply(lambda r: any(str(v).strip() for v in r.values), axis=1)
