@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-type LocState = { rows: Record<string, unknown>[]; columns: string[] };
+type LocState = { rows: Record<string, unknown>[]; columns: string[]; filename?: string };
 
 export default function InspectionPage() {
   const loc = useLocation();

@@ -29,6 +29,7 @@ import SelectCustomerPage from "./pages/workspace/SelectCustomerPage";
 import SettingsPage from "./pages/workspace/SettingsPage";
 import UploadPage from "./pages/workspace/UploadPage";
 import WorkspaceDashboard from "./pages/workspace/WorkspaceDashboard";
+import ManualEntryPage from "./pages/workspace/ManualEntryPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="customers" element={<CustomersPage />} />
           <Route path="select-customer" element={<SelectCustomerPage />} />
           <Route path="upload" element={<UploadPage />} />
+          <Route path="manual-entry" element={<ManualEntryPage />} />
           <Route path="extracted" element={<ExtractedPage />} />
           <Route path="inspection" element={<InspectionPage />} />
           <Route path="inspection/results" element={<InspectionResultsPage />} />

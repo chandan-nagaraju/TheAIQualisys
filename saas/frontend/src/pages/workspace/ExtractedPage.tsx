@@ -58,9 +58,14 @@ export default function ExtractedPage() {
     return (
       <div className={panelClass}>
         <p>No extracted data. </p>
-        <button type="button" className={linkClass} onClick={() => nav("/workspace/upload")}>
-          Upload an invoice
-        </button>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <button type="button" className={linkClass} onClick={() => nav("/workspace/upload")}>
+            Upload an invoice
+          </button>
+          <button type="button" className={linkClass} onClick={() => nav("/workspace/manual-entry")}>
+            Enter rows manually
+          </button>
+        </div>
       </div>
     );
   }

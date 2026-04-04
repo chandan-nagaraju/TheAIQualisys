@@ -3,27 +3,44 @@
 from __future__ import annotations
 
 import io
+import re
 from typing import Any
 
 import pandas as pd
 
+def _norm_header(s: Any) -> str:
+    text = str(s or "").strip().lower()
+    # Normalize punctuation and separators so variants like
+    # "Invoice/DC No.", "Invoice DC No", "invoice-dc no" all match.
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 COLUMN_MAPPING = {
     "part number": "Part Number",
+    "part no": "Part Number",
+    "part no ": "Part Number",
     "part_no": "Part Number",
     "part": "Part Number",
     "material code": "Part Number",
+    "materialcode": "Part Number",
     "description": "Description",
-    "material desc.": "Description",
     "material desc": "Description",
+    "material description": "Description",
     "qty": "Quantity",
     "quantity": "Quantity",
     "advised qty": "Quantity",
+    "advised quantity": "Quantity",
     "invoice no": "Invoice Number",
+    "invoice number": "Invoice Number",
     "invoice": "Invoice Number",
-    "invoice/dc no.": "Invoice Number",
-    "invoice/dc no": "Invoice Number",
+    "invoice dc no": "Invoice Number",
+    "invoice dc number": "Invoice Number",
+    "dc no": "Invoice Number",
+    "dc number": "Invoice Number",
     "date": "Date",
     "dc date": "Date",
+    "document date": "Date",
 }
 
 DISPLAY_COLS = [
@@ -39,12 +56,16 @@ def parse_invoice_excel(content: bytes) -> tuple[list[dict[str, Any]], list[str]
     df = pd.read_excel(io.BytesIO(content))
     normalized_cols = {}
     for col in df.columns:
-        key = str(col).strip().lower()
+        key = _norm_header(col)
         if key in COLUMN_MAPPING:
             normalized_cols[col] = COLUMN_MAPPING[key]
     df_renamed = df.rename(columns=normalized_cols)
     extracted = df_renamed.reindex(columns=DISPLAY_COLS)
     extracted = extracted.fillna("")
+    # Keep only rows that contain at least one of the required output values.
+    extracted = extracted[
+        extracted.apply(lambda r: any(str(v).strip() for v in r.values), axis=1)
+    ]
     rows = extracted.to_dict(orient="records")
     return rows, DISPLAY_COLS
 

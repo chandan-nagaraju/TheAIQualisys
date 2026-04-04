@@ -49,7 +49,10 @@ export default function UploadPage() {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold">Upload invoice</h1>
-      <p className="mt-2 text-sm text-slate-600">Excel .xlsx or .xls — same column mapping as the legacy app.</p>
+      <p className="mt-2 text-sm text-slate-600">
+        Excel .xlsx or .xls. Extra columns are ignored; only Part Number, Description, Quantity, Invoice Number, Date are
+        extracted.
+      </p>
       {err === "select_customer" && (
         <p className="mt-4 rounded bg-amber-50 p-3 text-sm text-amber-900">
           Please{" "}
@@ -65,6 +68,19 @@ export default function UploadPage() {
           {loading ? "Reading…" : "Choose Excel file"}
           <input type="file" accept=".xlsx,.xls" className="hidden" onChange={onFile} disabled={loading} />
         </label>
+      </div>
+      <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3">
+        <p className="text-sm text-slate-700">
+          Don&apos;t have an Excel file?{" "}
+          <button
+            type="button"
+            className="font-medium text-blue-700 underline"
+            onClick={() => nav("/workspace/manual-entry")}
+          >
+            Enter rows manually
+          </button>{" "}
+          (useful for 1–3 new parts).
+        </p>
       </div>
     </div>
   );
