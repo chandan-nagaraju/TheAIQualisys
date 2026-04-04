@@ -135,19 +135,9 @@ export async function workspaceDownloadBlob(path: string): Promise<Blob> {
  */
 export function workspaceAuthenticatedUrl(path: string): string {
   const token = localStorage.getItem("fir_token") || "";
-  // In production (e.g. Vercel frontend + separate backend), workspace preview
-  // endpoints must target API_BASE to avoid SPA rewrites swallowing /api/*.
-  // In local dev with no API_BASE, keep same-origin so Vite proxy handles /api/*.
-  const origin =
-    API_BASE.trim()
-      ? API_BASE.replace(/\/api\/?$/, "")
-      : window.location.origin;
-  const u = new URL(path, origin);
+  const u = new URL(path, window.location.origin);
   if (token) u.searchParams.set("token", token);
-  if (!API_BASE.trim()) {
-    return u.pathname + u.search + u.hash;
-  }
-  return u.toString();
+  return u.pathname + u.search + u.hash;
 }
 
 /**
@@ -249,10 +239,5 @@ export function firPreviewUrl(params: Record<string, string>): string {
   const token = localStorage.getItem("fir_token") || "";
   const q = new URLSearchParams(params);
   if (token) q.set("token", token);
-  const path = `/api/app/fir-preview?${q.toString()}`;
-  if (!API_BASE.trim()) {
-    return path;
-  }
-  const origin = API_BASE.replace(/\/api\/?$/, "");
-  return `${origin}${path}`;
+  return `/api/app/fir-preview?${q.toString()}`;
 }

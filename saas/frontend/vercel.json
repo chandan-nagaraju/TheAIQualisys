@@ -4,5 +4,11 @@
   "outputDirectory": "dist",
   "framework": null,
   "regions": ["sin1"],
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/:path*" },
+    { "source": "/auth/:path*", "destination": "/api/auth/:path*" },
+    { "source": "/subscription/:path*", "destination": "/api/subscription/:path*" },
+    { "source": "/admin/:path*", "destination": "/api/admin/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
