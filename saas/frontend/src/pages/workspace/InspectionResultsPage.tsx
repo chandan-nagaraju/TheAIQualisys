@@ -184,7 +184,7 @@ export default function InspectionResultsPage() {
         const gen = f?.contentWindow?.FIR_PREVIEW_API?.generatePdfBlob;
         if (!gen) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
         const result = await gen();
-        const name = `${String(i + 1).padStart(2, "0")}_${(result.filename || `FIR_${i + 1}.pdf`).replace(/[/\\]/g, "_")}`;
+        const name = (result.filename || `FIR_${i + 1}.pdf`).replace(/[/\\]/g, "_");
         zip.file(name, result.blob);
       }
       const blob = await zip.generateAsync({ type: "blob" });
