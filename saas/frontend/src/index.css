@@ -447,8 +447,6 @@ html[data-theme="light"] main.app-outlet .bg-slate-700.text-white,
 html[data-theme="light"] main.app-outlet .bg-slate-950.text-white,
 html[data-theme="light"] main.app-outlet .bg-slate-900\/80.text-white,
 html[data-theme="light"] main.app-outlet .bg-slate-900\/60.text-white,
-html[data-theme="light"] main.app-outlet .bg-slate-900\/40.text-white,
-html[data-theme="light"] main.app-outlet .bg-slate-900\/30.text-white,
 html[data-theme="light"] main.app-outlet .bg-brand-600.text-white,
 html[data-theme="light"] main.app-outlet .bg-brand-500.text-white,
 html[data-theme="light"] main.app-outlet .bg-emerald-600.text-white,
@@ -463,8 +461,6 @@ html[data-theme="grey"] main.app-outlet .bg-slate-700.text-white,
 html[data-theme="grey"] main.app-outlet .bg-slate-950.text-white,
 html[data-theme="grey"] main.app-outlet .bg-slate-900\/80.text-white,
 html[data-theme="grey"] main.app-outlet .bg-slate-900\/60.text-white,
-html[data-theme="grey"] main.app-outlet .bg-slate-900\/40.text-white,
-html[data-theme="grey"] main.app-outlet .bg-slate-900\/30.text-white,
 html[data-theme="grey"] main.app-outlet .bg-brand-600.text-white,
 html[data-theme="grey"] main.app-outlet .bg-brand-500.text-white,
 html[data-theme="grey"] main.app-outlet .bg-emerald-600.text-white,
@@ -474,6 +470,15 @@ html[data-theme="grey"] main.app-outlet .bg-blue-600.text-white,
 html[data-theme="grey"] main.app-outlet .bg-zinc-700.text-white,
 html[data-theme="grey"] main.app-outlet .bg-red-600.text-white {
   color: rgb(255 255 255) !important;
+}
+
+/* In light/grey themes these surfaces are intentionally lightened,
+   so force dark text for readability even if element has text-white utility. */
+html[data-theme="light"] main.app-outlet .bg-slate-900\/40.text-white,
+html[data-theme="light"] main.app-outlet .bg-slate-900\/30.text-white,
+html[data-theme="grey"] main.app-outlet .bg-slate-900\/40.text-white,
+html[data-theme="grey"] main.app-outlet .bg-slate-900\/30.text-white {
+  color: rgb(15 23 42) !important;
 }
 
 html[data-theme="dark"] main.app-outlet .text-slate-300 {

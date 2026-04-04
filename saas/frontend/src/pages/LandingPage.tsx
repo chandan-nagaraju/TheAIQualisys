@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
 import { QMS_MODULES } from "../moduleCatalog";
+import { useTheme } from "../theme/ThemeContext";
 
 type Plan = {
   plan_type: string;
@@ -21,10 +22,24 @@ type PricingModule = {
 };
 
 export default function LandingPage() {
+  const { theme } = useTheme();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [pricingMods, setPricingMods] = useState<PricingModule[]>([]);
   const [planErr, setPlanErr] = useState<string | null>(null);
   const signedIn = typeof localStorage !== "undefined" && !!localStorage.getItem("fir_token");
+
+  const heroTitleClass =
+    theme === "dark" ? "mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl" : "mt-6 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl";
+  const heroDescClass =
+    theme === "dark" ? "mx-auto mt-6 max-w-2xl text-lg text-slate-400" : "mx-auto mt-6 max-w-2xl text-lg text-slate-600";
+  const primaryBtnClass =
+    "inline-flex rounded-xl bg-brand-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:bg-brand-500";
+  const secondaryBtnClass =
+    theme === "dark"
+      ? "inline-flex rounded-xl border border-slate-600 bg-slate-900/40 px-8 py-3 text-sm font-semibold text-white hover:border-slate-500"
+      : "inline-flex rounded-xl border border-slate-300 bg-white px-8 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100";
+  const sectionTitleClass = theme === "dark" ? "text-center text-2xl font-semibold text-white" : "text-center text-2xl font-semibold text-slate-900";
+  const sectionDescClass = theme === "dark" ? "mx-auto mt-2 max-w-xl text-center text-sm text-slate-400" : "mx-auto mt-2 max-w-xl text-center text-sm text-slate-600";
 
   useEffect(() => {
     (async () => {
@@ -48,10 +63,10 @@ export default function LandingPage() {
     <div className="space-y-20 pb-16">
       <section className="text-center">
         <p className="text-sm font-medium uppercase tracking-[0.2em] text-brand-500">TheAIQualisys</p>
-        <h1 className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl">
+        <h1 className={heroTitleClass}>
           AI-Powered Quality Management System
         </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-400">
+        <p className={heroDescClass}>
           Automate FIR, RC2A, PPAP &amp; IATF documentation — modular subscriptions so you only pay for what you use.
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
@@ -59,13 +74,13 @@ export default function LandingPage() {
             <>
               <Link
                 to="/dashboard"
-                className="inline-flex rounded-xl bg-brand-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:bg-brand-500"
+                className={primaryBtnClass}
               >
                 Module dashboard
               </Link>
               <Link
                 to="/workspace/dashboard"
-                className="inline-flex rounded-xl border border-slate-600 bg-slate-900/40 px-8 py-3 text-sm font-semibold text-white hover:border-slate-500"
+                className={secondaryBtnClass}
               >
                 Open FIR workspace
               </Link>
@@ -74,13 +89,13 @@ export default function LandingPage() {
             <>
               <Link
                 to="/signup"
-                className="inline-flex rounded-xl bg-brand-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:bg-brand-500"
+                className={primaryBtnClass}
               >
                 Get Started
               </Link>
               <Link
                 to="/login"
-                className="inline-flex rounded-xl border border-slate-600 bg-slate-900/40 px-8 py-3 text-sm font-semibold text-white hover:border-slate-500"
+                className={secondaryBtnClass}
               >
                 Login
               </Link>
@@ -90,8 +105,8 @@ export default function LandingPage() {
       </section>
 
       <section>
-        <h2 className="text-center text-2xl font-semibold text-white">Product status</h2>
-        <p className="mx-auto mt-2 max-w-xl text-center text-sm text-slate-400">
+        <h2 className={sectionTitleClass}>Product status</h2>
+        <p className={sectionDescClass}>
           Ship quality workflows incrementally. FIR is production-ready; additional modules are rolling out.
         </p>
         <ul className="mx-auto mt-10 max-w-2xl divide-y divide-slate-800 rounded-2xl border border-slate-800 bg-slate-900/40">
@@ -113,8 +128,8 @@ export default function LandingPage() {
       </section>
 
       <section>
-        <h2 className="text-center text-2xl font-semibold text-white">Module pricing</h2>
-        <p className="mx-auto mt-2 max-w-xl text-center text-sm text-slate-400">
+        <h2 className={sectionTitleClass}>Module pricing</h2>
+        <p className={sectionDescClass}>
           Modules can be subscribed individually. All amounts below are loaded from our pricing catalog.
         </p>
 
