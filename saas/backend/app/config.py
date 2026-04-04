@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     smtp_host: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_HOST", "smtp_host"))
     smtp_port: int = Field(default=587, validation_alias=AliasChoices("SMTP_PORT", "smtp_port"))
     smtp_use_tls: bool = Field(default=True, validation_alias=AliasChoices("SMTP_USE_TLS", "smtp_use_tls"))
+    smtp_use_ssl: bool = Field(default=False, validation_alias=AliasChoices("SMTP_USE_SSL", "smtp_use_ssl"))
     smtp_user: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_USER", "smtp_user"))
     smtp_password: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_PASSWORD", "smtp_password"))
     email_from: str | None = Field(default=None, validation_alias=AliasChoices("EMAIL_FROM", "email_from"))

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.deps import get_current_company_user, get_db_session, get_company_for_user
-from app.email_util import send_password_reset_email
+from app.email_util import is_email_configured, send_password_reset_email
 from app.models import Company, CompanyUser, PasswordResetToken, PlanType, PlatformAdmin, SubscriptionStatus
 from app.schemas import (
     ChangePasswordRequest,
@@ -203,14 +203,14 @@ def me(
 def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db_session)):
     settings = get_settings()
     email = str(body.email).lower().strip()
+    if not is_email_configured(settings):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Password reset email is not configured. Set EMAIL_FROM, SMTP_HOST and SMTP_PORT.",
+        )
     user = db.execute(select(CompanyUser).where(CompanyUser.email == email)).scalar_one_or_none()
     if not user:
         return {"ok": True}
-    if not settings.smtp_host or not settings.email_from:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Password reset email is not configured. Set SMTP_HOST and EMAIL_FROM.",
-        )
     raw = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw.encode()).hexdigest()
     expires = datetime.now(timezone.utc) + timedelta(hours=1)

@@ -8,8 +8,12 @@ from email.message import EmailMessage
 from app.config import Settings
 
 
+def is_email_configured(settings: Settings) -> bool:
+    return bool(settings.email_from and settings.smtp_host and settings.smtp_port)
+
+
 def send_password_reset_email(settings: Settings, to_email: str, reset_link: str) -> None:
-    if not settings.smtp_host or not settings.email_from:
+    if not is_email_configured(settings):
         raise RuntimeError("SMTP is not configured")
 
     msg = EmailMessage()
@@ -21,7 +25,15 @@ def send_password_reset_email(settings: Settings, to_email: str, reset_link: str
         "If you did not request this, you can ignore this email."
     )
 
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
+    timeout = 20
+    if settings.smtp_use_ssl:
+        with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=timeout) as smtp:
+            if settings.smtp_user and settings.smtp_password is not None:
+                smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(msg)
+        return
+
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=timeout) as smtp:
         if settings.smtp_use_tls:
             smtp.starttls()
         if settings.smtp_user and settings.smtp_password is not None:
