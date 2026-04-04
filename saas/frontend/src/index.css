@@ -513,3 +513,22 @@ html[data-theme="dark"] main.app-outlet .bg-zinc-50,
 html[data-theme="dark"] main.app-outlet .bg-zinc-100 {
   background-color: rgb(30 41 59);
 }
+
+/* Dark theme form controls: prevent white-input + white-text contrast bugs */
+html[data-theme="dark"] main.app-outlet input:not([type="checkbox"]):not([type="radio"]),
+html[data-theme="dark"] main.app-outlet textarea,
+html[data-theme="dark"] main.app-outlet select {
+  background-color: rgb(15 23 42);
+  color: rgb(226 232 240);
+  border-color: rgb(71 85 105);
+}
+
+html[data-theme="dark"] main.app-outlet input::placeholder,
+html[data-theme="dark"] main.app-outlet textarea::placeholder {
+  color: rgb(148 163 184);
+  opacity: 1;
+}
+
+html[data-theme="dark"] main.app-outlet input[type="date"] {
+  color-scheme: dark;
+}
