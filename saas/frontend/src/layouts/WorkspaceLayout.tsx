@@ -61,10 +61,10 @@ export default function WorkspaceLayout() {
 
   const navWrap =
     theme === "light"
-      ? "rounded-lg border border-slate-200 bg-slate-50/90 p-2"
+      ? "rounded-lg border border-slate-200 bg-slate-50/90 px-2 py-1.5"
       : theme === "grey"
-        ? "rounded-lg border border-zinc-300 bg-zinc-100/90 p-2"
-        : "rounded-lg border border-slate-700/80 bg-slate-900/70 p-2";
+        ? "rounded-lg border border-zinc-300 bg-zinc-100/90 px-2 py-1.5"
+        : "rounded-lg border border-slate-700/80 bg-slate-900/70 px-2 py-1.5";
 
   return (
     <div className={`flex min-h-screen flex-col ${shell}`}>

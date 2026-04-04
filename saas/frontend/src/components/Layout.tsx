@@ -56,27 +56,27 @@ export default function Layout() {
 
   const navWrap =
     theme === "light"
-      ? "rounded-lg border border-slate-200 bg-slate-50/90 p-2"
+      ? "rounded-lg border border-slate-200 bg-slate-50/90 p-1"
       : theme === "grey"
-        ? "rounded-lg border border-zinc-300 bg-zinc-100/90 p-2"
-        : "rounded-lg border border-slate-700/80 bg-slate-900/70 p-2";
+        ? "rounded-lg border border-zinc-300 bg-zinc-100/90 p-1"
+        : "rounded-lg border border-slate-700/80 bg-slate-900/70 p-1";
 
   const navItemCls = ({ isActive }: { isActive: boolean }) => {
     if (theme === "light") {
-      return `inline-flex h-10 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"}`;
+      return `inline-flex h-9 items-center whitespace-nowrap rounded-md px-3.5 text-sm font-medium leading-none ${isActive ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"}`;
     }
     if (theme === "grey") {
-      return `inline-flex h-10 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80 hover:text-zinc-900"}`;
+      return `inline-flex h-9 items-center whitespace-nowrap rounded-md px-3.5 text-sm font-medium leading-none ${isActive ? "bg-zinc-700 text-white" : "text-zinc-600 hover:bg-zinc-300/80 hover:text-zinc-900"}`;
     }
-    return `inline-flex h-10 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none ${isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/80 hover:text-white"}`;
+    return `inline-flex h-9 items-center whitespace-nowrap rounded-md px-3.5 text-sm font-medium leading-none ${isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/80 hover:text-white"}`;
   };
 
   const logoutBtn =
     theme === "light"
-      ? "inline-flex h-10 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none text-red-700 hover:bg-red-50"
+      ? "inline-flex h-9 items-center whitespace-nowrap rounded-md px-3.5 text-sm font-medium leading-none text-red-700 hover:bg-red-50"
       : theme === "grey"
-        ? "inline-flex h-10 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none text-red-700 hover:bg-red-50"
-        : "inline-flex h-10 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none text-red-400 hover:bg-slate-800";
+        ? "inline-flex h-9 items-center whitespace-nowrap rounded-md px-3.5 text-sm font-medium leading-none text-red-700 hover:bg-red-50"
+        : "inline-flex h-9 items-center whitespace-nowrap rounded-md px-3.5 text-sm font-medium leading-none text-red-400 hover:bg-slate-800";
 
   const footerBar =
     theme === "light"
@@ -114,7 +114,7 @@ export default function Layout() {
             </Link>
             <ThemeSwitcher />
           </div>
-          <nav className={`flex w-full items-center justify-start gap-1 overflow-x-auto whitespace-nowrap pb-1 sm:w-auto sm:flex-wrap sm:overflow-visible sm:whitespace-normal sm:pb-0 ${navWrap}`}>
+          <nav className={`flex w-full items-center justify-start gap-1 overflow-x-auto whitespace-nowrap sm:w-auto sm:flex-wrap sm:overflow-visible sm:whitespace-normal ${navWrap}`}>
             {isAdminRoute && adminTok ? (
               <>
                 <span className="px-2 text-xs uppercase tracking-wide text-amber-500/90">Platform admin</span>
