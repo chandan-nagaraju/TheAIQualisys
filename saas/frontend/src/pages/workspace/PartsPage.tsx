@@ -48,23 +48,6 @@ export default function PartsPage() {
     return rows.filter((r) => r.part_no.toLowerCase().includes(filterQ));
   }, [rows, filterQ]);
 
-  async function downloadExcelTemplate() {
-    setErr(null);
-    setImportMsg(null);
-    try {
-      const blob = await workspaceDownloadBlob("/api/app/parts/excel-template");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "fir_part_master_template.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
-      setImportMsg("Downloaded Excel template (Parts + Section_A–D sheets). Fill rows, then upload for review.");
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : "Download failed");
-    }
-  }
-
   async function downloadAll() {
     setErr(null);
     setImportMsg(null);
@@ -76,7 +59,7 @@ export default function PartsPage() {
       a.download = "fir_all_parts_master.json";
       a.click();
       URL.revokeObjectURL(url);
-      setImportMsg("Download started: fir_all_parts_master.json (import this file here or on legacy /parts).");
+      setImportMsg("Download started: fir_all_parts_master.json (import this file here when needed).");
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Download failed");
     }
@@ -278,13 +261,6 @@ export default function PartsPage() {
           onClick={() => void downloadAll()}
         >
           Download all parts (full A–D JSON)
-        </button>
-        <button
-          type="button"
-          className="rounded border border-emerald-600 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100"
-          onClick={() => void downloadExcelTemplate()}
-        >
-          Download Excel template
         </button>
         <input
           ref={importRef}

@@ -906,17 +906,52 @@ def export_all_parts_master(ws: WsContext = Depends(get_ws)):
     parts_out: list[dict[str, Any]] = []
     for p in rows:
         inner = _serialize_part_detail(ws, p)
+
+        # Be defensive with legacy-imported data: some old rows may have
+        # non-string values in text fields. Normalize everything to strings
+        # so JSON export never fails with validation/type parse errors.
+        def _safe_text(v: Any) -> str:
+            return "" if v is None else str(v)
+
+        spec_rows = [
+            {
+                "parameter": _safe_text(r.get("parameter")),
+                "specification": _safe_text(r.get("specification")),
+                "special_char": _safe_text(r.get("special_char")),
+                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
+            }
+            for r in inner["spec_rows"]
+        ]
+        ccp_rows = [
+            {
+                "parameter": _safe_text(r.get("parameter")),
+                "specification": _safe_text(r.get("specification")),
+                "special_char": _safe_text(r.get("special_char")),
+                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
+            }
+            for r in inner["ccp_rows"]
+        ]
+        material_rows = [{"material_grade": _safe_text(m.get("material_grade"))} for m in inner["material_rows"]]
+        coating_rows = [
+            {
+                "parameter": _safe_text(r.get("parameter")),
+                "specification": _safe_text(r.get("specification")),
+                "special_char": _safe_text(r.get("special_char")),
+                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
+            }
+            for r in inner["coating_rows"]
+        ]
         parts_out.append(
             {
                 "part": {
-                    "part_no": inner["part_no"],
-                    "drawing_rev": inner.get("drawing_rev") or "",
-                    "description": inner.get("description") or "",
+                    "part_no": _safe_text(inner["part_no"]),
+                    "drawing_rev": _safe_text(inner.get("drawing_rev")),
+                    "description": _safe_text(inner.get("description")),
                 },
-                "spec_rows": [_row4_dict(r) for r in inner["spec_rows"]],
-                "ccp_rows": [_row4_dict(r) for r in inner["ccp_rows"]],
-                "material_rows": [{"material_grade": str(m.get("material_grade") or "")} for m in inner["material_rows"]],
-                "coating_rows": [_row4_dict(r) for r in inner["coating_rows"]],
+                "spec_rows": spec_rows,
+                "ccp_rows": ccp_rows,
+                "material_rows": material_rows,
+                "coating_rows": coating_rows,
             }
         )
     payload = {
