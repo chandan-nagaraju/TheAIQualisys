@@ -135,14 +135,24 @@ export async function workspaceDownloadBlob(path: string): Promise<Blob> {
  */
 export function workspaceAuthenticatedUrl(path: string): string {
   const token = localStorage.getItem("fir_token") || "";
-  const u = new URL(path, window.location.origin);
+  // In production (e.g. Vercel frontend + separate backend), workspace preview
+  // endpoints must target API_BASE to avoid SPA rewrites swallowing /api/*.
+  // In local dev with no API_BASE, keep same-origin so Vite proxy handles /api/*.
+  const origin =
+    API_BASE.trim()
+      ? API_BASE.replace(/\/api\/?$/, "")
+      : window.location.origin;
+  const u = new URL(path, origin);
   if (token) u.searchParams.set("token", token);
-  return u.pathname + u.search + u.hash;
+  if (!API_BASE.trim()) {
+    return u.pathname + u.search + u.hash;
+  }
+  return u.toString();
 }
 
 /**
- * Open a workspace PDF in a new tab via direct navigation (same origin as SPA, Vite proxies /api).
- * Synchronous on user click — avoids pop-up blocking and blob-URL cross-window issues.
+ * Open a workspace PDF in a new tab via direct navigation.
+ * Uses same-origin in local dev (Vite proxy) and API origin in hosted split deployments.
  */
 export function openWorkspacePdfInNewTab(path: string): void {
   const href = workspaceAuthenticatedUrl(path);
@@ -155,7 +165,7 @@ export function openWorkspacePdfInNewTab(path: string): void {
 }
 
 /**
- * Download a workspace PDF via authenticated GET (same-origin URL + token query).
+ * Download a workspace PDF via authenticated GET URL + token query.
  */
 export function downloadWorkspacePdf(path: string, filename: string): void {
   const href = workspaceAuthenticatedUrl(path);
@@ -231,13 +241,18 @@ export async function workspacePostFile<T>(path: string, file: File, fieldName =
 }
 
 /**
- * FIR preview must load from the **same origin** as the SPA (e.g. /api/... on Vite dev
- * so the proxy hits FastAPI). If we prefix VITE_API_URL here, iframes and batch autofill
- * break with a cross-origin SecurityError. API JSON calls can still use API_BASE.
+ * FIR preview URL:
+ * - local dev: relative /api/... so Vite proxy forwards to FastAPI
+ * - hosted split frontend/backend: absolute backend origin + /api/...
  */
 export function firPreviewUrl(params: Record<string, string>): string {
   const token = localStorage.getItem("fir_token") || "";
   const q = new URLSearchParams(params);
   if (token) q.set("token", token);
-  return `/api/app/fir-preview?${q.toString()}`;
+  const path = `/api/app/fir-preview?${q.toString()}`;
+  if (!API_BASE.trim()) {
+    return path;
+  }
+  const origin = API_BASE.replace(/\/api\/?$/, "");
+  return `${origin}${path}`;
 }
