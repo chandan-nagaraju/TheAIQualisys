@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -217,6 +218,12 @@ class CompanySettings(Base):
     logo_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     inspector_signature_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     quality_signature_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    logo_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    logo_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    inspector_signature_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    inspector_signature_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    quality_signature_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    quality_signature_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
     format_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
     issue_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
     doc_rev_no: Mapped[str | None] = mapped_column(String(64), nullable=True)

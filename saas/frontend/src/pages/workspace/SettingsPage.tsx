@@ -15,6 +15,7 @@ type St = {
 export default function SettingsPage() {
   const [s, setS] = useState<St | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
 
   useEffect(() => {
     workspaceFetch<St>("/api/app/settings")
@@ -29,8 +30,10 @@ export default function SettingsPage() {
       const saved = await workspaceFetch<St>("/api/app/settings", { method: "POST", body: fd });
       setS(saved);
       setErr(null);
+      setOkMsg("Settings saved. Uploaded images are now shared for all users/devices.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to save settings");
+      setOkMsg(null);
     }
   }
 
@@ -44,46 +47,92 @@ export default function SettingsPage() {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold">Global FIR settings</h1>
+      <p className="mt-2 text-sm text-slate-600">
+        This page now stores logo/signatures in shared backend storage so they are visible across all machines.
+      </p>
       {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
-      <form onSubmit={onSubmit} className="mt-6 max-w-lg space-y-4">
-        <div>
-          <label className="text-xs text-slate-500">Company name</label>
-          <input name="company_name" className="mt-1 w-full rounded border px-2 py-1 text-sm" defaultValue={s.company_name} />
+      {okMsg && <p className="mt-2 text-sm text-green-700">{okMsg}</p>}
+      <form onSubmit={onSubmit} className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="text-xs text-slate-500">Company name</label>
+              <input
+                name="company_name"
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                defaultValue={s.company_name}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Format no</label>
+              <input
+                name="format_no"
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                defaultValue={s.format_no}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Doc rev no</label>
+              <input
+                name="doc_rev_no"
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                defaultValue={s.doc_rev_no}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Issue date</label>
+              <input
+                name="issue_date"
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                defaultValue={s.issue_date}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Rev date</label>
+              <input
+                name="rev_date"
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                defaultValue={s.rev_date}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <label className="text-xs font-medium text-slate-600">Logo</label>
+              <input name="logo" type="file" accept="image/*" className="mt-2 block w-full text-sm" />
+              {s.logo_url && <img src={s.logo_url} alt="Logo" className="mt-3 h-20 w-full rounded bg-white object-contain p-1" />}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <label className="text-xs font-medium text-slate-600">Inspector signature</label>
+              <input name="inspector_signature" type="file" accept="image/*" className="mt-2 block w-full text-sm" />
+              {s.inspector_signature_url && (
+                <img src={s.inspector_signature_url} alt="Inspector signature" className="mt-3 h-20 w-full rounded bg-white object-contain p-1" />
+              )}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <label className="text-xs font-medium text-slate-600">Quality signature</label>
+              <input name="quality_signature" type="file" accept="image/*" className="mt-2 block w-full text-sm" />
+              {s.quality_signature_url && (
+                <img src={s.quality_signature_url} alt="Quality signature" className="mt-3 h-20 w-full rounded bg-white object-contain p-1" />
+              )}
+            </div>
+          </div>
         </div>
-        <div>
-          <label className="text-xs text-slate-500">Format no</label>
-          <input name="format_no" className="mt-1 w-full rounded border px-2 py-1 text-sm" defaultValue={s.format_no} />
+
+        <div className="lg:col-span-1">
+          <div className="sticky top-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h2 className="text-sm font-semibold text-slate-800">Tips</h2>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">
+              <li>Use PNG/JPG images with transparent or white background.</li>
+              <li>Click Save settings after selecting files.</li>
+              <li>Images are shared for all users of your company.</li>
+            </ul>
+            <button type="submit" className="mt-4 w-full rounded bg-blue-700 px-4 py-2 text-sm text-white">
+              Save settings
+            </button>
+          </div>
         </div>
-        <div>
-          <label className="text-xs text-slate-500">Issue date</label>
-          <input name="issue_date" className="mt-1 w-full rounded border px-2 py-1 text-sm" defaultValue={s.issue_date} />
-        </div>
-        <div>
-          <label className="text-xs text-slate-500">Doc rev no</label>
-          <input name="doc_rev_no" className="mt-1 w-full rounded border px-2 py-1 text-sm" defaultValue={s.doc_rev_no} />
-        </div>
-        <div>
-          <label className="text-xs text-slate-500">Rev date</label>
-          <input name="rev_date" className="mt-1 w-full rounded border px-2 py-1 text-sm" defaultValue={s.rev_date} />
-        </div>
-        <div>
-          <label className="text-xs text-slate-500">Logo</label>
-          <input name="logo" type="file" accept="image/*" className="mt-1 block text-sm" />
-          {s.logo_url && (
-            <img src={s.logo_url} alt="Logo" className="mt-2 h-16 object-contain" />
-          )}
-        </div>
-        <div>
-          <label className="text-xs text-slate-500">Inspector signature</label>
-          <input name="inspector_signature" type="file" accept="image/*" className="mt-1 block text-sm" />
-        </div>
-        <div>
-          <label className="text-xs text-slate-500">Quality signature</label>
-          <input name="quality_signature" type="file" accept="image/*" className="mt-1 block text-sm" />
-        </div>
-        <button type="submit" className="rounded bg-blue-700 px-4 py-2 text-sm text-white">
-          Save settings
-        </button>
       </form>
     </div>
   );

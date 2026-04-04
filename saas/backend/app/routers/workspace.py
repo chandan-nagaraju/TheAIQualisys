@@ -58,7 +58,6 @@ _BACKEND_TEMPLATES = _BACKEND_ROOT / "templates"
 _BACKEND_STATIC = _BACKEND_ROOT / "static"
 templates = Jinja2Templates(directory=str(_BACKEND_TEMPLATES))
 
-
 @dataclass
 class WsContext:
     user: CompanyUser
@@ -177,11 +176,24 @@ def _save_upload(company_id: int, prefix: str, file: UploadFile) -> str:
     return f"{company_id}/{safe}"
 
 
-def _public_upload_url(request: Request, rel: str | None) -> str | None:
-    if not rel:
+def _read_upload_file(file: UploadFile | None) -> tuple[str, str, bytes] | None:
+    if not file or not file.filename:
         return None
-    base = str(request.base_url).rstrip("/")
-    return f"{base}/api/app/uploads/{quote(rel, safe='/')}"
+    raw = file.file.read()
+    if not raw:
+        return None
+    mime = (file.content_type or "").strip() or mimetypes.guess_type(file.filename)[0] or "application/octet-stream"
+    return file.filename, mime, raw
+
+
+def _settings_blob_data_uri(st: CompanySettings, field_name: str) -> str | None:
+    blob = getattr(st, f"{field_name}_blob", None)
+    if blob is not None:
+        mime = getattr(st, f"{field_name}_mime", None) or "application/octet-stream"
+        b64 = base64.b64encode(blob).decode("ascii")
+        return f"data:{mime};base64,{b64}"
+    # Backward compatibility: older rows may only have path-based assets.
+    return _file_to_data_uri(getattr(st, f"{field_name}_path", None))
 
 
 def _file_to_data_uri(rel: str | None) -> str | None:
@@ -285,9 +297,9 @@ def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
         "issue_date": st.issue_date or "",
         "doc_rev_no": st.doc_rev_no or "",
         "rev_date": st.rev_date or "",
-        "logo_url": _public_upload_url(request, st.logo_path),
-        "inspector_signature_url": _public_upload_url(request, st.inspector_signature_path),
-        "quality_signature_url": _public_upload_url(request, st.quality_signature_path),
+        "logo_url": _settings_blob_data_uri(st, "logo"),
+        "inspector_signature_url": _settings_blob_data_uri(st, "inspector_signature"),
+        "quality_signature_url": _settings_blob_data_uri(st, "quality_signature"),
     }
 
 
@@ -316,12 +328,24 @@ async def save_settings(
     st.doc_rev_no = doc_rev_no.strip() or None
     st.rev_date = rev_date.strip() or None
 
-    if logo and logo.filename:
-        st.logo_path = _save_upload(ws.company.id, "logo", logo)
-    if inspector_signature and inspector_signature.filename:
-        st.inspector_signature_path = _save_upload(ws.company.id, "inspector", inspector_signature)
-    if quality_signature and quality_signature.filename:
-        st.quality_signature_path = _save_upload(ws.company.id, "quality", quality_signature)
+    logo_payload = _read_upload_file(logo)
+    if logo_payload:
+        _name, mime, raw = logo_payload
+        st.logo_blob = raw
+        st.logo_mime = mime
+        st.logo_path = None
+    inspector_payload = _read_upload_file(inspector_signature)
+    if inspector_payload:
+        _name, mime, raw = inspector_payload
+        st.inspector_signature_blob = raw
+        st.inspector_signature_mime = mime
+        st.inspector_signature_path = None
+    quality_payload = _read_upload_file(quality_signature)
+    if quality_payload:
+        _name, mime, raw = quality_payload
+        st.quality_signature_blob = raw
+        st.quality_signature_mime = mime
+        st.quality_signature_path = None
 
     ws.db.commit()
     return get_settings_api(request, ws)
