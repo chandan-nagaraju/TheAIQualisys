@@ -27,10 +27,10 @@ export default function WorkspaceLayout() {
 
   const headerBar =
     theme === "light"
-      ? "border-slate-200 bg-white shadow-sm"
+      ? "border-slate-200 bg-white/95 shadow-sm backdrop-blur"
       : theme === "grey"
-        ? "border-zinc-300 bg-zinc-50 shadow-sm"
-        : "border-slate-700 bg-slate-900 shadow-sm";
+        ? "border-zinc-300 bg-zinc-50/95 shadow-sm backdrop-blur"
+        : "border-slate-700 bg-slate-900/90 shadow-sm backdrop-blur";
 
   const titleCls =
     theme === "light" ? "text-slate-800" : theme === "grey" ? "text-zinc-900" : "text-white";
@@ -59,17 +59,24 @@ export default function WorkspaceLayout() {
         ? "border-zinc-300 text-zinc-600"
         : "border-slate-700 text-slate-500";
 
+  const navWrap =
+    theme === "light"
+      ? "rounded-lg border border-slate-200 bg-slate-50/90 p-2"
+      : theme === "grey"
+        ? "rounded-lg border border-zinc-300 bg-zinc-100/90 p-2"
+        : "rounded-lg border border-slate-700/80 bg-slate-900/70 p-2";
+
   return (
     <div className={`flex min-h-screen flex-col ${shell}`}>
       <header className={`border-b ${headerBar}`}>
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <Link to="/workspace/dashboard" className={`text-lg font-semibold ${titleCls}`}>
               FIR Automation
             </Link>
             <ThemeSwitcher />
           </div>
-          <nav className="flex flex-wrap items-center gap-1">
+          <nav className={`flex w-full flex-wrap items-center gap-1 md:w-auto ${navWrap}`}>
             <NavLink to="/dashboard" className={navCls}>
               QMS dashboard
             </NavLink>
@@ -94,7 +101,7 @@ export default function WorkspaceLayout() {
           </nav>
         </div>
       </header>
-      <main className="app-outlet mx-auto max-w-6xl flex-1 px-4 py-8">
+      <main className="app-outlet mx-auto w-full max-w-7xl flex-1 px-3 py-6 sm:px-4 sm:py-8 lg:px-6">
         <Outlet />
       </main>
       <footer className={`mt-auto border-t py-8 text-center text-xs ${footerBar}`}>

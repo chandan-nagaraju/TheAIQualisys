@@ -45,14 +45,14 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h1 className="text-xl font-semibold">Global FIR settings</h1>
       <p className="mt-2 text-sm text-slate-600">
         This page now stores logo/signatures in shared backend storage so they are visible across all machines.
       </p>
       {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
       {okMsg && <p className="mt-2 text-sm text-green-700">{okMsg}</p>}
-      <form onSubmit={onSubmit} className="mt-6 grid gap-6 lg:grid-cols-3">
+      <form onSubmit={onSubmit} className="mt-6 grid gap-5 lg:grid-cols-3 lg:gap-6">
         <div className="space-y-4 lg:col-span-2">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
@@ -97,7 +97,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <label className="text-xs font-medium text-slate-600">Logo</label>
               <input name="logo" type="file" accept="image/*" className="mt-2 block w-full text-sm" />
@@ -128,7 +128,7 @@ export default function SettingsPage() {
               <li>Click Save settings after selecting files.</li>
               <li>Images are shared for all users of your company.</li>
             </ul>
-            <button type="submit" className="mt-4 w-full rounded bg-blue-700 px-4 py-2 text-sm text-white">
+            <button type="submit" className="mt-4 w-full rounded bg-blue-700 px-4 py-2.5 text-sm font-medium text-white">
               Save settings
             </button>
           </div>

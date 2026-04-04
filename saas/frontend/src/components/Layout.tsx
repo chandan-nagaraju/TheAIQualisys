@@ -94,8 +94,8 @@ export default function Layout() {
   return (
     <div className={`flex min-h-screen flex-col ${shell}`}>
       <header className={`border-b ${headerBar}`}>
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4">
-          <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4 sm:py-4">
+          <div className="flex w-full min-w-0 items-center justify-between gap-3 sm:w-auto sm:flex-wrap sm:justify-start sm:gap-4">
             <Link
               to={isAdminRoute && adminTok ? "/admin" : "/"}
               className={`text-lg font-semibold tracking-tight ${brand}`}
@@ -104,7 +104,7 @@ export default function Layout() {
             </Link>
             <ThemeSwitcher />
           </div>
-          <nav className={`flex flex-wrap items-center gap-3 text-sm ${navLink}`}>
+          <nav className={`flex w-full items-center gap-2 overflow-x-auto whitespace-nowrap pb-1 text-sm sm:w-auto sm:flex-wrap sm:overflow-visible sm:whitespace-normal sm:pb-0 ${navLink}`}>
             {isAdminRoute && adminTok ? (
               <>
                 <span className="text-xs uppercase tracking-wide text-amber-500/90">Platform admin</span>
@@ -170,10 +170,10 @@ export default function Layout() {
           </button>
         </div>
       ) : null}
-      <main className="app-outlet mx-auto w-full max-w-6xl flex-1 px-4 py-10">
+      <main className="app-outlet mx-auto w-full max-w-6xl flex-1 px-3 py-6 sm:px-4 sm:py-8 lg:py-10">
         <Outlet />
       </main>
-      <footer className={`border-t py-8 text-center text-xs ${footerBar}`}>
+      <footer className={`border-t px-3 py-6 text-center text-xs sm:py-8 ${footerBar}`}>
         Developed by Chandan. Made with Cursor.ai.
       </footer>
     </div>
