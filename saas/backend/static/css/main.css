@@ -1,0 +1,472 @@
+:root {
+  --color-bg: #f4f6f9;
+  --color-surface: #ffffff;
+  --color-primary: #0047b3;
+  --color-primary-dark: #003580;
+  --color-accent: #00897b;
+  --color-border: #d0d7e2;
+  --color-text: #1f2933;
+  --color-muted: #6b778c;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --shadow-soft: 0 2px 8px rgba(15, 35, 52, 0.12);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  background: #ffffff;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.brand-name {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.top-bar__nav a {
+  margin-left: 1rem;
+  font-size: 0.9rem;
+}
+
+.top-bar__user {
+  margin-right: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
+.page-main {
+  max-width: 960px;
+  margin: 1.5rem auto 3rem;
+  padding: 0 1rem;
+}
+
+.page-footer {
+  text-align: center;
+  padding: 1rem 0 1.5rem;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.hero {
+  background: linear-gradient(135deg, #f0f4ff, #e6f3ff);
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.hero__tagline {
+  margin-top: 0.5rem;
+  color: var(--color-muted);
+}
+
+.hero__subtext {
+  margin-top: 0.75rem;
+  color: var(--color-text);
+  max-width: 40rem;
+}
+
+.hero__actions {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 1.3rem;
+  border-radius: var(--radius-md);
+  border: none;
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+}
+
+.btn--primary {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.btn--primary:hover {
+  background: var(--color-primary-dark);
+  text-decoration: none;
+}
+
+.btn--secondary {
+  background: #ffffff;
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+}
+
+.btn--secondary:hover {
+  background: #f3f6fb;
+  text-decoration: none;
+}
+
+.btn--disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.flash-container {
+  margin-bottom: 1rem;
+}
+
+.flash {
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+
+.flash--success {
+  background: #e6f4ea;
+  color: #1e7b34;
+}
+
+.flash--danger {
+  background: #fdecea;
+  color: #b3261e;
+}
+
+.flash--warning {
+  background: #fff4e5;
+  color: #8a6116;
+}
+
+.flash--info {
+  background: #e5f2ff;
+  color: #145da0;
+}
+
+.auth,
+.upload,
+.dashboard,
+.table-page {
+  background: var(--color-surface);
+  border-radius: 10px;
+  padding: 1.75rem 1.5rem 2rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.auth h2,
+.upload h2,
+.dashboard h2,
+.table-page h2 {
+  margin-top: 0;
+}
+
+.form {
+  margin-top: 1rem;
+  max-width: 420px;
+}
+
+.form__group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.9rem;
+}
+
+.form__group label {
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.form__group input[type="text"],
+.form__group input[type="email"],
+.form__group input[type="password"],
+.form__group input[type="number"],
+.form__group input[type="file"] {
+  padding: 0.45rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  font-size: 0.9rem;
+}
+
+.form__group input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px rgba(0, 71, 179, 0.25);
+}
+
+.form__hint {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.upload__hint,
+.table-page__hint {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
+.card-grid {
+  margin-top: 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  padding: 1rem;
+  background: #ffffff;
+}
+
+.card--muted {
+  background: #f8fafc;
+}
+
+.table-wrapper {
+  margin-top: 1rem;
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.data-table thead {
+  background: #eef3ff;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid var(--color-border);
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+}
+
+.data-table th {
+  font-weight: 600;
+}
+
+.data-table tbody tr:nth-child(even) {
+  background-color: #f9fbff;
+}
+
+.table-page__actions {
+  margin-top: 1.25rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.hero__saas-hint {
+  margin-top: 1.25rem;
+  max-width: 42rem;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.hero__saas-hint a {
+  font-weight: 500;
+}
+
+.card--accent {
+  border-color: rgba(0, 71, 179, 0.35);
+  background: linear-gradient(145deg, #f5f8ff, #ffffff);
+}
+
+.card__actions {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* --- SaaS pricing (Flask /pricing) --- */
+.pricing-page {
+  background: var(--color-surface);
+  border-radius: 10px;
+  padding: 1.75rem 1.5rem 2rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.pricing-page__intro h2 {
+  margin-top: 0;
+}
+
+.pricing-page__lede,
+.pricing-page__trial {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--color-text);
+  max-width: 46rem;
+}
+
+.pricing-page__trial {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #f0f7ff;
+  border-radius: var(--radius-md);
+  border: 1px solid #c5daf7;
+}
+
+.pricing-grid {
+  margin-top: 1.75rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.pricing-card {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 1.25rem 1.1rem 1.5rem;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+
+.pricing-card--featured {
+  border-color: #c9a227;
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 42%);
+  box-shadow: 0 4px 14px rgba(201, 162, 39, 0.18);
+}
+
+.pricing-card__badge {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7c5e10;
+  background: rgba(201, 162, 39, 0.2);
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+}
+
+.pricing-card__name {
+  margin: 0 0 0.35rem;
+  font-size: 1.1rem;
+}
+
+.pricing-card__price {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.pricing-card__currency {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.pricing-card__period {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.pricing-card__band {
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.88rem;
+  color: var(--color-muted);
+}
+
+.pricing-card__list {
+  margin: 0 0 1rem;
+  padding-left: 1.1rem;
+  font-size: 0.88rem;
+  color: var(--color-text);
+  flex: 1;
+}
+
+.pricing-card__list li {
+  margin-bottom: 0.35rem;
+}
+
+.pricing-card__cta {
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+.pricing-whatsapp {
+  margin-top: 2rem;
+  padding: 1.25rem 1.1rem;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: #f8fafc;
+}
+
+.pricing-whatsapp h3 {
+  margin-top: 0;
+  font-size: 1.05rem;
+}
+
+.pricing-whatsapp__message {
+  font-size: 0.9rem;
+  margin: 0.5rem 0;
+}
+
+.pricing-whatsapp__upi {
+  font-size: 0.9rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.pricing-whatsapp__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pricing-page__foot {
+  margin-top: 1.5rem;
+  font-size: 0.88rem;
+  color: var(--color-muted);
+}
+
+@media (max-width: 600px) {
+  .hero {
+    padding: 1.75rem 1.25rem;
+  }
+
+  .hero__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-main {
+    padding: 0 0.75rem;
+  }
+}

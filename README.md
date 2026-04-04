@@ -14,7 +14,7 @@
 | **`saas/backend/`** | Multi-tenant API (FastAPI, PostgreSQL) | FastAPI · SQLAlchemy · JWT |
 | **`saas/frontend/`** | Web UI (workspace, dashboard, admin) | React 18 · Vite · TypeScript · Tailwind |
 
-The SaaS API serves FIR HTML using the **same Jinja templates and static assets** as legacy (`legacy/templates/`, `legacy/static/`), so behaviour stays aligned.
+The SaaS API serves FIR HTML using **SaaS-owned templates/static assets** (`saas/backend/templates/`, `saas/backend/static/`), so SaaS deployments stay independent from the legacy app.
 
 ---
 
@@ -98,11 +98,11 @@ fir-automation/
 │   ├── app.py                 # Flask entry
 │   ├── requirements.txt
 │   ├── database/              # SQLite schema + fir.db
-│   ├── templates/             # FIR pages (shared with SaaS API)
+│   ├── templates/
 │   ├── static/
 │   └── uploads/
 ├── saas/
-│   ├── backend/               # FastAPI (venv here)
+│   ├── backend/               # FastAPI (venv here; owns SaaS FIR templates/static)
 │   ├── frontend/              # Vite + React
 │   └── database/
 │       └── init_fir_saas_postgres.sql
@@ -140,8 +140,8 @@ Open **http://127.0.0.1:5000** — SQLite at **`legacy/database/fir.db`**. No Po
 
 ```bash
 cd saas/backend
-python scripts/sync_sqlite_to_pg.py --vendor-code YOUR_VENDOR_CODE --sqlite ../legacy/database/fir.db --dry-run
-python scripts/sync_sqlite_to_pg.py --vendor-code YOUR_VENDOR_CODE --sqlite ../legacy/database/fir.db
+python scripts/sync_sqlite_to_pg.py --vendor-code YOUR_VENDOR_CODE --sqlite ./data/legacy_fir.db --dry-run
+python scripts/sync_sqlite_to_pg.py --vendor-code YOUR_VENDOR_CODE --sqlite ./data/legacy_fir.db
 ```
 
 See [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
@@ -162,7 +162,7 @@ Production: Gunicorn+Uvicorn workers, nginx/Caddy + HTTPS, Postgres backups, res
 | [`docs/POSTGRES_WINDOWS.md`](docs/POSTGRES_WINDOWS.md) | PostgreSQL on Windows |
 | [`docs/PART_MASTER_EXCEL.md`](docs/PART_MASTER_EXCEL.md) | Part master Excel |
 
-Implementation reference: **`legacy/app.py`**, **`legacy/database/schema.sql`**, **`legacy/templates/`** (e.g. `fir_preview.html`).
+Implementation reference: **`legacy/app.py`**, **`legacy/database/schema.sql`**.
 
 ---
 

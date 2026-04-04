@@ -111,13 +111,13 @@ This does **not** need PostgreSQL.
 
 ## 5. Sync SQLite → PostgreSQL (optional)
 
-After you **sign up** a company in the SaaS UI, sync legacy parts from `legacy/database/fir.db`:
+After you **sign up** a company in the SaaS UI, sync legacy parts from a copied SQLite export (example: `saas/backend/data/legacy_fir.db`):
 
 ```powershell
 cd F:\beta\fir-automation\saas\backend
 .\venv\Scripts\activate
-python scripts/sync_sqlite_to_pg.py --vendor-code YOUR_VENDOR_CODE --sqlite ..\legacy\database\fir.db --dry-run
-python scripts/sync_sqlite_to_pg.py --vendor-code YOUR_VENDOR_CODE --sqlite ..\legacy\database\fir.db
+python scripts/sync_sqlite_to_pg.py --vendor-code YOUR_VENDOR_CODE --sqlite .\data\legacy_fir.db --dry-run
+python scripts/sync_sqlite_to_pg.py --vendor-code YOUR_VENDOR_CODE --sqlite .\data\legacy_fir.db
 ```
 
 Use the **vendor code** you chose at signup.

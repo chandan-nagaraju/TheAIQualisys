@@ -3,8 +3,8 @@
 CLI: sync legacy SQLite (Flask FIR) -> PostgreSQL SaaS v2 tables.
 
 Usage (from saas/backend directory):
-  python scripts/sync_sqlite_to_pg.py --vendor-code YOUR_VENDOR --sqlite ../legacy/database/fir.db
-  python scripts/sync_sqlite_to_pg.py --company-id 2 --sqlite F:/beta/fir-automation/legacy/database/fir.db
+  python scripts/sync_sqlite_to_pg.py --vendor-code YOUR_VENDOR --sqlite ./data/legacy_fir.db
+  python scripts/sync_sqlite_to_pg.py --company-id 2 --sqlite F:/beta/fir-automation/exports/fir.db
 
 Environment (optional):
   DATABASE_URL, LEGACY_SQLITE_PATH — defaults shown in --help.
@@ -28,7 +28,7 @@ from app.legacy_sync import sync_sqlite_to_postgres
 
 
 def main() -> int:
-    default_sqlite = ROOT.parent.parent / "legacy" / "database" / "fir.db"
+    default_sqlite = ROOT / "data" / "legacy_fir.db"
     parser = argparse.ArgumentParser(description="Sync SQLite FIR data into PostgreSQL SaaS company.")
     parser.add_argument(
         "--sqlite",

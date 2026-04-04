@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.config import LEGACY_ROOT, get_settings
+from app.config import get_settings
 from app.deps import (
     get_company_for_user,
     get_company_user_from_token_str,
@@ -53,8 +53,10 @@ from app.models import (
 )
 
 router = APIRouter(prefix="/api/app", tags=["workspace"])
-_BACKEND_TEMPLATES = Path(__file__).resolve().parents[2] / "templates"
-templates = Jinja2Templates(directory=[str(_BACKEND_TEMPLATES), str(LEGACY_ROOT / "templates")])
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_TEMPLATES = _BACKEND_ROOT / "templates"
+_BACKEND_STATIC = _BACKEND_ROOT / "static"
+templates = Jinja2Templates(directory=str(_BACKEND_TEMPLATES))
 
 
 @dataclass
@@ -1157,7 +1159,7 @@ def fir_preview(
         ("Quali_1.woff", "font/woff", "woff"),
         ("Quali_1.ttf", "font/ttf", "truetype"),
     ]:
-        path = LEGACY_ROOT / "static" / "fonts" / name
+        path = _BACKEND_STATIC / "fonts" / name
         if path.is_file():
             try:
                 data = base64.b64encode(path.read_bytes()).decode("ascii")
@@ -1188,7 +1190,7 @@ def fir_preview(
 
 @router.get("/static/{path:path}")
 def serve_static(path: str):
-    root = LEGACY_ROOT / "static"
+    root = _BACKEND_STATIC
     file_path = (root / path).resolve()
     try:
         file_path.relative_to(root.resolve())

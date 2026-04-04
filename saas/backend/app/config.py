@@ -6,9 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # This file: saas/backend/app/config.py → backend root = parents[1]
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
-# Repo root (fir-automation/) — legacy Flask + shared FIR templates live under legacy/
-REPO_ROOT = _BACKEND_ROOT.parent.parent
-LEGACY_ROOT = REPO_ROOT / "legacy"
+_BACKEND_TEMPLATES_ROOT = _BACKEND_ROOT / "templates"
+_BACKEND_STATIC_ROOT = _BACKEND_ROOT / "static"
 
 
 class Settings(BaseSettings):
@@ -60,6 +59,8 @@ class Settings(BaseSettings):
 
     # Workspace uploads (per-company FIR files) under saas/backend/uploads/
     workspace_upload_dir: Path = Field(default=_BACKEND_ROOT / "uploads")
+    templates_dir: Path = Field(default=_BACKEND_TEMPLATES_ROOT)
+    static_dir: Path = Field(default=_BACKEND_STATIC_ROOT)
     backend_root: Path = Field(default=_BACKEND_ROOT)
 
     # Public SPA origin for password-reset links, e.g. http://localhost:5173
