@@ -140,7 +140,7 @@ html[data-theme="light"] main.app-outlet .hover\:bg-red-50:hover {
 html[data-theme="light"] main.app-outlet input,
 html[data-theme="light"] main.app-outlet textarea,
 html[data-theme="light"] main.app-outlet select {
-  @apply text-slate-900;
+  color: rgb(15 23 42);
 }
 
 html[data-theme="light"] main.app-outlet .border-slate-700 {
@@ -300,7 +300,7 @@ html[data-theme="grey"] main.app-outlet .hover\:bg-red-50:hover {
 html[data-theme="grey"] main.app-outlet input,
 html[data-theme="grey"] main.app-outlet textarea,
 html[data-theme="grey"] main.app-outlet select {
-  @apply text-zinc-900;
+  color: rgb(24 24 27);
 }
 
 html[data-theme="grey"] main.app-outlet .border-slate-700 {
