@@ -56,6 +56,12 @@ function AdTable({
       </div>
     );
   }
+  const removeBtnClass =
+    "rounded border border-red-700 bg-red-700 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-red-600";
+
+  const removePartBtnClass =
+    "rounded border border-red-700 bg-red-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-600";
+
   return (
     <div className={tableClass}>
       <p className={`border-b px-2 py-1 text-xs font-semibold ${headRowClass}`}>{title}</p>
@@ -80,7 +86,7 @@ function AdTable({
                 <td className="px-2 py-1 text-right">
                   <button
                     type="button"
-                    className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 hover:bg-red-100"
+                    className={removeBtnClass}
                     onClick={() => onDeleteRow(i)}
                   >
                     Remove
@@ -185,7 +191,7 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                     </h3>
                     <button
                       type="button"
-                      className="rounded border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+                      className={removePartBtnClass}
                       onClick={() => removePart(idx)}
                     >
                       Remove part
@@ -233,7 +239,7 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                               <span className="font-mono">{m.material_grade}</span>
                               <button
                                 type="button"
-                                className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 hover:bg-red-100"
+                                className={removeBtnClass}
                                 onClick={() => removeMaterialRow(idx, i)}
                               >
                                 Remove
