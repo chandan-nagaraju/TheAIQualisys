@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { workspaceFetch } from "../../api";
 
@@ -49,6 +49,22 @@ export default function ManualEntryPage() {
   const [rows, setRows] = useState<ManualRow[]>([blankRow()]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [partMasterKeys, setPartMasterKeys] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    workspaceFetch<PartMasterRow[]>("/api/app/parts")
+      .then((parts) => {
+        if (cancelled) return;
+        setPartMasterKeys(new Set(parts.map((p) => p.part_no.trim().toLowerCase())));
+      })
+      .catch(() => {
+        if (!cancelled) setPartMasterKeys(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const canAddMore = rows.length < MAX_ROWS;
 
@@ -188,11 +204,38 @@ export default function ManualEntryPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm">
                 <span className="block text-slate-600">Part Number</span>
-                <input
-                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-                  value={r.partNumber}
-                  onChange={(e) => updateRow(i, { partNumber: e.target.value })}
-                />
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2"
+                    value={r.partNumber}
+                    onChange={(e) => updateRow(i, { partNumber: e.target.value })}
+                    autoComplete="off"
+                    aria-describedby={partMasterKeys.has(r.partNumber.trim().toLowerCase()) ? `part-in-master-${i}` : undefined}
+                  />
+                  {r.partNumber.trim() &&
+                  partMasterKeys.has(r.partNumber.trim().toLowerCase()) ? (
+                    <span
+                      id={`part-in-master-${i}`}
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-100"
+                      title="This part number is in Parts master"
+                      aria-label="Part number found in Parts master"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="h-4 w-4"
+                        aria-hidden
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </span>
+                  ) : null}
+                </div>
               </label>
               <label className="text-sm">
                 <span className="block text-slate-600">Quantity</span>
