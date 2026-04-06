@@ -113,7 +113,7 @@ export default function PricingPage({ variant = "marketing" }: Props) {
               {plan.highlight && <p className={t.highlight}>{plan.highlight}</p>}
               {ws ? (
                 <a
-                  href={`${UPGRADE_PAGE_URL}?plan=${encodeURIComponent(plan.name)}&rate=${encodeURIComponent(
+                  href={`${UPGRADE_PAGE_URL}?plan_name=${encodeURIComponent(plan.name)}&price_inr=${encodeURIComponent(
                     String(plan.price_inr),
                   )}&plan_type=${encodeURIComponent(plan.plan_type)}`}
                   className="mt-8 inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"

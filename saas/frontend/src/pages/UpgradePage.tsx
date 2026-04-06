@@ -7,6 +7,7 @@ type UpgradeInfo = { upi_id: string; whatsapp_url: string; message: string };
 export default function UpgradePage() {
   const [info, setInfo] = useState<UpgradeInfo | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [qrTick, setQrTick] = useState(0);
   const { theme } = useTheme();
   const selected = useMemo(() => {
     const q = new URLSearchParams(window.location.search);
@@ -30,6 +31,11 @@ export default function UpgradePage() {
         setErr(e instanceof Error ? e.message : "Failed to load");
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setQrTick((n) => n + 1), 30_000);
+    return () => window.clearInterval(id);
   }, []);
 
   const t = {
@@ -84,6 +90,29 @@ export default function UpgradePage() {
     }
   }, [info, selected]);
 
+  const upiPayload = useMemo(() => {
+    if (!info) return "";
+    const q = new URLSearchParams();
+    q.set("pa", info.upi_id);
+    q.set("pn", "TheAIQualisys");
+    q.set("cu", "INR");
+    if (selected?.price != null) q.set("am", String(selected.price));
+    if (selected?.planName) {
+      q.set(
+        "tn",
+        `Subscription ${selected.planName}${selected.planType ? ` (${selected.planType})` : ""} #${Date.now()}`,
+      );
+    } else {
+      q.set("tn", `Subscription payment #${Date.now()}`);
+    }
+    return `upi://pay?${q.toString()}`;
+  }, [info, selected, qrTick]);
+
+  const qrImageUrl = useMemo(() => {
+    if (!upiPayload) return "";
+    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(upiPayload)}`;
+  }, [upiPayload]);
+
   return (
     <div className={`mx-auto w-full max-w-3xl rounded-2xl border p-5 shadow-sm sm:p-7 ${t.card}`}>
       <h1 className={`text-2xl font-semibold sm:text-3xl ${t.title}`}>Upgrade (manual payment)</h1>
@@ -108,6 +137,30 @@ export default function UpgradePage() {
           <div className={`rounded-xl border p-4 sm:p-5 ${t.upiBox}`}>
             <p className={`text-xs uppercase tracking-wide ${t.upiLabel}`}>UPI ID</p>
             <p className={`mt-1 break-all font-mono text-base sm:text-lg ${t.upiValue}`}>{info.upi_id}</p>
+          </div>
+          <div className={`rounded-xl border p-4 sm:p-5 ${t.upiBox}`}>
+            <p className={`text-xs uppercase tracking-wide ${t.upiLabel}`}>Scan QR to pay</p>
+            <div className="mt-3 flex flex-col items-center gap-3">
+              {qrImageUrl ? (
+                <img
+                  src={qrImageUrl}
+                  alt="UPI payment QR"
+                  className="h-56 w-56 rounded-lg border border-slate-300 bg-white p-2"
+                />
+              ) : null}
+              <p className={`text-xs ${t.msg}`}>
+                QR refreshes every 30 seconds with this plan amount
+                {selectedAmountText ? ` (${selectedAmountText})` : ""}.
+              </p>
+              {upiPayload ? (
+                <a
+                  href={upiPayload}
+                  className="inline-flex min-h-10 items-center justify-center rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+                >
+                  Open in UPI app
+                </a>
+              ) : null}
+            </div>
           </div>
           <p className={`text-sm sm:text-base ${t.msg}`}>
             {selected
