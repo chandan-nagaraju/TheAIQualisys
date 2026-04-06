@@ -77,7 +77,7 @@ export default function WorkspaceLayout() {
             <ThemeSwitcher />
           </div>
           <nav
-            className={`flex min-w-0 flex-1 flex-nowrap items-center justify-start gap-1 overflow-x-auto whitespace-nowrap ${navWrap}`}
+            className={`ml-auto flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-1 overflow-x-auto whitespace-nowrap ${navWrap}`}
           >
             <NavLink to="/dashboard" className={navCls}>
               QMS dashboard
