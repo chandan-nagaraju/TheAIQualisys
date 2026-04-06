@@ -96,7 +96,7 @@ export default function ModulesDashboardPage() {
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="text-2xl font-semibold text-white">TheAIQualisys</h1>
+        <h1 className="text-2xl font-semibold text-white">QMS dashboard</h1>
         <p className="mt-1 text-sm text-slate-400">
           Choose a module. FIR is fully enabled; other modules use trial then subscription.
         </p>
