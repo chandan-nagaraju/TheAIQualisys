@@ -5,6 +5,7 @@ import {
   openWorkspacePdfInNewTab,
   workspaceDownloadBlob,
   workspaceFetch,
+  workspacePostFile,
 } from "../../api";
 import PartMasterExcelReview, { type PartMasterBundle } from "../../components/PartMasterExcelReview";
 
@@ -95,15 +96,13 @@ export default function PartsPage() {
     }
   }
 
-  async function onExcelPickForReview(file: File | undefined, firstSheetOnly: boolean) {
+  async function onExcelPickForReview(file: File | undefined) {
     if (!file) return;
     setErr(null);
     setImportMsg(null);
     setExcelBusy(true);
     try {
-      const endpoint = firstSheetOnly
-        ? "/api/app/parts/preview-excel-master-first-sheet"
-        : "/api/app/parts/preview-excel-master";
+      const endpoint = "/api/app/parts/preview-excel-master";
       const bundle = await workspacePostFile<PartMasterBundle>(endpoint, file);
       setPendingExcelLabel(file.name);
       setPendingExcelBundle(bundle);
@@ -290,7 +289,7 @@ export default function PartsPage() {
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
-            void onExcelPickForReview(f, false);
+            void onExcelPickForReview(f);
           }}
         />
         <button
@@ -299,25 +298,7 @@ export default function PartsPage() {
           onClick={() => excelRef.current?.click()}
           disabled={excelBusy}
         >
-          {excelBusy ? "Reading Excel…" : "Upload Excel (review before save)"}
-        </button>
-        <button
-          type="button"
-          className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 disabled:opacity-50 sm:w-auto"
-          onClick={() => {
-            if (excelBusy) return;
-            const input = document.createElement("input");
-            input.type = "file";
-            input.accept = ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            input.onchange = () => {
-              const f = input.files?.[0];
-              void onExcelPickForReview(f, true);
-            };
-            input.click();
-          }}
-          disabled={excelBusy}
-        >
-          {excelBusy ? "Reading Excel…" : "Upload Excel (first sheet only)"}
+          {excelBusy ? "Reading Excel…" : "Upload Excel (first sheet only, review before save)"}
         </button>
       </div>
       <p className="mt-2 text-xs text-slate-500">

@@ -875,7 +875,6 @@ def download_part_master_excel_template():
 @router.post("/parts/preview-excel-master")
 async def preview_part_master_excel(
     file: UploadFile = File(...),
-    first_sheet_only: bool = Query(False),
     ws: WsContext = Depends(get_ws),
 ):
     """Parse .xlsx/.xls → fir_part_master_bundle_v1 JSON (no DB write)."""
@@ -887,7 +886,7 @@ async def preview_part_master_excel(
         bundle_dict = parse_parts_excel_to_bundle_dict(
             raw,
             source_filename=file.filename,
-            sheet_mode="first" if first_sheet_only else "all",
+            first_sheet_only=True,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
