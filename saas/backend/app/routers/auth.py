@@ -94,7 +94,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db_session)):
         user = db.execute(select(CompanyUser).where(CompanyUser.email == ident.lower())).scalar_one_or_none()
         if not user or not verify_password(password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        if bool(getattr(user, "is_blocked", 0)):
+        if not user.is_active:
             raise HTTPException(status_code=403, detail="User account is blocked")
     else:
         company = db.execute(select(Company).where(Company.vendor_code == ident)).scalar_one_or_none()
@@ -107,7 +107,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db_session)):
                 break
         if not user:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        if bool(getattr(user, "is_blocked", 0)):
+        if not user.is_active:
             raise HTTPException(status_code=403, detail="User account is blocked")
 
     token = create_access_token(str(user.id), {"company_id": user.company_id})
@@ -144,7 +144,7 @@ def unified_login(body: LoginRequest, db: Session = Depends(get_db_session)):
         user = db.execute(select(CompanyUser).where(CompanyUser.email == ident.lower())).scalar_one_or_none()
         if not user:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        if bool(getattr(user, "is_blocked", 0)):
+        if not user.is_active:
             raise HTTPException(status_code=403, detail="User account is blocked")
         ok, upgraded_hash = verify_password_and_upgrade(password, user.password_hash)
         if not ok:
@@ -167,7 +167,7 @@ def unified_login(body: LoginRequest, db: Session = Depends(get_db_session)):
                 break
         if not user:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        if bool(getattr(user, "is_blocked", 0)):
+        if not user.is_active:
             raise HTTPException(status_code=403, detail="User account is blocked")
 
     token = create_access_token(str(user.id), {"company_id": user.company_id})

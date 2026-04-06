@@ -32,7 +32,7 @@ def get_current_company_user(
     user = db.get(CompanyUser, int(sub))
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    if bool(getattr(user, "is_blocked", 0)):
+    if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your account is blocked. Contact admin.")
     cid = payload.get("company_id")
     if cid is not None and int(cid) != user.company_id:
@@ -116,6 +116,6 @@ def get_company_user_from_token_str(
     user = db.get(CompanyUser, int(sub))
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    if bool(getattr(user, "is_blocked", 0)):
+    if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your account is blocked. Contact admin.")
     return user
