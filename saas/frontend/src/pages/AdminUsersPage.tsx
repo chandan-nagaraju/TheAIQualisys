@@ -6,7 +6,6 @@ type TenantUser = {
   user_id: number;
   email: string;
   name: string | null;
-  is_active: boolean;
   created_at: string;
   company_id: number;
   company_name: string;
@@ -33,9 +32,6 @@ export default function AdminUsersPage() {
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
   const [firCustomers, setFirCustomers] = useState<FirCustomer[]>([]);
   const [q, setQ] = useState("");
-  const [busyUserId, setBusyUserId] = useState<number | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     const t = localStorage.getItem("fir_admin_token");
@@ -57,44 +53,6 @@ export default function AdminUsersPage() {
       }
     })();
   }, [nav]);
-
-  async function setUserActive(userId: number, makeActive: boolean) {
-    setBusyUserId(userId);
-    setErr(null);
-    setMsg(null);
-    try {
-      const updated = await apiFetch<TenantUser>(`/admin/tenant-users/${userId}`, {
-        token: "admin",
-        method: "PATCH",
-        body: JSON.stringify({ is_active: makeActive }),
-      });
-      setTenantUsers((prev) => prev.map((u) => (u.user_id === userId ? updated : u)));
-      setMsg(makeActive ? "User unblocked successfully." : "User blocked successfully.");
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Failed to update user.");
-    } finally {
-      setBusyUserId(null);
-    }
-  }
-
-  async function deleteUser(userId: number, email: string) {
-    if (!window.confirm(`Delete user ${email}? This cannot be undone.`)) return;
-    setBusyUserId(userId);
-    setErr(null);
-    setMsg(null);
-    try {
-      await apiFetch(`/admin/tenant-users/${userId}`, {
-        token: "admin",
-        method: "DELETE",
-      });
-      setTenantUsers((prev) => prev.filter((u) => u.user_id !== userId));
-      setMsg("User deleted successfully.");
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Failed to delete user.");
-    } finally {
-      setBusyUserId(null);
-    }
-  }
 
   const needle = norm(q);
   const filteredUsers = useMemo(() => {
@@ -144,8 +102,6 @@ export default function AdminUsersPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        {msg && <p className="mt-2 text-sm text-emerald-400">{msg}</p>}
-        {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
       </div>
 
       <section id="tenant-users">
@@ -161,15 +117,14 @@ export default function AdminUsersPage() {
                 <th className="px-4 py-3">Vendor</th>
                 <th className="px-4 py-3">Plan</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">User state</th>
                 <th className="px-4 py-3">Joined</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               {filteredUsers.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
                     No rows match.
                   </td>
                 </tr>
@@ -182,40 +137,11 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3 font-mono text-slate-400">{r.company_vendor_code}</td>
                   <td className="px-4 py-3 text-slate-400">{r.plan_type}</td>
                   <td className="px-4 py-3 text-slate-400">{r.subscription_status}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        r.is_active
-                          ? "bg-emerald-500/15 text-emerald-300"
-                          : "bg-red-500/15 text-red-300"
-                      }`}
-                    >
-                      {r.is_active ? "active" : "blocked"}
-                    </span>
-                  </td>
                   <td className="px-4 py-3 text-xs text-slate-500">{new Date(r.created_at).toLocaleString()}</td>
                   <td className="px-4 py-3 text-right">
-                    <div className="inline-flex flex-wrap items-center justify-end gap-3">
-                      <button
-                        type="button"
-                        className="text-amber-300 hover:underline disabled:opacity-50"
-                        disabled={busyUserId === r.user_id}
-                        onClick={() => void setUserActive(r.user_id, !r.is_active)}
-                      >
-                        {r.is_active ? "Block" : "Unblock"}
-                      </button>
-                      <button
-                        type="button"
-                        className="text-red-400 hover:underline disabled:opacity-50"
-                        disabled={busyUserId === r.user_id}
-                        onClick={() => void deleteUser(r.user_id, r.email)}
-                      >
-                        Delete
-                      </button>
-                      <Link className="text-brand-600 hover:underline" to={`/admin/companies/${r.company_id}`}>
-                        Company
-                      </Link>
-                    </div>
+                    <Link className="text-brand-600 hover:underline" to={`/admin/companies/${r.company_id}`}>
+                      Company
+                    </Link>
                   </td>
                 </tr>
               ))}

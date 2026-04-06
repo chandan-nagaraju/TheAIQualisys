@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.deps import get_db_session, get_platform_admin
@@ -95,7 +95,6 @@ def list_all_tenant_users(
             user_id=u.id,
             email=u.email,
             name=u.name,
-            is_active=u.is_active,
             created_at=u.created_at,
             company_id=c.id,
             company_name=c.company_name,
@@ -105,50 +104,6 @@ def list_all_tenant_users(
         )
         for u, c in rows
     ]
-
-
-@router.post("/tenant-users/{user_id}/block")
-def block_tenant_user(
-    user_id: int,
-    _: PlatformAdmin = Depends(get_platform_admin),
-    db: Session = Depends(get_db_session),
-):
-    user = db.get(CompanyUser, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Tenant user not found")
-    user.is_active = False
-    db.add(user)
-    db.commit()
-    return {"ok": True, "user_id": user.id, "is_active": user.is_active}
-
-
-@router.post("/tenant-users/{user_id}/unblock")
-def unblock_tenant_user(
-    user_id: int,
-    _: PlatformAdmin = Depends(get_platform_admin),
-    db: Session = Depends(get_db_session),
-):
-    user = db.get(CompanyUser, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Tenant user not found")
-    user.is_active = True
-    db.add(user)
-    db.commit()
-    return {"ok": True, "user_id": user.id, "is_active": user.is_active}
-
-
-@router.delete("/tenant-users/{user_id}")
-def delete_tenant_user(
-    user_id: int,
-    _: PlatformAdmin = Depends(get_platform_admin),
-    db: Session = Depends(get_db_session),
-):
-    user = db.get(CompanyUser, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Tenant user not found")
-    db.execute(delete(CompanyUser).where(CompanyUser.id == user_id))
-    db.commit()
-    return {"ok": True, "deleted_user_id": user_id}
 
 
 @router.get("/fir-customers", response_model=list[AdminFirCustomerRow])
