@@ -95,7 +95,7 @@ def list_all_tenant_users(
             user_id=u.id,
             email=u.email,
             name=u.name,
-            is_active=u.is_active,
+            is_blocked=bool(u.is_blocked),
             created_at=u.created_at,
             company_id=c.id,
             company_name=c.company_name,
@@ -116,10 +116,10 @@ def block_tenant_user(
     user = db.get(CompanyUser, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Tenant user not found")
-    user.is_active = False
+    user.is_blocked = 1
     db.add(user)
     db.commit()
-    return {"ok": True, "user_id": user.id, "is_active": user.is_active}
+    return {"ok": True, "user_id": user.id, "is_blocked": bool(user.is_blocked)}
 
 
 @router.post("/tenant-users/{user_id}/unblock")
@@ -131,10 +131,10 @@ def unblock_tenant_user(
     user = db.get(CompanyUser, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Tenant user not found")
-    user.is_active = True
+    user.is_blocked = 0
     db.add(user)
     db.commit()
-    return {"ok": True, "user_id": user.id, "is_active": user.is_active}
+    return {"ok": True, "user_id": user.id, "is_blocked": bool(user.is_blocked)}
 
 
 @router.delete("/tenant-users/{user_id}")

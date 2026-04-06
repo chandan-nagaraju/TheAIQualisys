@@ -1,3 +1,3 @@
--- Allow platform admins to block/unblock tenant login accounts.
-ALTER TABLE company_users
-ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+-- Legacy schema already uses company_users.is_blocked (0=active, 1=blocked).
+-- Keep this migration idempotent and no-op to avoid adding conflicting columns.
+-- Intentionally left blank.

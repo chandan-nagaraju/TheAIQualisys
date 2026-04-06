@@ -169,7 +169,7 @@ class AdminTenantUserRow(BaseModel):
     company_vendor_code: str
     plan_type: str
     subscription_status: str
-    is_active: bool
+    is_blocked: bool
 
 
 class AdminFirCustomerRow(BaseModel):

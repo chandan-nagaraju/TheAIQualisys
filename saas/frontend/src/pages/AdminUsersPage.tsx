@@ -6,7 +6,7 @@ type TenantUser = {
   user_id: number;
   email: string;
   name: string | null;
-  is_active: boolean;
+  is_blocked: boolean;
   created_at: string;
   company_id: number;
   company_name: string;
@@ -58,18 +58,20 @@ export default function AdminUsersPage() {
     })();
   }, [nav]);
 
-  async function setUserActive(userId: number, makeActive: boolean) {
+  async function setUserBlocked(userId: number, blockUser: boolean) {
     setBusyUserId(userId);
     setErr(null);
     setMsg(null);
     try {
-      const updated = await apiFetch<TenantUser>(`/admin/tenant-users/${userId}`, {
+      await apiFetch<{ ok: boolean; user_id: number; is_blocked: boolean }>(
+        `/admin/tenant-users/${userId}/${blockUser ? "block" : "unblock"}`,
+        {
         token: "admin",
-        method: "PATCH",
-        body: JSON.stringify({ is_active: makeActive }),
-      });
-      setTenantUsers((prev) => prev.map((u) => (u.user_id === userId ? updated : u)));
-      setMsg(makeActive ? "User unblocked successfully." : "User blocked successfully.");
+        method: "POST",
+        },
+      );
+      setTenantUsers((prev) => prev.map((u) => (u.user_id === userId ? { ...u, is_blocked: blockUser } : u)));
+      setMsg(blockUser ? "User blocked successfully." : "User unblocked successfully.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to update user.");
     } finally {
@@ -185,12 +187,12 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        r.is_active
+                        !r.is_blocked
                           ? "bg-emerald-500/15 text-emerald-300"
                           : "bg-red-500/15 text-red-300"
                       }`}
                     >
-                      {r.is_active ? "active" : "blocked"}
+                      {!r.is_blocked ? "active" : "blocked"}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500">{new Date(r.created_at).toLocaleString()}</td>
@@ -200,9 +202,9 @@ export default function AdminUsersPage() {
                         type="button"
                         className="text-amber-300 hover:underline disabled:opacity-50"
                         disabled={busyUserId === r.user_id}
-                        onClick={() => void setUserActive(r.user_id, !r.is_active)}
+                        onClick={() => void setUserBlocked(r.user_id, !r.is_blocked)}
                       >
-                        {r.is_active ? "Block" : "Unblock"}
+                        {r.is_blocked ? "Unblock" : "Block"}
                       </button>
                       <button
                         type="button"
