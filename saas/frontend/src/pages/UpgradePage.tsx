@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { apiFetch } from "../api";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -10,6 +11,7 @@ export default function UpgradePage() {
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [qrTick, setQrTick] = useState(0);
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const { theme } = useTheme();
   const selected = useMemo(() => {
     const q = new URLSearchParams(window.location.search);
@@ -133,6 +135,28 @@ export default function UpgradePage() {
     return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(upiPayload)}`;
   }, [upiPayload]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!upiPayload) {
+      setQrDataUrl("");
+      return;
+    }
+    QRCode.toDataURL(upiPayload, {
+      width: 280,
+      margin: 1,
+      errorCorrectionLevel: "M",
+    })
+      .then((url) => {
+        if (!cancelled) setQrDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setQrDataUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [upiPayload]);
+
   return (
     <div className={`mx-auto w-full max-w-3xl rounded-2xl border p-5 shadow-sm sm:p-7 ${t.card}`}>
       <h1 className={`text-2xl font-semibold sm:text-3xl ${t.title}`}>Upgrade (manual payment)</h1>
@@ -161,9 +185,9 @@ export default function UpgradePage() {
           <div className={`rounded-xl border p-4 sm:p-5 ${t.upiBox}`}>
             <p className={`text-xs uppercase tracking-wide ${t.upiLabel}`}>Scan QR to pay</p>
             <div className="mt-3 flex flex-col items-center gap-3">
-              {qrImageUrl ? (
+              {qrDataUrl || qrImageUrl ? (
                 <img
-                  src={qrImageUrl}
+                  src={qrDataUrl || qrImageUrl}
                   alt="UPI payment QR"
                   className="h-56 w-56 rounded-lg border border-slate-300 bg-white p-2"
                 />
