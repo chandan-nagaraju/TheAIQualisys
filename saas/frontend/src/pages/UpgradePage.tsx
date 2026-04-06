@@ -3,30 +3,50 @@ import { apiFetch } from "../api";
 import { useTheme } from "../theme/ThemeContext";
 
 type UpgradeInfo = { upi_id: string; whatsapp_url: string; message: string };
+type PlanInfo = { plan_type: string; name: string; price_inr: number };
 
 export default function UpgradePage() {
   const [info, setInfo] = useState<UpgradeInfo | null>(null);
+  const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [qrTick, setQrTick] = useState(0);
   const { theme } = useTheme();
   const selected = useMemo(() => {
     const q = new URLSearchParams(window.location.search);
-    const planName = (q.get("plan_name") || "").trim();
+    const planName = (q.get("plan_name") || q.get("plan") || "").trim();
     const planType = (q.get("plan_type") || "").trim();
-    const priceRaw = (q.get("price_inr") || "").trim();
+    const priceRaw = (
+      q.get("price_inr") ||
+      q.get("price_in") ||
+      q.get("price") ||
+      q.get("rate") ||
+      ""
+    ).trim();
     const price = /^\d+$/.test(priceRaw) ? Number(priceRaw) : null;
-    if (!planName && !planType && price == null) return null;
+    const planTypeNorm = planType.toLowerCase();
+    const planNameNorm = planName.toLowerCase();
+    const matched = plans.find(
+      (p) =>
+        (planTypeNorm && p.plan_type.toLowerCase() === planTypeNorm) ||
+        (planNameNorm && p.name.toLowerCase() === planNameNorm),
+    );
+    if (!planName && !planType && price == null && !matched) return null;
     return {
-      planName: planName || "Selected plan",
-      planType: planType || "",
-      price,
+      planName: planName || matched?.name || "Selected plan",
+      planType: planType || matched?.plan_type || "",
+      price: price ?? matched?.price_inr ?? null,
     };
-  }, []);
+  }, [plans]);
 
   useEffect(() => {
     (async () => {
       try {
-        setInfo(await apiFetch<UpgradeInfo>("/subscription/upgrade-info"));
+        const [upgradeInfo, planRows] = await Promise.all([
+          apiFetch<UpgradeInfo>("/subscription/upgrade-info"),
+          apiFetch<PlanInfo[]>("/subscription/plans"),
+        ]);
+        setInfo(upgradeInfo);
+        setPlans(planRows);
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Failed to load");
       }
