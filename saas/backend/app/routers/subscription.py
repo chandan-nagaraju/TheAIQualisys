@@ -96,6 +96,8 @@ def subscription_status(
 def upgrade_info():
     settings = get_settings()
     msg = settings.whatsapp_message_template.format(upi_id=settings.upi_id)
-    phone = settings.whatsapp_number.replace("+", "").replace(" ", "")
+    # Accept common admin formats like "+91 78920 07580" or "+91-78920-07580".
+    # wa.me requires digits only; any punctuation causes WhatsApp 404.
+    phone = "".join(ch for ch in settings.whatsapp_number if ch.isdigit())
     url = f"https://wa.me/{phone}?text={quote(msg)}"
     return UpgradeInfoResponse(upi_id=settings.upi_id, whatsapp_url=url, message=msg)
