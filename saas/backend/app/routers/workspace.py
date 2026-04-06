@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
@@ -875,6 +875,7 @@ def download_part_master_excel_template():
 @router.post("/parts/preview-excel-master")
 async def preview_part_master_excel(
     file: UploadFile = File(...),
+    first_sheet_only: bool = Query(False),
     ws: WsContext = Depends(get_ws),
 ):
     """Parse .xlsx/.xls → fir_part_master_bundle_v1 JSON (no DB write)."""
@@ -883,7 +884,11 @@ async def preview_part_master_excel(
         raise HTTPException(status_code=400, detail="Upload .xlsx or .xls")
     raw = await file.read()
     try:
-        bundle_dict = parse_parts_excel_to_bundle_dict(raw, source_filename=file.filename)
+        bundle_dict = parse_parts_excel_to_bundle_dict(
+            raw,
+            source_filename=file.filename,
+            sheet_mode="first" if first_sheet_only else "all",
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     try:

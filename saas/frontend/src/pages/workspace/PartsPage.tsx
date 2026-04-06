@@ -96,13 +96,14 @@ export default function PartsPage() {
     }
   }
 
-  async function onExcelPickForReview(file: File | undefined) {
+  async function onExcelPickForReview(file: File | undefined, firstSheetOnly: boolean) {
     if (!file) return;
     setErr(null);
     setImportMsg(null);
     setExcelBusy(true);
     try {
-      const bundle = await workspacePostFile<PartMasterBundle>("/api/app/parts/preview-excel-master", file);
+      const endpoint = "/api/app/parts/preview-excel-master";
+      const bundle = await workspacePostFile<PartMasterBundle>(endpoint, file);
       setPendingExcelLabel(file.name);
       setPendingExcelBundle(bundle);
       if (!bundle.parts?.length) {
@@ -288,7 +289,7 @@ export default function PartsPage() {
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
-            void onExcelPickForReview(f);
+            void onExcelPickForReview(f, false);
           }}
         />
         <button
@@ -298,6 +299,24 @@ export default function PartsPage() {
           disabled={excelBusy}
         >
           {excelBusy ? "Reading Excel…" : "Upload Excel (review before save)"}
+        </button>
+        <button
+          type="button"
+          className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 disabled:opacity-50 sm:w-auto"
+          onClick={() => {
+            if (excelBusy) return;
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            input.onchange = () => {
+              const f = input.files?.[0];
+              void onExcelPickForReview(f, true);
+            };
+            input.click();
+          }}
+          disabled={excelBusy}
+        >
+          {excelBusy ? "Reading Excel…" : "Upload Excel (first sheet only)"}
         </button>
       </div>
       <p className="mt-2 text-xs text-slate-500">
@@ -475,7 +494,10 @@ export default function PartsPage() {
         <PartMasterExcelReview
           bundle={pendingExcelBundle}
           fileLabel={pendingExcelLabel}
-          onConfirm={() => void confirmExcelImport()}
+          onConfirm={(nextBundle) => {
+            setPendingExcelBundle(nextBundle);
+            void confirmExcelImport();
+          }}
           onCancel={cancelExcelReview}
           busy={excelBusy}
         />

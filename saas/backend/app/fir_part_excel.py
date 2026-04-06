@@ -799,18 +799,28 @@ def _group_by_part(df: pd.DataFrame, part_col: str, builder):
     return out
 
 
-def parse_parts_excel_to_bundle_dict(content: bytes, source_filename: str | None = None) -> dict[str, Any]:
+def parse_parts_excel_to_bundle_dict(
+    content: bytes,
+    source_filename: str | None = None,
+    first_sheet_only: bool = False,
+) -> dict[str, Any]:
     """
     Returns a dict suitable for PartMasterBundleBody / JSON export.
     Raises ValueError with a short user-facing message on parse issues.
     """
     try:
-        xl = pd.read_excel(io.BytesIO(content), sheet_name=None, engine=None)
+        xl_raw = pd.read_excel(io.BytesIO(content), sheet_name=None, engine=None)
     except Exception as e:
         raise ValueError(f"Could not read Excel: {e}") from e
 
-    if not xl:
+    if not xl_raw:
         raise ValueError("Workbook has no sheets.")
+
+    if first_sheet_only:
+        first_name = next(iter(xl_raw.keys()))
+        xl = {first_name: xl_raw[first_name]}
+    else:
+        xl = xl_raw
 
     parts_name = _resolve_sheet(
         xl,
