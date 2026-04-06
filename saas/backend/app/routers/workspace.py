@@ -223,9 +223,10 @@ def _settings_dict_for_fir(db: Session, company_id: int) -> dict[str, Any]:
         }
     return {
         "company_name": st.company_name or "",
-        "logo_path": _file_to_data_uri(st.logo_path),
-        "inspector_signature_path": _file_to_data_uri(st.inspector_signature_path),
-        "quality_signature_path": _file_to_data_uri(st.quality_signature_path),
+        # Use DB-backed blobs first so logo/signatures are shared across machines/instances.
+        "logo_path": _settings_blob_data_uri(st, "logo"),
+        "inspector_signature_path": _settings_blob_data_uri(st, "inspector_signature"),
+        "quality_signature_path": _settings_blob_data_uri(st, "quality_signature"),
         "format_no": st.format_no or "",
         "issue_date": st.issue_date or "",
         "doc_rev_no": st.doc_rev_no or "",
