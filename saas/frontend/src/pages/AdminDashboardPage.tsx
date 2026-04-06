@@ -62,7 +62,7 @@ export default function AdminDashboardPage() {
       });
       localStorage.setItem("fir_token", res.access_token);
       localStorage.removeItem("fir_admin_token");
-      nav("/workspace/dashboard");
+      nav("/dashboard");
     } catch {
       sessionStorage.removeItem("fir_admin_token_backup");
       sessionStorage.removeItem("fir_impersonating");
