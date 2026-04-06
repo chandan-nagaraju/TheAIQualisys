@@ -485,6 +485,20 @@ html[data-theme="grey"] main.app-outlet .bg-slate-900\/30.text-white {
   color: rgb(15 23 42) !important;
 }
 
+/* In light/grey themes, typed text in form controls must stay dark/readable
+   even if component classes include text-white. */
+html[data-theme="light"] main.app-outlet input.text-white,
+html[data-theme="light"] main.app-outlet textarea.text-white,
+html[data-theme="light"] main.app-outlet select.text-white {
+  color: rgb(15 23 42) !important;
+}
+
+html[data-theme="grey"] main.app-outlet input.text-white,
+html[data-theme="grey"] main.app-outlet textarea.text-white,
+html[data-theme="grey"] main.app-outlet select.text-white {
+  color: rgb(24 24 27) !important;
+}
+
 html[data-theme="dark"] main.app-outlet .text-slate-300 {
   color: rgb(203 213 225);
 }
