@@ -5,7 +5,6 @@ import {
   openWorkspacePdfInNewTab,
   workspaceDownloadBlob,
   workspaceFetch,
-  workspacePostFile,
 } from "../../api";
 import PartMasterExcelReview, { type PartMasterBundle } from "../../components/PartMasterExcelReview";
 
@@ -103,7 +102,12 @@ export default function PartsPage() {
     setExcelBusy(true);
     try {
       const endpoint = "/api/app/parts/preview-excel-master";
-      const bundle = await workspacePostFile<PartMasterBundle>(endpoint, file);
+      const fd = new FormData();
+      fd.append("file", file);
+      const bundle = await workspaceFetch<PartMasterBundle>(endpoint, {
+        method: "POST",
+        body: fd,
+      });
       setPendingExcelLabel(file.name);
       setPendingExcelBundle(bundle);
       if (!bundle.parts?.length) {
@@ -168,7 +172,12 @@ export default function PartsPage() {
         }),
       });
       if (pendingPdf) {
-        await workspacePostFile(`/api/app/parts/${r.part_id}/drawing`, pendingPdf, "file");
+        const fd = new FormData();
+        fd.append("file", pendingPdf);
+        await workspaceFetch(`/api/app/parts/${r.part_id}/drawing`, {
+          method: "POST",
+          body: fd,
+        });
       }
       setPartNo("");
       setDrawingRev("");
