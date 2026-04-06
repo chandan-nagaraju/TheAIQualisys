@@ -69,14 +69,16 @@ export default function WorkspaceLayout() {
   return (
     <div className={`flex min-h-screen flex-col ${shell}`}>
       <header className={`border-b ${headerBar}`}>
-        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
+        <div className="mx-auto flex w-full max-w-7xl flex-nowrap items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
+          <div className="flex shrink-0 items-center gap-3">
             <Link to="/workspace/dashboard" className={`text-lg font-semibold ${titleCls}`}>
               FIR Automation
             </Link>
             <ThemeSwitcher />
           </div>
-          <nav className={`flex w-full flex-nowrap items-center justify-start gap-1 overflow-x-auto whitespace-nowrap ${navWrap}`}>
+          <nav
+            className={`flex min-w-0 flex-1 flex-nowrap items-center justify-start gap-1 overflow-x-auto whitespace-nowrap ${navWrap}`}
+          >
             <NavLink to="/dashboard" className={navCls}>
               QMS dashboard
             </NavLink>
