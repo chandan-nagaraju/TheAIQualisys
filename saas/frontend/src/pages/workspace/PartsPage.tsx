@@ -47,6 +47,13 @@ export default function PartsPage() {
     return rows.filter((r) => r.part_no.toLowerCase().includes(filterQ));
   }, [rows, filterQ]);
 
+  /** Exact match: helps avoid duplicate uploads when the part already exists */
+  const partNoExistsInMaster = useMemo(() => {
+    const q = part_no.trim().toLowerCase();
+    if (!q) return false;
+    return rows.some((r) => r.part_no.trim().toLowerCase() === q);
+  }, [rows, part_no]);
+
   async function downloadAll() {
     setErr(null);
     setImportMsg(null);
@@ -329,12 +336,38 @@ export default function PartsPage() {
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div>
             <label className="text-xs text-slate-500">Part number * (also filters table below)</label>
-            <input
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-              value={part_no}
-              onChange={(e) => setPartNo(e.target.value)}
-              required
-            />
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                value={part_no}
+                onChange={(e) => setPartNo(e.target.value)}
+                required
+                autoComplete="off"
+                aria-describedby={partNoExistsInMaster ? "parts-master-part-exists" : undefined}
+              />
+              {editingPartId == null && partNoExistsInMaster ? (
+                <span
+                  id="parts-master-part-exists"
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-100"
+                  title="This part number is already saved — use the table below to edit or open the part"
+                  aria-label="Part number already in Parts master"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="h-4 w-4"
+                    aria-hidden
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </span>
+              ) : null}
+            </div>
           </div>
           <div>
             <label className="text-xs text-slate-500">Drawing rev</label>
