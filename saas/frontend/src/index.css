@@ -427,6 +427,10 @@ html[data-theme="dark"] main.app-outlet .hover\:bg-slate-50:hover {
   background-color: rgb(30 41 59);
 }
 
+html[data-theme="dark"] main.app-outlet .hover\:bg-slate-50\/80:hover {
+  background-color: rgb(51 65 85);
+}
+
 html[data-theme="dark"] main.app-outlet .hover\:bg-white:hover {
   background-color: rgb(30 41 59);
 }
