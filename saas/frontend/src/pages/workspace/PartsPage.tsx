@@ -5,7 +5,6 @@ import {
   openWorkspacePdfInNewTab,
   workspaceDownloadBlob,
   workspaceFetch,
-  workspacePostFile,
 } from "../../api";
 import PartMasterExcelReview, { type PartMasterBundle } from "../../components/PartMasterExcelReview";
 
@@ -102,7 +101,9 @@ export default function PartsPage() {
     setImportMsg(null);
     setExcelBusy(true);
     try {
-      const endpoint = "/api/app/parts/preview-excel-master";
+      const endpoint = firstSheetOnly
+        ? "/api/app/parts/preview-excel-master-first-sheet"
+        : "/api/app/parts/preview-excel-master";
       const bundle = await workspacePostFile<PartMasterBundle>(endpoint, file);
       setPendingExcelLabel(file.name);
       setPendingExcelBundle(bundle);
@@ -116,8 +117,8 @@ export default function PartsPage() {
     }
   }
 
-  async function confirmExcelImport() {
-    const bundle = pendingExcelBundle;
+  async function confirmExcelImport(nextBundle?: PartMasterBundle) {
+    const bundle = nextBundle ?? pendingExcelBundle;
     if (!bundle?.parts?.length) return;
     setErr(null);
     setImportMsg(null);
@@ -494,10 +495,7 @@ export default function PartsPage() {
         <PartMasterExcelReview
           bundle={pendingExcelBundle}
           fileLabel={pendingExcelLabel}
-          onConfirm={(nextBundle) => {
-            setPendingExcelBundle(nextBundle);
-            void confirmExcelImport();
-          }}
+          onConfirm={(nextBundle) => void confirmExcelImport(nextBundle)}
           onCancel={cancelExcelReview}
           busy={excelBusy}
         />
