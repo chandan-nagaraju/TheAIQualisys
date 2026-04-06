@@ -1,7 +1,7 @@
 from datetime import date
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -99,5 +99,15 @@ def upgrade_info():
     # Accept common admin formats like "+91 78920 07580" or "+91-78920-07580".
     # wa.me requires digits only; any punctuation causes WhatsApp 404.
     phone = "".join(ch for ch in settings.whatsapp_number if ch.isdigit())
+    if not phone:
+        raise HTTPException(
+            status_code=503,
+            detail="Upgrade contact is not configured. Please set WHATSAPP_NUMBER on the backend.",
+        )
+    if len(phone) < 10:
+        raise HTTPException(
+            status_code=503,
+            detail="Upgrade contact number is invalid. WHATSAPP_NUMBER must contain at least 10 digits.",
+        )
     url = f"https://wa.me/{phone}?text={quote(msg)}"
     return UpgradeInfoResponse(upi_id=settings.upi_id, whatsapp_url=url, message=msg)
