@@ -199,7 +199,17 @@
   button.upload-btn:hover { background-color: #0056b3; }
   .signature-cell { text-align: center; vertical-align: middle; padding: 10px; box-sizing: border-box; }
   .signature-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; }
-  .signature-preview { height: 50px; width: auto; max-width: 80%; object-fit: contain; margin-top: 6px; border: none; filter: grayscale(100%) contrast(1.1); }
+  .signature-preview {
+    height: 50px;
+    width: auto;
+    max-width: 80%;
+    object-fit: contain;
+    margin-top: 6px;
+    border: none;
+    background: #fff;
+    /* Keep signature stroke dark/black against white paper-like cell. */
+    filter: grayscale(100%) contrast(1.9) brightness(0.78);
+  }
   .fir-logo-img { filter: grayscale(100%) contrast(1.12) !important; }
   .download-btn {
     position: fixed; bottom: 20px; right: 20px;
@@ -474,6 +484,7 @@
     const s = (specStr || "").trim();
     if (!s) return null;
     const isRadius = /R\s*\d+/i.test(s);
+    const isAngle = /°|\bdeg(?:ree)?s?\b/i.test(s);
     const numStr = s.replace(/[^\d.\s±+-]/g, " ").trim();
     const numbers = numStr.match(/-?\d+\.?\d*/g);
     if (!numbers || numbers.length === 0) return null;
@@ -501,7 +512,7 @@
       const tol = 0.1 * Math.abs(nominal) || 0.1;
       min = nominal - tol; max = nominal + tol;
     }
-    return { min, max, nominal, step: isRadius ? 0.5 : null };
+    return { min, max, nominal, step: isRadius ? 0.5 : null, isRadius, isAngle };
   }
 
   function randomInRange(min, max, step) {
@@ -521,6 +532,23 @@
     const n = parseFloat(String(value).replace(/[^\d.-]/g, ""));
     if (isNaN(n)) return false;
     return n >= min && n <= max;
+  }
+
+  function formatMeasuredValue(value, range) {
+    if (!range) return String(value);
+    if (range.isRadius) {
+      // Radius rows should look like R6, R6.5, R5
+      const num = Number(value);
+      const text = Number.isInteger(num) ? String(num) : String(num).replace(/\.?0+$/, "");
+      return `R${text}`;
+    }
+    if (range.isAngle) {
+      // Angle rows should explicitly show degree symbol.
+      const num = Number(value);
+      const text = Number(num.toFixed(2)).toString();
+      return `${text}\u00B0`;
+    }
+    return String(value);
   }
 
   /** Sl No | Parameter | Specification | Special char | Method | 5× actual | Remarks (11 cells) */
@@ -553,7 +581,8 @@
     var min = range.min, max = range.max, step = range.step;
     var values = [];
     for (var i = 0; i < 5; i++) values.push(randomInRange(min, max, step));
-    actualInputs.forEach(function(inp, idx) { inp.value = values[idx]; });
+    var formatted = values.map(function(v) { return formatMeasuredValue(v, range); });
+    actualInputs.forEach(function(inp, idx) { inp.value = formatted[idx]; });
     var allOk = values.every(function(v) { return isWithinSpec(v, min, max); });
     remarksEl.value = allOk ? "OK" : "Not OK";
   }
