@@ -30,6 +30,11 @@ type Props = {
   busy?: boolean;
 };
 
+const removeBtnClass =
+  "rounded border border-red-700 bg-red-700 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-red-600";
+const removePartBtnClass =
+  "rounded border border-red-700 bg-red-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-600";
+
 function AdTable({
   title,
   rows,
@@ -56,12 +61,6 @@ function AdTable({
       </div>
     );
   }
-  const removeBtnClass =
-    "rounded border border-red-700 bg-red-700 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-red-600";
-
-  const removePartBtnClass =
-    "rounded border border-red-700 bg-red-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-600";
-
   return (
     <div className={tableClass}>
       <p className={`border-b px-2 py-1 text-xs font-semibold ${headRowClass}`}>{title}</p>
