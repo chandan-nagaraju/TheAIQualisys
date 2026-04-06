@@ -43,8 +43,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ENABLE_SUBSCRIPTION", "enable_subscription"),
     )
 
-    upi_id: str = "yourupi@okaxis"
-    whatsapp_number: str = "919876543210"
+    upi_id: str = "chandanregins1@okaxis"
+    whatsapp_number: str = "917892007580"
     whatsapp_message_template: str = (
         "Pay via UPI: {upi_id} and send screenshot on WhatsApp"
     )
