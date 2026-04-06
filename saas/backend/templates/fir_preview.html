@@ -206,8 +206,9 @@
     object-fit: contain;
     margin-top: 6px;
     border: none;
-    background: #fff;
-    /* Keep signature stroke dark/black against white paper-like cell. */
+    /* Blend with report cell — avoid white box behind signatures. */
+    background: transparent;
+    /* Keep signature stroke dark/black while preserving transparency. */
     filter: grayscale(100%) contrast(1.9) brightness(0.78);
   }
   .fir-logo-img { filter: grayscale(100%) contrast(1.12) !important; }
