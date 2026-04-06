@@ -4,7 +4,6 @@ import { workspaceFetch } from "../../api";
 
 type ManualRow = {
   partNumber: string;
-  description: string;
   quantity: string;
   invoiceNumber: string;
   date: string;
@@ -13,8 +12,15 @@ type ManualRow = {
 const MAX_ROWS = 3;
 
 function blankRow(): ManualRow {
-  return { partNumber: "", description: "", quantity: "", invoiceNumber: "", date: "" };
+  return { partNumber: "", quantity: "", invoiceNumber: "", date: "" };
 }
+
+type PartMasterRow = {
+  part_id: number;
+  part_no: string;
+  drawing_rev: string | null;
+  description: string | null;
+};
 
 function toDateInput(v: string): string {
   const s = (v || "").trim();
@@ -63,7 +69,6 @@ export default function ManualEntryPage() {
     return rows
       .map((r) => ({
         "Part Number": r.partNumber.trim(),
-        Description: r.description.trim(),
         Quantity: r.quantity.trim(),
         "Invoice Number": r.invoiceNumber.trim(),
         Date: fromDateInput(r.date),
@@ -84,10 +89,6 @@ export default function ManualEntryPage() {
       const r = sanitized[i];
       if (!r["Part Number"]) {
         setErr(`Row ${i + 1}: Part Number is required.`);
-        return;
-      }
-      if (!r.Description) {
-        setErr(`Row ${i + 1}: Description is required.`);
         return;
       }
       if (!r.Quantity) {
@@ -123,10 +124,35 @@ export default function ManualEntryPage() {
       if (!pre.ok && pre.reason === "no_customers") {
         throw new Error("Add at least one customer before creating FIR manually.");
       }
+      const parts = await workspaceFetch<PartMasterRow[]>("/api/app/parts");
+      const partMap = new Map(parts.map((p) => [p.part_no.trim().toLowerCase(), p]));
+      const missing: string[] = [];
+      const enrichedRows = sanitized.map((r) => {
+        const key = r["Part Number"].trim().toLowerCase();
+        const part = partMap.get(key);
+        if (!part) {
+          missing.push(r["Part Number"]);
+          return r;
+        }
+        const description = (part.description ?? "").trim();
+        const drawRev = (part.drawing_rev ?? "").trim();
+        return {
+          ...r,
+          Description: description,
+          "Draw Rev": drawRev,
+          draw_rev: drawRev,
+        };
+      });
+      if (missing.length) {
+        const uniq = Array.from(new Set(missing));
+        throw new Error(
+          `Part Number not found in Parts master: ${uniq.join(", ")}. Add these in Parts master first.`,
+        );
+      }
       nav("/workspace/extracted", {
         state: {
-          rows: sanitized,
-          columns: ["Part Number", "Description", "Quantity", "Invoice Number", "Date"],
+          rows: enrichedRows,
+          columns: ["Part Number", "Description", "Draw Rev", "Quantity", "Invoice Number", "Date"],
           filename: "Manual entry",
         },
       });
@@ -166,14 +192,6 @@ export default function ManualEntryPage() {
                   className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
                   value={r.partNumber}
                   onChange={(e) => updateRow(i, { partNumber: e.target.value })}
-                />
-              </label>
-              <label className="text-sm">
-                <span className="block text-slate-600">Description</span>
-                <input
-                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-                  value={r.description}
-                  onChange={(e) => updateRow(i, { description: e.target.value })}
                 />
               </label>
               <label className="text-sm">
