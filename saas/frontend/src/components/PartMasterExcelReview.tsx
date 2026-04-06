@@ -34,24 +34,34 @@ function AdTable({
   title,
   rows,
   onDeleteRow,
+  tableClass,
+  headRowClass,
+  bodyCellClass,
+  mutedCellClass,
+  noRowsClass,
 }: {
   title: string;
   rows: AdRow[];
   onDeleteRow?: (rowIndex: number) => void;
+  tableClass: string;
+  headRowClass: string;
+  bodyCellClass: string;
+  mutedCellClass: string;
+  noRowsClass: string;
 }) {
   if (!rows?.length) {
     return (
-      <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+      <div className={noRowsClass}>
         {title}: no rows
       </div>
     );
   }
   return (
-    <div className="overflow-x-auto rounded border border-slate-200">
-      <p className="border-b border-slate-200 bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{title}</p>
+    <div className={tableClass}>
+      <p className={`border-b px-2 py-1 text-xs font-semibold ${headRowClass}`}>{title}</p>
       <table className="min-w-full text-left text-xs">
         <thead>
-          <tr className="border-b border-slate-200 bg-white text-slate-600">
+          <tr className={`border-b ${headRowClass}`}>
             <th className="px-2 py-1">Parameter</th>
             <th className="px-2 py-1">Specification</th>
             <th className="px-2 py-1">Special char</th>
@@ -61,11 +71,11 @@ function AdTable({
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={i} className="border-b border-slate-100">
-              <td className="px-2 py-1 font-medium text-slate-800">{r.parameter}</td>
-              <td className="px-2 py-1 text-slate-700">{r.specification ?? "—"}</td>
-              <td className="px-2 py-1 text-slate-600">{r.special_char ?? "—"}</td>
-              <td className="px-2 py-1 text-slate-600">{r.method_of_inspection ?? "—"}</td>
+            <tr key={i} className={`border-b ${bodyCellClass}`}>
+              <td className={`px-2 py-1 font-medium ${bodyCellClass}`}>{r.parameter}</td>
+              <td className={`px-2 py-1 ${bodyCellClass}`}>{r.specification ?? "—"}</td>
+              <td className={`px-2 py-1 ${mutedCellClass}`}>{r.special_char ?? "—"}</td>
+              <td className={`px-2 py-1 ${mutedCellClass}`}>{r.method_of_inspection ?? "—"}</td>
               {onDeleteRow && (
                 <td className="px-2 py-1 text-right">
                   <button
@@ -93,6 +103,18 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
   }, [bundle]);
 
   const n = draft.parts?.length ?? 0;
+  const rootClass = "rounded-xl border border-slate-300 bg-white text-slate-900 shadow-2xl";
+  const headerClass = "border-b border-slate-300 bg-slate-50";
+  const partCardClass = "rounded-lg border border-slate-300 bg-slate-50 p-3";
+  const titleClass = "text-slate-900";
+  const subClass = "text-slate-700";
+  const mutedClass = "text-slate-600";
+  const tableWrapClass = "overflow-x-auto rounded border border-slate-300 bg-white";
+  const tableHeadClass = "border-slate-300 bg-slate-100 text-slate-800";
+  const tableBodyClass = "border-slate-200 text-slate-800";
+  const tableMutedClass = "text-slate-700";
+  const noRowsClass = "rounded border border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-700";
+  const footerClass = "border-t border-slate-300 bg-slate-100";
 
   function removePart(partIndex: number) {
     setDraft((prev) => {
@@ -125,23 +147,23 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
       <div
-        className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl border border-slate-200 bg-white shadow-xl"
+        className={`flex max-h-[90vh] w-full max-w-4xl flex-col ${rootClass}`}
         role="dialog"
         aria-labelledby="excel-review-title"
       >
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h2 id="excel-review-title" className="text-lg font-semibold text-slate-900">
+        <div className={`px-4 py-3 ${headerClass}`}>
+          <h2 id="excel-review-title" className={`text-lg font-semibold ${titleClass}`}>
             Review part master from Excel
           </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            File: <span className="font-mono text-slate-800">{fileLabel}</span> —{" "}
-            <strong className="text-slate-800">{n}</strong> part{n === 1 ? "" : "s"} will be saved (same rules as JSON
+          <p className={`mt-1 text-sm ${subClass}`}>
+            File: <span className="font-mono text-slate-900">{fileLabel}</span> —{" "}
+            <strong className="text-slate-900">{n}</strong> part{n === 1 ? "" : "s"} will be saved (same rules as JSON
             bundle: existing parts are updated; A–D rows replaced).
           </p>
-          <p className="mt-1 text-xs font-medium text-slate-600">
+          <p className={`mt-1 text-xs font-medium ${subClass}`}>
             Remove unwanted parts/rows here before saving.
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className={`mt-1 text-xs ${mutedClass}`}>
             Only <strong>specification / method</strong> columns are stored in part master — not invoice, qty, or
             measured values. Align your Excel with the template sheets (Parts, Section_A–D).
           </p>
@@ -156,9 +178,9 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
           ) : (
             <div className="space-y-6">
               {draft.parts.map((sl, idx) => (
-                <div key={`${sl.part.part_no}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+                <div key={`${sl.part.part_no}-${idx}`} className={partCardClass}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-slate-900">
+                    <h3 className={`text-sm font-semibold ${titleClass}`}>
                       Part <span className="font-mono text-blue-800">{sl.part.part_no}</span>
                     </h3>
                     <button
@@ -169,13 +191,13 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                       Remove part
                     </button>
                   </div>
-                  <dl className="mt-2 grid gap-1 text-xs text-slate-700 sm:grid-cols-2">
+                  <dl className={`mt-2 grid gap-1 text-xs ${subClass} sm:grid-cols-2`}>
                     <div>
-                      <dt className="text-slate-500">Drawing rev</dt>
+                      <dt className={mutedClass}>Drawing rev</dt>
                       <dd className="font-mono">{sl.part.drawing_rev || "—"}</dd>
                     </div>
                     <div className="sm:col-span-2">
-                      <dt className="text-slate-500">Description</dt>
+                      <dt className={mutedClass}>Description</dt>
                       <dd>{sl.part.description || "—"}</dd>
                     </div>
                   </dl>
@@ -184,15 +206,25 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                       title="Section A — dimensions"
                       rows={sl.spec_rows ?? []}
                       onDeleteRow={(rowIndex) => removeAdRow(idx, "spec_rows", rowIndex)}
+                      tableClass={tableWrapClass}
+                      headRowClass={tableHeadClass}
+                      bodyCellClass={tableBodyClass}
+                      mutedCellClass={tableMutedClass}
+                      noRowsClass={noRowsClass}
                     />
                     <AdTable
                       title="Section B — customer complaints / checkpoints"
                       rows={sl.ccp_rows ?? []}
                       onDeleteRow={(rowIndex) => removeAdRow(idx, "ccp_rows", rowIndex)}
+                      tableClass={tableWrapClass}
+                      headRowClass={tableHeadClass}
+                      bodyCellClass={tableBodyClass}
+                      mutedCellClass={tableMutedClass}
+                      noRowsClass={noRowsClass}
                     />
                     {sl.material_rows?.length ? (
-                      <div className="rounded border border-slate-200">
-                        <p className="border-b border-slate-200 bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                      <div className={tableWrapClass}>
+                        <p className={`border-b px-2 py-1 text-xs font-semibold ${tableHeadClass}`}>
                           Section C — material
                         </p>
                         <ul className="px-2 py-2 text-xs text-slate-800">
@@ -211,7 +243,7 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                         </ul>
                       </div>
                     ) : (
-                      <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                      <div className={noRowsClass}>
                         Section C — material: no rows
                       </div>
                     )}
@@ -219,6 +251,11 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                       title="Section D — surface coating"
                       rows={sl.coating_rows ?? []}
                       onDeleteRow={(rowIndex) => removeAdRow(idx, "coating_rows", rowIndex)}
+                      tableClass={tableWrapClass}
+                      headRowClass={tableHeadClass}
+                      bodyCellClass={tableBodyClass}
+                      mutedCellClass={tableMutedClass}
+                      noRowsClass={noRowsClass}
                     />
                   </div>
                 </div>
@@ -226,15 +263,15 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
             </div>
           )}
 
-          <details className="mt-4 rounded border border-slate-200 bg-white p-2">
-            <summary className="cursor-pointer text-xs font-medium text-slate-600">Raw JSON (advanced)</summary>
-            <pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-50 p-2 text-[10px] text-slate-800">
+          <details className="mt-4 rounded border border-slate-300 bg-white p-2">
+            <summary className={`cursor-pointer text-xs font-medium ${subClass}`}>Raw JSON (advanced)</summary>
+            <pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-100 p-2 text-[10px] text-slate-900">
               {JSON.stringify(draft, null, 2)}
             </pre>
           </details>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
+        <div className={`flex flex-wrap items-center justify-end gap-2 px-4 py-3 ${footerClass}`}>
           <button
             type="button"
             className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100"
