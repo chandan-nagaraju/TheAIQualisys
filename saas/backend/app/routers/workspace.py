@@ -186,6 +186,63 @@ def _read_upload_file(file: UploadFile | None) -> tuple[str, str, bytes] | None:
     return file.filename, mime, raw
 
 
+_MAX_QUALI_FONT_BYTES = 5 * 1024 * 1024
+
+
+def _read_quali_font_upload(file: UploadFile | None) -> tuple[str, str, bytes] | None:
+    """Accept .ttf only; used for FIR measured-value font (replaces bundled Quali_1)."""
+    tup = _read_upload_file(file)
+    if not tup:
+        return None
+    name, mime, raw = tup
+    if not name.lower().endswith(".ttf"):
+        raise HTTPException(status_code=400, detail="Quali font must be a .ttf file")
+    if len(raw) > _MAX_QUALI_FONT_BYTES:
+        raise HTTPException(status_code=400, detail=f"Font file too large (max {_MAX_QUALI_FONT_BYTES // (1024 * 1024)} MB)")
+    allowed = {
+        "font/ttf",
+        "application/x-font-ttf",
+        "application/x-font-truetype",
+        "application/octet-stream",
+        "application/font-sfnt",
+        "",
+    }
+    m = (mime or "").split(";")[0].strip().lower()
+    if m and m not in allowed:
+        raise HTTPException(status_code=400, detail="Unsupported font MIME type for .ttf upload")
+    return name, "font/ttf", raw
+
+
+def _quali_font_data_uri_from_settings(st: CompanySettings | None) -> tuple[str | None, str]:
+    """Return (data_uri, css_format) for company-uploaded Quali replacement, or (None, truetype)."""
+    if not st or not st.quali_font_blob:
+        return None, "truetype"
+    mime = (st.quali_font_mime or "font/ttf").split(";")[0].strip() or "font/ttf"
+    b64 = base64.b64encode(st.quali_font_blob).decode("ascii")
+    return f"data:{mime};base64,{b64}", "truetype"
+
+
+def _default_static_quali_font() -> tuple[str | None, str]:
+    """Bundled Quali_1 in backend static (first format found)."""
+    quali_font_data_uri = None
+    quali_font_format = "truetype"
+    for name, mime, fmt in [
+        ("Quali_1.woff2", "font/woff2", "woff2"),
+        ("Quali_1.woff", "font/woff", "woff"),
+        ("Quali_1.ttf", "font/ttf", "truetype"),
+    ]:
+        path = _BACKEND_STATIC / "fonts" / name
+        if path.is_file():
+            try:
+                data = base64.b64encode(path.read_bytes()).decode("ascii")
+                quali_font_data_uri = f"data:{mime};base64,{data}"
+                quali_font_format = fmt
+            except OSError:
+                pass
+            break
+    return quali_font_data_uri, quali_font_format
+
+
 def _settings_blob_data_uri(st: CompanySettings, field_name: str) -> str | None:
     blob = getattr(st, f"{field_name}_blob", None)
     if blob is not None:
@@ -291,6 +348,7 @@ def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
             "logo_url": None,
             "inspector_signature_url": None,
             "quality_signature_url": None,
+            "quali_font_configured": False,
         }
     return {
         "company_name": st.company_name or "",
@@ -301,6 +359,7 @@ def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
         "logo_url": _settings_blob_data_uri(st, "logo"),
         "inspector_signature_url": _settings_blob_data_uri(st, "inspector_signature"),
         "quality_signature_url": _settings_blob_data_uri(st, "quality_signature"),
+        "quali_font_configured": bool(st.quali_font_blob),
     }
 
 
@@ -316,6 +375,8 @@ async def save_settings(
     logo: UploadFile | None = File(None),
     inspector_signature: UploadFile | None = File(None),
     quality_signature: UploadFile | None = File(None),
+    quali_font: UploadFile | None = File(None),
+    clear_quali_font: str = Form(""),
 ):
     st = ws.db.execute(select(CompanySettings).where(CompanySettings.company_id == ws.company.id)).scalar_one_or_none()
     if not st:
@@ -347,6 +408,15 @@ async def save_settings(
         st.quality_signature_blob = raw
         st.quality_signature_mime = mime
         st.quality_signature_path = None
+
+    quali_payload = _read_quali_font_upload(quali_font)
+    if quali_payload:
+        _name, mime, raw = quali_payload
+        st.quali_font_blob = raw
+        st.quali_font_mime = mime
+    elif (clear_quali_font or "").strip().lower() in ("1", "true", "on", "yes"):
+        st.quali_font_blob = None
+        st.quali_font_mime = None
 
     ws.db.commit()
     return get_settings_api(request, ws)
@@ -1216,22 +1286,10 @@ def fir_preview(
                 .all()
             ]
 
-    quali_font_data_uri = None
-    quali_font_format = "truetype"
-    for name, mime, fmt in [
-        ("Quali_1.woff2", "font/woff2", "woff2"),
-        ("Quali_1.woff", "font/woff", "woff"),
-        ("Quali_1.ttf", "font/ttf", "truetype"),
-    ]:
-        path = _BACKEND_STATIC / "fonts" / name
-        if path.is_file():
-            try:
-                data = base64.b64encode(path.read_bytes()).decode("ascii")
-                quali_font_data_uri = f"data:{mime};base64,{data}"
-                quali_font_format = fmt
-            except OSError:
-                pass
-            break
+    st = db.execute(select(CompanySettings).where(CompanySettings.company_id == company.id)).scalar_one_or_none()
+    quali_font_data_uri, quali_font_format = _quali_font_data_uri_from_settings(st)
+    if not quali_font_data_uri:
+        quali_font_data_uri, quali_font_format = _default_static_quali_font()
 
     settings = _settings_dict_for_fir(db, company.id)
     api_static_base = str(request.base_url).rstrip("/") + "/api/app/static/"

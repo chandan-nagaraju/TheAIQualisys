@@ -10,12 +10,14 @@ type St = {
   logo_url: string | null;
   inspector_signature_url: string | null;
   quality_signature_url: string | null;
+  quali_font_configured: boolean;
 };
 
 export default function SettingsPage() {
   const [s, setS] = useState<St | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [clearQualiFont, setClearQualiFont] = useState(false);
 
   useEffect(() => {
     workspaceFetch<St>("/api/app/settings")
@@ -26,9 +28,11 @@ export default function SettingsPage() {
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    fd.set("clear_quali_font", clearQualiFont ? "1" : "");
     try {
       const saved = await workspaceFetch<St>("/api/app/settings", { method: "POST", body: fd });
       setS(saved);
+      setClearQualiFont(false);
       setErr(null);
       setOkMsg("Settings saved. Uploaded images are now shared for all users/devices.");
     } catch (e) {
@@ -117,6 +121,36 @@ export default function SettingsPage() {
                 <img src={s.quality_signature_url} alt="Quality signature" className="mt-3 h-20 w-full rounded bg-white object-contain p-1" />
               )}
             </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2 xl:col-span-3">
+              <label className="text-xs font-medium text-slate-600">FIR measured-values font (replaces Quali_1.ttf)</label>
+              <p className="mt-1 text-xs text-slate-500">
+                Upload a <strong>.ttf</strong> file. It is embedded in FIR previews and PDFs for measured values (same CSS family name{" "}
+                <code className="rounded bg-slate-100 px-1">Quali_1</code>). Max 5&nbsp;MB.
+              </p>
+              <input
+                name="quali_font"
+                type="file"
+                accept=".ttf,font/ttf,application/x-font-ttf"
+                className="mt-2 block w-full text-sm"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={clearQualiFont}
+                    onChange={(e) => setClearQualiFont(e.target.checked)}
+                  />
+                  Remove custom font (use bundled Quali_1 from server)
+                </label>
+                {s.quali_font_configured ? (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                    Custom font active
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-500">Using default bundled font when no file is uploaded.</span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -127,6 +161,7 @@ export default function SettingsPage() {
               <li>Use PNG/JPG images with transparent or white background.</li>
               <li>Click Save settings after selecting files.</li>
               <li>Images are shared for all users of your company.</li>
+              <li>Custom .ttf applies to FIR report measured-value fields everywhere that font is used.</li>
             </ul>
             <button type="submit" className="mt-4 w-full rounded bg-blue-700 px-4 py-2.5 text-sm font-medium text-white">
               Save settings

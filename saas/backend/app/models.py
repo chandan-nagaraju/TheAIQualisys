@@ -225,6 +225,8 @@ class CompanySettings(Base):
     inspector_signature_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
     quality_signature_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     quality_signature_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    quali_font_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    quali_font_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
     format_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
     issue_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
     doc_rev_no: Mapped[str | None] = mapped_column(String(64), nullable=True)
