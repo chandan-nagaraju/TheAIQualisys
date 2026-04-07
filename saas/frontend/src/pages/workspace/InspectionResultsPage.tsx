@@ -285,17 +285,11 @@ export default function InspectionResultsPage() {
       await Promise.all(workers);
 
       const zip = new JSZip();
-      const sizeNotes: string[] = [];
       for (let i = 0; i < n; i++) {
         const result = results[i];
         if (!result?.blob) throw new Error(`Report ${i + 1} produced no PDF data.`);
         const name = (result.filename || `FIR_${i + 1}.pdf`).replace(/[/\\]/g, "_");
         zip.file(name, result.blob);
-        if (result.sizeWarning === "over_200kb" && result.byteSize != null) {
-          sizeNotes.push(`${name}: ${Math.round(result.byteSize / 1024)} KB (above ~200 KB target)`);
-        } else if (result.sizeWarning === "under_100kb" && result.byteSize != null) {
-          sizeNotes.push(`${name}: ${Math.round(result.byteSize / 1024)} KB (below ~100 KB — OK if readable)`);
-        }
       }
 
       const blob = await zip.generateAsync({ type: "blob" });
@@ -324,13 +318,7 @@ export default function InspectionResultsPage() {
       }
       const q2 = await workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`);
       setFirQuota(q2);
-      let msg = `ZIP download started. Logged ${n} FIR report(s). Usage this month: ${q2.usage_this_month}${
-        q2.usage_limit != null ? ` / ${q2.usage_limit}` : " (unlimited)"
-      }.`;
-      if (sizeNotes.length) {
-        msg += ` Size notes: ${sizeNotes.slice(0, 5).join("; ")}${sizeNotes.length > 5 ? "…" : ""}`;
-      }
-      setBatchMsg(msg);
+      setBatchMsg("ZIP download started. Check your downloads folder.");
     } catch (e) {
       setBatchErr(e instanceof Error ? e.message : "ZIP build failed");
     } finally {
