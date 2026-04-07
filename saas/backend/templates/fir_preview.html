@@ -266,6 +266,11 @@
   const FIR_MATERIAL_DATA = {{ material_data | tojson | safe }} || [];
   const FIR_COATING_DATA = {{ coating_data | tojson | safe }} || [];
 
+  /** Tuned toward ~100–200 KB per PDF (raster); adjust if quality/size tradeoff shifts */
+  var FIR_PDF_JPEG_QUALITY = 0.72;
+  var FIR_PDF_CANVAS_SCALE = 1.12;
+  var FIR_PDF_IMG_JPEG = 0.72;
+
   const urlParams = new URLSearchParams(window.location.search);
   const partName = urlParams.get('partName');
   const description = urlParams.get('description');
@@ -674,7 +679,7 @@
           }
           ctx.putImageData(idata, 0, 0);
           img.dataset.firPdfOrigSrc = img.src;
-          img.src = c.toDataURL("image/jpeg", 0.76);
+          img.src = c.toDataURL("image/jpeg", FIR_PDF_IMG_JPEG);
         } catch (e) {
           /* tainted canvas (cross-origin without CORS) — keep original */
         }
@@ -705,6 +710,35 @@
     });
   }
 
+  /** Wait for Quali/custom fonts + logo/signature images before html2canvas capture */
+  function firWaitForAssets(root) {
+    root = root || document.getElementById("reportRoot");
+    if (!root) return Promise.resolve();
+    var fontWait =
+      typeof document.fonts !== "undefined" && document.fonts.ready
+        ? document.fonts.ready
+        : Promise.resolve();
+    return fontWait.then(function() {
+      var imgs = Array.prototype.slice.call(root.querySelectorAll("img"));
+      return Promise.all(
+        imgs.map(function(img) {
+          if (!img.getAttribute("src")) return Promise.resolve();
+          if (img.complete && img.naturalWidth) return Promise.resolve();
+          return new Promise(function(res) {
+            img.onload = function() { res(); };
+            img.onerror = function() { res(); };
+          });
+        })
+      );
+    }).then(function() {
+      return new Promise(function(res) {
+        requestAnimationFrame(function() {
+          requestAnimationFrame(res);
+        });
+      });
+    });
+  }
+
   // --- PDF Download ---
   var downloadBtn = document.getElementById("downloadPDF");
   if (downloadBtn) {
@@ -727,12 +761,14 @@
       if (autofillBtn) autofillBtn.style.display = "block";
     }
 
-    firPrepareImagesForPdf(el).then(function() {
+    firWaitForAssets(el).then(function() {
+      return firPrepareImagesForPdf(el);
+    }).then(function() {
       return html2pdf().set({
         margin: 0,
         filename: fileName,
-        image: { type: 'jpeg', quality: 0.76 },
-        html2canvas: { scale: 1.15, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
+        image: { type: 'jpeg', quality: FIR_PDF_JPEG_QUALITY },
+        html2canvas: { scale: FIR_PDF_CANVAS_SCALE, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
         pagebreak: { mode: ['css'] }
       }).from(el).save();
@@ -773,12 +809,14 @@
         if (autofillBtnEl) autofillBtnEl.style.display = "block";
       }
 
-      firPrepareImagesForPdf(el).then(function() {
+      firWaitForAssets(el).then(function() {
+        return firPrepareImagesForPdf(el);
+      }).then(function() {
         var worker = html2pdf().set({
           margin: 0,
           filename: fileName,
-          image: { type: 'jpeg', quality: 0.76 },
-          html2canvas: { scale: 1.15, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
+          image: { type: 'jpeg', quality: FIR_PDF_JPEG_QUALITY },
+          html2canvas: { scale: FIR_PDF_CANVAS_SCALE, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
           pagebreak: { mode: ['css'] }
         }).from(el);
@@ -792,7 +830,19 @@
         if (out && typeof out.then === 'function') {
           out.then(function(blob) {
             restoreUi();
-            resolve({ blob: blob, filename: fileName });
+            var n = blob && blob.size ? blob.size : 0;
+            var warn = "";
+            if (n > 200 * 1024) {
+              warn = "over_200kb";
+            } else if (n > 0 && n < 100 * 1024) {
+              warn = "under_100kb";
+            }
+            resolve({
+              blob: blob,
+              filename: fileName,
+              byteSize: n,
+              sizeWarning: warn || undefined
+            });
           }).catch(function(err) {
             restoreUi();
             reject(err);
@@ -815,6 +865,9 @@
       } catch (e) {
         return false;
       }
+    },
+    waitForAssets: function() {
+      return firWaitForAssets(document.getElementById('reportRoot'));
     },
     autoFillMeasuredValues: function() {
       autoFillMeasuredValues();

@@ -22,6 +22,19 @@ type FirQuota = {
   would_remain_after_n: number | null;
 };
 
+type FirPreviewApi = {
+  ready?: boolean;
+  waitForAssets?: () => Promise<void>;
+  generatePdfBlob?: () => Promise<{
+    blob: Blob;
+    filename: string;
+    byteSize?: number;
+    sizeWarning?: string;
+  }>;
+};
+
+const PDF_CONCURRENCY = 3;
+
 function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: string): Record<string, string> {
   const partName = String(r["Part Number"] ?? "").trim();
   const description = String(r["Description"] ?? "").trim() || "-";
@@ -55,6 +68,7 @@ export default function InspectionResultsPage() {
   const [err, setErr] = useState<string | null>(null);
   const iframeRefs = useRef<(HTMLIFrameElement | null)[]>([]);
   const previewsSectionRef = useRef<HTMLDivElement | null>(null);
+  const pdfDurationsRef = useRef<number[]>([]);
 
   const [embedsReady, setEmbedsReady] = useState(false);
   const [embedWaitTimedOut, setEmbedWaitTimedOut] = useState(false);
@@ -63,6 +77,13 @@ export default function InspectionResultsPage() {
   const [batchMsg, setBatchMsg] = useState<string | null>(null);
   const [batchErr, setBatchErr] = useState<string | null>(null);
   const [firQuota, setFirQuota] = useState<FirQuota | null>(null);
+  const [zipProgress, setZipProgress] = useState<{
+    current: number;
+    total: number;
+    label: string;
+    etaSec: number | null;
+    pct: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!st?.rows?.length) return;
@@ -107,7 +128,7 @@ export default function InspectionResultsPage() {
       let all = true;
       for (const f of frames) {
         try {
-          const api = f?.contentWindow?.FIR_PREVIEW_API;
+          const api = f?.contentWindow?.FIR_PREVIEW_API as FirPreviewApi | undefined;
           if (!api?.ready) {
             all = false;
             break;
@@ -171,22 +192,112 @@ export default function InspectionResultsPage() {
   const downloadAllZip = useCallback(async () => {
     if (!data?.rows.length) return;
     setBatchErr(null);
+    setBatchMsg(null);
+    pdfDurationsRef.current = [];
     setZipping(true);
+    const n = data.rows.length;
+    setZipProgress({
+      current: 0,
+      total: n,
+      label: "Preparing…",
+      etaSec: null,
+      pct: 0,
+    });
     try {
-      const n = data.rows.length;
       const q = await workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`);
       if (!q.allowed_for_n) {
         throw new Error(q.message || "Not allowed to record this many FIR reports under your plan.");
       }
-      const zip = new JSZip();
-      for (let i = 0; i < n; i++) {
+
+      const results: Array<{
+        blob: Blob;
+        filename: string;
+        byteSize?: number;
+        sizeWarning?: string;
+      }> = new Array(n);
+
+      let completed = 0;
+      let nextIndex = 0;
+
+      const updateProgress = (justFinishedMs: number | null) => {
+        completed += 1;
+        if (justFinishedMs != null && justFinishedMs > 0) {
+          const arr = pdfDurationsRef.current;
+          arr.push(justFinishedMs);
+          if (arr.length > 8) arr.shift();
+        }
+        const remaining = n - completed;
+        let etaSec: number | null = null;
+        if (remaining > 0 && pdfDurationsRef.current.length) {
+          const avg = pdfDurationsRef.current.reduce((a, b) => a + b, 0) / pdfDurationsRef.current.length;
+          etaSec = Math.max(0, Math.round((avg * remaining) / 1000));
+        } else if (remaining === 0) {
+          etaSec = 0;
+        }
+        const pct = n ? Math.round((completed / n) * 100) : 100;
+        setZipProgress({
+          current: completed,
+          total: n,
+          label: `Generating PDF ${completed}/${n}`,
+          etaSec,
+          pct,
+        });
+      };
+
+      setZipProgress({
+        current: 0,
+        total: n,
+        label: `Generating PDF 0/${n}`,
+        etaSec: null,
+        pct: 0,
+      });
+
+      async function runOne(i: number) {
         const f = iframeRefs.current[i];
-        const gen = f?.contentWindow?.FIR_PREVIEW_API?.generatePdfBlob;
+        const w = f?.contentWindow as (Window & { FIR_PREVIEW_API?: FirPreviewApi }) | null;
+        const api = w?.FIR_PREVIEW_API;
+        const gen = api?.generatePdfBlob;
         if (!gen) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
+        if (api?.waitForAssets) {
+          await api.waitForAssets();
+        }
+        const t0 = performance.now();
         const result = await gen();
+        const dt = performance.now() - t0;
+        results[i] = result;
+        updateProgress(dt);
+      }
+
+      const workers: Promise<void>[] = [];
+      const workerCount = Math.min(PDF_CONCURRENCY, n);
+      for (let w = 0; w < workerCount; w++) {
+        workers.push(
+          (async () => {
+            while (true) {
+              const i = nextIndex;
+              nextIndex += 1;
+              if (i >= n) break;
+              await runOne(i);
+            }
+          })(),
+        );
+      }
+      await Promise.all(workers);
+
+      const zip = new JSZip();
+      const sizeNotes: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const result = results[i];
+        if (!result?.blob) throw new Error(`Report ${i + 1} produced no PDF data.`);
         const name = (result.filename || `FIR_${i + 1}.pdf`).replace(/[/\\]/g, "_");
         zip.file(name, result.blob);
+        if (result.sizeWarning === "over_200kb" && result.byteSize != null) {
+          sizeNotes.push(`${name}: ${Math.round(result.byteSize / 1024)} KB (above ~200 KB target)`);
+        } else if (result.sizeWarning === "under_100kb" && result.byteSize != null) {
+          sizeNotes.push(`${name}: ${Math.round(result.byteSize / 1024)} KB (below ~100 KB — OK if readable)`);
+        }
       }
+
       const blob = await zip.generateAsync({ type: "blob" });
       const stamp = (data.current_date || "batch").replace(/\W+/g, "_");
       const a = document.createElement("a");
@@ -194,6 +305,7 @@ export default function InspectionResultsPage() {
       a.download = `FIR_reports_${stamp}.zip`;
       a.click();
       URL.revokeObjectURL(a.href);
+
       try {
         await workspaceFetch<{
           recorded: number;
@@ -212,15 +324,18 @@ export default function InspectionResultsPage() {
       }
       const q2 = await workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`);
       setFirQuota(q2);
-      setBatchMsg(
-        `ZIP download started. Logged ${n} FIR report(s). Usage this month: ${q2.usage_this_month}${
-          q2.usage_limit != null ? ` / ${q2.usage_limit}` : " (unlimited)"
-        }.`,
-      );
+      let msg = `ZIP download started. Logged ${n} FIR report(s). Usage this month: ${q2.usage_this_month}${
+        q2.usage_limit != null ? ` / ${q2.usage_limit}` : " (unlimited)"
+      }.`;
+      if (sizeNotes.length) {
+        msg += ` Size notes: ${sizeNotes.slice(0, 5).join("; ")}${sizeNotes.length > 5 ? "…" : ""}`;
+      }
+      setBatchMsg(msg);
     } catch (e) {
       setBatchErr(e instanceof Error ? e.message : "ZIP build failed");
     } finally {
       setZipping(false);
+      setZipProgress(null);
     }
   }, [data]);
 
@@ -281,8 +396,9 @@ export default function InspectionResultsPage() {
         <p className="mt-1 text-xs text-slate-600">
           Each row has a <strong>live FIR preview</strong> below (same page as this table).{" "}
           <strong>Auto-fill all</strong> fills those previews in place — scroll down to see measured values. The ZIP is built
-          from those same previews. <strong>Preview FIR</strong> in the table opens a <em>new</em> browser tab with a fresh
-          copy (it will not show batch auto-fill unless you click auto-fill there too).
+          from those same previews (up to {PDF_CONCURRENCY} PDFs at a time for speed). <strong>Preview FIR</strong> in the
+          table opens a <em>new</em> browser tab with a fresh copy (it will not show batch auto-fill unless you click
+          auto-fill there too).
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
@@ -298,11 +414,28 @@ export default function InspectionResultsPage() {
             type="button"
             disabled={!autofillApplied || zipping || (firQuota != null && !firQuota.allowed_for_n)}
             className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+            aria-busy={zipping}
             onClick={() => void downloadAllZip()}
           >
             {zipping ? "Building ZIP…" : "Download all reports as ZIP"}
           </button>
         </div>
+        {zipProgress && (
+          <div className="mt-3 rounded-md border border-slate-200 bg-white p-3" role="status" aria-live="polite">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700">
+              <span className="font-medium">{zipProgress.label}</span>
+              {zipProgress.etaSec != null && zipProgress.current < zipProgress.total ? (
+                <span className="text-slate-600">About {zipProgress.etaSec}s remaining</span>
+              ) : null}
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-full rounded-full bg-green-600 transition-[width] duration-200"
+                style={{ width: `${zipProgress.pct}%` }}
+              />
+            </div>
+          </div>
+        )}
         {!embedsReady && !embedWaitTimedOut && (
           <p className="mt-2 text-xs text-amber-800">Loading FIR previews below…</p>
         )}
@@ -359,7 +492,6 @@ export default function InspectionResultsPage() {
         </table>
       </div>
 
-      {/* Visible iframes: same DOM instances used for auto-fill + ZIP (not the off-screen copies) */}
       <div ref={previewsSectionRef} className="mt-10 border-t border-slate-200 pt-8">
         <h2 className="text-lg font-semibold text-slate-900">Live FIR previews</h2>
         <p className="mt-1 text-sm text-slate-600">
