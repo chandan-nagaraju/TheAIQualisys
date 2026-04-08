@@ -1,6 +1,7 @@
 /**
  * Vector brand: circuit-style Q (+ optional TheAIQualisys wordmark).
  * Icon paths match the master SVG Q group; wordmark is HTML for responsive typography.
+ * Icon box uses 1em so height matches the wordmark font size on the same flex row.
  */
 type BrandLogoProps = {
   className?: string;
@@ -9,12 +10,11 @@ type BrandLogoProps = {
   wordmark?: boolean;
 };
 
-/** Q icon from brand master (stroke ring, tail, circuit lines); `currentColor` for theme. */
-function QMarkIcon({ size }: { size: "md" | "lg" }) {
-  const iconBox = size === "lg" ? "h-12 w-12 sm:h-14 sm:w-14" : "h-8 w-8 sm:h-9 sm:w-9";
+/** Q icon from brand master (stroke ring, tail, circuit lines); size via parent `font-size` + `h-[1em] w-[1em]`. */
+function QMarkIcon({ className }: { className?: string }) {
   return (
     <svg
-      className={`shrink-0 ${iconBox}`}
+      className={`h-[1em] w-[1em] shrink-0 ${className ?? ""}`}
       viewBox="0 0 140 140"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -41,17 +41,21 @@ export default function BrandLogo({ className = "", size = "md", wordmark = true
       : "text-lg font-bold tracking-tight";
 
   if (!wordmark) {
+    const shellClass =
+      size === "lg"
+        ? `inline-flex items-center text-xl font-bold sm:text-2xl ${className}`
+        : `inline-flex items-center text-base font-semibold sm:text-lg ${className}`;
     return (
-      <span className={`inline-flex items-center ${className}`}>
-        <QMarkIcon size={size} />
+      <span className={shellClass}>
+        <QMarkIcon />
       </span>
     );
   }
 
   return (
-    <span className={`inline-flex items-center gap-2 sm:gap-2.5 ${className}`}>
-      <QMarkIcon size={size} />
-      <span className={`leading-none select-none ${textClass}`}>TheAIQualisys</span>
+    <span className={`inline-flex items-center gap-2 sm:gap-2.5 ${textClass} ${className}`}>
+      <QMarkIcon />
+      <span className="leading-none select-none">TheAIQualisys</span>
     </span>
   );
 }
