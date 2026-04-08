@@ -1,5 +1,6 @@
 /**
- * Vector brand: circuit-style Q (+ optional TheAIQualisys wordmark). SVG uses currentColor.
+ * Vector brand: circuit-style Q (+ optional TheAIQualisys wordmark).
+ * Icon paths match the master SVG Q group; wordmark is HTML for responsive typography.
  */
 type BrandLogoProps = {
   className?: string;
@@ -8,31 +9,27 @@ type BrandLogoProps = {
   wordmark?: boolean;
 };
 
+/** Q icon from brand master (stroke ring, tail, circuit lines); `currentColor` for theme. */
 function QMarkIcon({ size }: { size: "md" | "lg" }) {
   const iconBox = size === "lg" ? "h-12 w-12 sm:h-14 sm:w-14" : "h-8 w-8 sm:h-9 sm:w-9";
   return (
     <svg
       className={`shrink-0 ${iconBox}`}
-      viewBox="0 0 64 56"
+      viewBox="0 0 140 140"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <circle cx="7" cy="17" r="2.5" fill="currentColor" />
-      <path
-        d="M10 17h12M7 28h14M7 39h11"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
-      <circle cx="7" cy="28" r="2.5" fill="currentColor" />
-      <circle cx="7" cy="39" r="2.5" fill="currentColor" />
-      <path
-        fill="currentColor"
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M38 9a17 17 0 1 1 0 34 17 17 0 0 1 0-34zm0 9a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm7.5 19.5l14 16.5h-9l-9-10.5a17 17 0 0 0 4-6z"
-      />
+      <g transform="translate(20, 20)" stroke="currentColor" fill="currentColor">
+        <circle cx="60" cy="60" r="50" strokeWidth="10" fill="none" />
+        <line x1="90" y1="90" x2="115" y2="115" strokeWidth="10" strokeLinecap="round" />
+        <line x1="10" y1="45" x2="55" y2="45" strokeWidth="6" strokeLinecap="round" />
+        <circle cx="55" cy="45" r="4" />
+        <line x1="10" y1="60" x2="40" y2="60" strokeWidth="6" strokeLinecap="round" />
+        <circle cx="40" cy="60" r="4" />
+        <line x1="10" y1="75" x2="50" y2="75" strokeWidth="6" strokeLinecap="round" />
+        <circle cx="50" cy="75" r="4" />
+      </g>
     </svg>
   );
 }
