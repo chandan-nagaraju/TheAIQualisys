@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { setWorkspaceCustomerId } from "../api";
 import HeaderBackButton from "../components/HeaderBackButton";
 import ThemeSwitcher from "../components/ThemeSwitcher";
@@ -6,8 +6,10 @@ import { exitTenantImpersonation, isTenantImpersonation } from "../impersonation
 import { useTheme } from "../theme/ThemeContext";
 
 export default function WorkspaceLayout() {
+  const loc = useLocation();
   const nav = useNavigate();
   const { theme } = useTheme();
+  const isWorkspaceHub = loc.pathname === "/workspace/dashboard";
 
   function logout() {
     if (isTenantImpersonation()) {
@@ -70,16 +72,15 @@ export default function WorkspaceLayout() {
   return (
     <div className={`flex min-h-screen flex-col ${shell}`}>
       <header className={`border-b ${headerBar}`}>
-        <div className="mx-auto flex w-full max-w-7xl flex-nowrap items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            <HeaderBackButton />
+        <div className="mx-auto flex w-full max-w-7xl flex-nowrap items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4">
+          <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
             <Link to="/workspace/dashboard" className={`text-lg font-semibold ${titleCls}`}>
               FIR Automation
             </Link>
             <ThemeSwitcher />
           </div>
           <nav
-            className={`ml-auto flex w-fit max-w-full flex-nowrap items-center justify-end gap-1 overflow-x-auto whitespace-nowrap ${navWrap}`}
+            className={`ml-auto flex min-w-0 max-w-full flex-1 flex-nowrap items-center justify-end gap-1 overflow-x-auto whitespace-nowrap ${navWrap}`}
           >
             <NavLink to="/dashboard" className={navCls}>
               QMS dashboard
@@ -94,6 +95,11 @@ export default function WorkspaceLayout() {
               Log out
             </button>
           </nav>
+          {!isWorkspaceHub ? (
+            <div className="flex shrink-0">
+              <HeaderBackButton />
+            </div>
+          ) : null}
         </div>
       </header>
       <main className="app-outlet mx-auto w-full max-w-7xl flex-1 px-3 py-6 sm:px-4 sm:py-8 lg:px-6">
