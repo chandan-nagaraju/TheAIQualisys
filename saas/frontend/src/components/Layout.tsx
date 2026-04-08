@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { setWorkspaceCustomerId } from "../api";
 import { exitTenantImpersonation, isTenantImpersonation } from "../impersonation";
+import HeaderBackButton from "./HeaderBackButton";
 import ThemeSwitcher from "./ThemeSwitcher";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -106,12 +107,15 @@ export default function Layout() {
       <header className={`border-b ${headerBar}`}>
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4 sm:py-4">
           <div className="flex w-full min-w-0 items-center justify-between gap-3 sm:w-auto sm:flex-wrap sm:justify-start sm:gap-4">
-            <Link
-              to={isAdminRoute && adminTok ? "/admin" : "/"}
-              className={`text-lg font-semibold tracking-tight ${brand}`}
-            >
-              TheAIQualisys
-            </Link>
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <HeaderBackButton />
+              <Link
+                to={isAdminRoute && adminTok ? "/admin" : "/"}
+                className={`text-lg font-semibold tracking-tight ${brand}`}
+              >
+                TheAIQualisys
+              </Link>
+            </div>
             <ThemeSwitcher />
           </div>
           <nav

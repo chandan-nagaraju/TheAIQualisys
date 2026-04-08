@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { setWorkspaceCustomerId } from "../api";
+import HeaderBackButton from "../components/HeaderBackButton";
 import ThemeSwitcher from "../components/ThemeSwitcher";
 import { exitTenantImpersonation, isTenantImpersonation } from "../impersonation";
 import { useTheme } from "../theme/ThemeContext";
@@ -70,7 +71,8 @@ export default function WorkspaceLayout() {
     <div className={`flex min-h-screen flex-col ${shell}`}>
       <header className={`border-b ${headerBar}`}>
         <div className="mx-auto flex w-full max-w-7xl flex-nowrap items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <HeaderBackButton />
             <Link to="/workspace/dashboard" className={`text-lg font-semibold ${titleCls}`}>
               FIR Automation
             </Link>
