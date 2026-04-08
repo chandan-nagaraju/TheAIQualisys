@@ -73,14 +73,12 @@ export default function WorkspaceLayout() {
   return (
     <div className={`flex min-h-screen flex-col ${shell}`}>
       <header className={`border-b ${headerBar}`}>
-        <div className="mx-auto flex w-full max-w-7xl flex-nowrap items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4">
-          <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
-            <Link to="/workspace/dashboard" className={`inline-flex min-w-0 items-center gap-2 ${titleCls}`}>
-              <BrandLogo wordmark={false} />
-              <span className="whitespace-nowrap text-lg font-semibold leading-none">FIR Automation</span>
-            </Link>
-            <ThemeSwitcher />
-          </div>
+        <div className="mx-auto flex w-full max-w-7xl flex-nowrap items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3">
+          <Link to="/workspace/dashboard" className={`inline-flex min-w-0 shrink-0 items-center gap-2 ${titleCls}`}>
+            <BrandLogo wordmark={false} />
+            <span className="whitespace-nowrap text-base font-semibold leading-none sm:text-lg">FIR Automation</span>
+          </Link>
+          <ThemeSwitcher />
           <nav
             className={`ml-auto flex min-w-0 max-w-full flex-1 flex-nowrap items-center justify-end gap-1 overflow-x-auto whitespace-nowrap ${navWrap}`}
           >
@@ -97,11 +95,7 @@ export default function WorkspaceLayout() {
               Log out
             </button>
           </nav>
-          {!isWorkspaceHub ? (
-            <div className="flex shrink-0">
-              <HeaderBackButton />
-            </div>
-          ) : null}
+          {!isWorkspaceHub ? <HeaderBackButton /> : null}
         </div>
       </header>
       <main className="app-outlet mx-auto w-full max-w-7xl flex-1 px-3 py-6 sm:px-4 sm:py-8 lg:px-6">

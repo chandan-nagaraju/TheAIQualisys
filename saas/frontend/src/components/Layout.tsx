@@ -107,19 +107,16 @@ export default function Layout() {
   return (
     <div className={`flex min-h-screen flex-col ${shell}`}>
       <header className={`border-b ${headerBar}`}>
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4 sm:py-4">
-          <div className="flex w-full min-w-0 items-center justify-between gap-3 sm:w-auto sm:flex-wrap sm:justify-start sm:gap-4">
-            <Link
-              to={isAdminRoute && adminTok ? "/admin" : "/"}
-              className={`inline-flex min-w-0 items-center ${brand}`}
-            >
-              <BrandLogo />
-            </Link>
-            <ThemeSwitcher />
-          </div>
-          <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+        <div className="mx-auto flex w-full max-w-6xl flex-nowrap items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3">
+          <Link
+            to={isAdminRoute && adminTok ? "/admin" : "/"}
+            className={`inline-flex min-w-0 shrink-0 items-center ${brand}`}
+          >
+            <BrandLogo />
+          </Link>
+          <ThemeSwitcher />
           <nav
-            className={`flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto whitespace-nowrap scrollbar-thin sm:flex-nowrap ${navWrap}`}
+            className={`ml-auto flex min-w-0 max-w-full flex-1 items-center justify-end gap-1 overflow-x-auto whitespace-nowrap scrollbar-thin ${navWrap}`}
           >
             {isAdminRoute && adminTok ? (
               <>
@@ -175,12 +172,7 @@ export default function Layout() {
               </>
             )}
           </nav>
-          {!isLandingHome ? (
-            <div className="flex shrink-0 justify-end sm:justify-end">
-              <HeaderBackButton />
-            </div>
-          ) : null}
-          </div>
+          {!isLandingHome ? <HeaderBackButton /> : null}
         </div>
       </header>
       {showImpersonationStrip ? (
