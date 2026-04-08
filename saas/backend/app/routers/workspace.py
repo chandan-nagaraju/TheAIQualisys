@@ -7,6 +7,7 @@ from __future__ import annotations
 import base64
 import mimetypes
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -496,6 +497,18 @@ def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
     ws.db.commit()
     ws.db.refresh(p)
     return {"part_id": p.id, "part_no": p.part_no, "drawing_rev": p.drawing_rev, "description": p.description}
+
+
+@router.delete("/parts/{part_id}")
+def delete_part(part_id: int, ws: WsContext = Depends(get_ws)):
+    """Remove a part and its A–D rows (cascade); delete drawing files on disk if present."""
+    p = _get_part(ws, part_id)
+    folder = _upload_root() / "parts" / str(ws.company.id) / str(part_id)
+    if folder.is_dir():
+        shutil.rmtree(folder, ignore_errors=True)
+    ws.db.delete(p)
+    ws.db.commit()
+    return {"ok": True, "part_id": part_id}
 
 
 def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:

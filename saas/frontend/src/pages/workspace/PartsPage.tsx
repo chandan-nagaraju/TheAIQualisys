@@ -30,6 +30,7 @@ export default function PartsPage() {
   const [pendingExcelBundle, setPendingExcelBundle] = useState<PartMasterBundle | null>(null);
   const [pendingExcelLabel, setPendingExcelLabel] = useState("");
   const [excelBusy, setExcelBusy] = useState(false);
+  const [deleteBusyId, setDeleteBusyId] = useState<number | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const excelRef = useRef<HTMLInputElement>(null);
 
@@ -218,6 +219,31 @@ export default function PartsPage() {
     setDescription("");
     setRevisionReason("");
     setPendingPdf(null);
+  }
+
+  async function deletePartRow(r: Row) {
+    if (
+      !window.confirm(
+        `Delete part "${r.part_no}" and all Section A–D data for it? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setErr(null);
+    setImportMsg(null);
+    setDeleteBusyId(r.part_id);
+    try {
+      await workspaceFetch<{ ok: boolean }>(`/api/app/parts/${r.part_id}`, { method: "DELETE" });
+      if (editingPartId === r.part_id) {
+        cancelEdit();
+      }
+      setImportMsg(`Deleted part “${r.part_no}”.`);
+      await load();
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "Delete failed");
+    } finally {
+      setDeleteBusyId(null);
+    }
   }
 
   async function viewDrawing(partId: number) {
@@ -499,13 +525,23 @@ export default function PartsPage() {
                     </button>
                   </td>
                   <td className="px-3 py-2">
-                    <button
-                      type="button"
-                      className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50"
-                      onClick={() => startEdit(r)}
-                    >
-                      Edit
-                    </button>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <button
+                        type="button"
+                        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50"
+                        onClick={() => startEdit(r)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        disabled={deleteBusyId === r.part_id}
+                        onClick={() => void deletePartRow(r)}
+                      >
+                        {deleteBusyId === r.part_id ? "Deleting…" : "Delete"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
