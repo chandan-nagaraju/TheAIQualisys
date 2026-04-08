@@ -70,7 +70,7 @@ export default function ThemeSwitcher() {
         : "text-slate-400 hover:text-white hover:bg-slate-800/80";
 
   return (
-    <div className={`flex shrink-0 rounded-lg border p-0.5 ${wrap}`} role="group" aria-label="Color theme">
+    <div className={`flex shrink-0 rounded-md border p-px ${wrap}`} role="group" aria-label="Color theme">
       {OPTIONS.map(({ id, label, title }) => {
         const Icon = ICONS[id];
         return (
@@ -80,7 +80,7 @@ export default function ThemeSwitcher() {
             aria-pressed={theme === id}
             aria-label={label}
             title={title}
-            className={`rounded-md p-1.5 transition-colors sm:p-2 ${theme === id ? active : idle}`}
+            className={`rounded-[5px] p-1 transition-colors sm:p-1.5 ${theme === id ? active : idle}`}
             onClick={() => setTheme(id)}
           >
             <Icon className="h-4 w-4 sm:h-[1.125rem] sm:w-[1.125rem]" />

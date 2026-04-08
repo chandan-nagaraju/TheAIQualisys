@@ -73,14 +73,16 @@ export default function WorkspaceLayout() {
   return (
     <div className={`flex min-h-screen flex-col ${shell}`}>
       <header className={`border-b ${headerBar}`}>
-        <div className="mx-auto flex w-full max-w-7xl flex-nowrap items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3">
-          <Link to="/workspace/dashboard" className={`inline-flex min-w-0 shrink-0 items-center gap-2 ${titleCls}`}>
-            <BrandLogo wordmark={false} />
-            <span className="whitespace-nowrap text-base font-semibold leading-none sm:text-lg">FIR Automation</span>
-          </Link>
-          <ThemeSwitcher />
+        <div className="mx-auto flex w-full max-w-6xl flex-nowrap items-center gap-2 px-2 py-1.5 sm:gap-2 sm:px-3 sm:py-2">
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
+            <Link to="/workspace/dashboard" className={`inline-flex min-w-0 items-center gap-2 ${titleCls}`}>
+              <BrandLogo wordmark={false} />
+              <span className="whitespace-nowrap text-base font-semibold leading-none sm:text-lg">FIR Automation</span>
+            </Link>
+            <ThemeSwitcher />
+          </div>
           <nav
-            className={`ml-auto flex min-w-0 max-w-full flex-1 flex-nowrap items-center justify-end gap-1 overflow-x-auto whitespace-nowrap ${navWrap}`}
+            className={`ml-auto flex min-w-0 max-w-[min(100%,78vw)] shrink-0 flex-nowrap items-center justify-end gap-0.5 overflow-x-auto whitespace-nowrap sm:max-w-none ${navWrap}`}
           >
             <NavLink to="/dashboard" className={navCls}>
               QMS dashboard
