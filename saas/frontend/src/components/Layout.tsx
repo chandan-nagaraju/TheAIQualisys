@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { setWorkspaceCustomerId } from "../api";
 import { exitTenantImpersonation, isTenantImpersonation } from "../impersonation";
+import BrandLogo from "./BrandLogo";
 import HeaderBackButton from "./HeaderBackButton";
 import ThemeSwitcher from "./ThemeSwitcher";
 import { useTheme } from "../theme/ThemeContext";
@@ -110,9 +111,9 @@ export default function Layout() {
           <div className="flex w-full min-w-0 items-center justify-between gap-3 sm:w-auto sm:flex-wrap sm:justify-start sm:gap-4">
             <Link
               to={isAdminRoute && adminTok ? "/admin" : "/"}
-              className={`text-lg font-semibold tracking-tight ${brand}`}
+              className={`inline-flex min-w-0 items-center ${brand}`}
             >
-              TheAIQualisys
+              <BrandLogo />
             </Link>
             <ThemeSwitcher />
           </div>

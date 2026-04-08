@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
 import { QMS_MODULES } from "../moduleCatalog";
+import BrandLogo from "../components/BrandLogo";
 import { useTheme } from "../theme/ThemeContext";
 
 type Plan = {
@@ -62,7 +63,12 @@ export default function LandingPage() {
   return (
     <div className="space-y-20 pb-16">
       <section className="text-center">
-        <p className="text-sm font-medium uppercase tracking-[0.2em] text-brand-500">TheAIQualisys</p>
+        <div className="flex justify-center">
+          <BrandLogo
+            size="lg"
+            className={theme === "dark" ? "text-white" : theme === "grey" ? "text-zinc-900" : "text-slate-900"}
+          />
+        </div>
         <h1 className={heroTitleClass}>
           AI-Powered Quality Management System
         </h1>
