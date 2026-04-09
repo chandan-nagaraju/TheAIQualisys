@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import QRCode from "qrcode";
 import { Link, useLocation } from "react-router-dom";
 import { apiFetch } from "../api";
 import { useTheme } from "../theme/ThemeContext";
@@ -7,20 +6,15 @@ import { useTheme } from "../theme/ThemeContext";
 type UpgradeInfo = { upi_id: string; whatsapp_url: string; message: string };
 type PlanInfo = { plan_type: string; name: string; price_inr: number };
 
+type BillingCycle = "monthly" | "annual";
+
 export default function UpgradePage() {
   const loc = useLocation();
   const [info, setInfo] = useState<UpgradeInfo | null>(null);
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [qrTick, setQrTick] = useState(0);
-  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const { theme } = useTheme();
-
-  const wantsAnnual = useMemo(() => {
-    const q = new URLSearchParams(loc.search);
-    const b = (q.get("billing") || "").toLowerCase();
-    return b === "annual" || b === "yearly" || b === "1";
-  }, [loc.search]);
 
   const selected = useMemo(() => {
     const q = new URLSearchParams(loc.search);
@@ -50,6 +44,14 @@ export default function UpgradePage() {
   }, [plans, loc.search]);
 
   useEffect(() => {
+    const q = new URLSearchParams(loc.search);
+    const b = (q.get("billing") || "").toLowerCase();
+    if (b === "annual" || b === "yearly" || b === "1") {
+      setBillingCycle("annual");
+    }
+  }, [loc.search]);
+
+  useEffect(() => {
     (async () => {
       try {
         const [upgradeInfo, planRows] = await Promise.all([
@@ -64,10 +66,7 @@ export default function UpgradePage() {
     })();
   }, []);
 
-  useEffect(() => {
-    const id = window.setInterval(() => setQrTick((n) => n + 1), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
+  const isAnnual = billingCycle === "annual";
 
   const t = {
     card:
@@ -104,19 +103,30 @@ export default function UpgradePage() {
           : "border-slate-700 bg-slate-950/50",
     modulesHeading: theme === "dark" ? "text-white" : "text-slate-900",
     modulesBody: theme === "dark" ? "text-slate-300" : "text-slate-600",
+    toggleWrap:
+      theme === "light"
+        ? "rounded-xl border border-slate-200 bg-slate-100/80 p-1"
+        : theme === "grey"
+          ? "rounded-xl border border-zinc-300 bg-zinc-200/80 p-1"
+          : "rounded-xl border border-slate-600 bg-slate-800/80 p-1",
+    toggleActive: theme === "dark" ? "bg-slate-700 text-white shadow" : "bg-white text-slate-900 shadow",
+    toggleIdle:
+      theme === "dark" ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900",
   };
 
   const selectedPlanText = selected
     ? `${selected.planName}${selected.planType ? ` (${selected.planType})` : ""}`
     : null;
-  const selectedAmountText = selected?.price != null ? `₹${selected.price}/month` : null;
+  const selectedAmountText = selected?.price != null ? `₹${selected.price.toLocaleString("en-IN")}/month` : null;
+  const annualTotalText =
+    selected?.price != null ? `₹${(selected.price * 11).toLocaleString("en-IN")}` : null;
 
   const whatsappHref = useMemo(() => {
     if (!info) return "";
     try {
       const u = new URL(info.whatsapp_url);
       if (!selected) {
-        if (wantsAnnual) {
+        if (isAnnual) {
           u.searchParams.set(
             "text",
             [
@@ -129,14 +139,15 @@ export default function UpgradePage() {
         return u.toString();
       }
       const annualBit =
-        wantsAnnual && selected.price != null
-          ? ` I want annual prepay: ₹${selected.price}/month × 11 = ₹${selected.price * 11} for 12 months (same usage caps).`
-          : wantsAnnual
-            ? " I want annual prepay (11 months paid for 12 months on this plan)."
-            : "";
+        isAnnual && selected.price != null
+          ? ` Billing: annual prepay ₹${selected.price}/month × 11 = ₹${selected.price * 11} for 12 months (same usage caps).`
+          : isAnnual
+            ? " Billing: annual prepay (11 months for 12 months on this plan)."
+            : selected.price != null
+              ? ` Billing: monthly ₹${selected.price}/month.`
+              : "";
       const msgParts = [
         `I have chosen the ${selected.planName} plan${selected.planType ? ` (${selected.planType})` : ""}.`,
-        selected.price != null ? `Plan amount: ₹${selected.price}/month.` : "",
         annualBit,
         `I will pay to UPI: ${info.upi_id}.`,
         "Please share activation confirmation after payment screenshot.",
@@ -146,70 +157,20 @@ export default function UpgradePage() {
     } catch {
       return info.whatsapp_url;
     }
-  }, [info, selected, wantsAnnual]);
-
-  const upiPayload = useMemo(() => {
-    if (!info) return "";
-    const q = new URLSearchParams();
-    q.set("pa", info.upi_id);
-    q.set("pn", "TheAIQualisys");
-    q.set("cu", "INR");
-    if (selected?.price != null) {
-      const amount = wantsAnnual ? selected.price * 11 : selected.price;
-      q.set("am", String(amount));
-    }
-    if (selected?.planName) {
-      const label = wantsAnnual ? "Annual FIR" : "Subscription";
-      q.set(
-        "tn",
-        `${label} ${selected.planName}${selected.planType ? ` (${selected.planType})` : ""} #${Date.now()}`,
-      );
-    } else {
-      q.set("tn", wantsAnnual ? `FIR annual prepay #${Date.now()}` : `Subscription payment #${Date.now()}`);
-    }
-    return `upi://pay?${q.toString()}`;
-  }, [info, selected, wantsAnnual, qrTick]);
-
-  const qrImageUrl = useMemo(() => {
-    if (!upiPayload) return "";
-    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(upiPayload)}`;
-  }, [upiPayload]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!upiPayload) {
-      setQrDataUrl("");
-      return;
-    }
-    QRCode.toDataURL(upiPayload, {
-      width: 280,
-      margin: 1,
-      errorCorrectionLevel: "M",
-    })
-      .then((url) => {
-        if (!cancelled) setQrDataUrl(url);
-      })
-      .catch(() => {
-        if (!cancelled) setQrDataUrl("");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [upiPayload]);
+  }, [info, selected, isAnnual]);
 
   return (
     <div className={`mx-auto w-full max-w-3xl rounded-2xl border p-5 shadow-sm sm:p-7 ${t.card}`}>
       <h1 className={`text-2xl font-semibold sm:text-3xl ${t.title}`}>Upgrade (manual payment)</h1>
       <p className={`mt-2 text-sm leading-relaxed sm:text-base ${t.lead}`}>
-        We use a simple UPI + WhatsApp flow. After you pay, send the screenshot on WhatsApp; our admin activates your
-        subscription.
+        Pay via UPI to the ID below, then send the screenshot on WhatsApp; our admin activates your subscription.
       </p>
 
       <div className={`mt-6 rounded-xl border p-4 sm:p-5 ${t.modulesBox}`}>
         <h2 className={`text-base font-semibold sm:text-lg ${t.modulesHeading}`}>Your modules &amp; pricing</h2>
         <p className={`mt-2 text-sm leading-relaxed ${t.modulesBody}`}>
           <strong className={theme === "dark" ? "text-slate-100" : "text-slate-800"}>FIR Automation</strong> — usage-based
-          monthly plans (invoice + FIR report caps). Review plans and start checkout from the FIR pricing page.
+          monthly plans (invoice + FIR report caps). Pick a plan on the pricing page, then return here to complete payment.
         </p>
         <Link
           to="/workspace/pricing"
@@ -222,72 +183,85 @@ export default function UpgradePage() {
       {err && <p className={`mt-4 text-sm ${t.err}`}>{err}</p>}
       {info && (
         <div className="mt-6 space-y-4 sm:mt-8">
-          {wantsAnnual && (
-            <div className="rounded-xl border border-teal-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3 text-sm text-teal-950">
-              <strong>Annual prepay:</strong> pay for <strong>11 months</strong> to cover <strong>12 months</strong> on the
-              same FIR plan limits. Choose a plan below or open WhatsApp — we confirm the total before you pay.
-            </div>
-          )}
-          {/* Visible marker so users can confirm this is the new QR-enabled upgrade page. */}
-          <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
-            QR payment mode enabled
-          </div>
-          {selected && (
+          {selected && selected.price != null && (
             <div className={`rounded-xl border p-4 sm:p-5 ${t.selectedBox}`}>
               <p className={`text-xs uppercase tracking-wide ${t.selectedTitle}`}>Selected plan</p>
               <p className={`mt-1 text-base font-semibold sm:text-lg ${t.selectedText}`}>{selectedPlanText}</p>
-              {selectedAmountText && (
-                <p className={`mt-1 text-sm font-medium sm:text-base ${t.selectedText}`}>
-                  You have chosen the plan with rate: <strong>{selectedAmountText}</strong>.
-                  {wantsAnnual && selected.price != null && (
-                    <span className="mt-1 block text-sm">
-                      Annual UPI amount preset: <strong>₹{selected.price * 11}</strong> (11× monthly for 12 months).
-                    </span>
-                  )}
-                </p>
-              )}
+              <p className={`mt-1 text-sm ${t.selectedText}`}>Base rate from pricing: {selectedAmountText}</p>
+
+              <p className={`mt-4 text-xs font-semibold uppercase tracking-wide ${t.selectedTitle}`}>Billing</p>
+              <div className={`mt-2 flex max-w-md rounded-xl ${t.toggleWrap}`}>
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle("monthly")}
+                  className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+                    billingCycle === "monthly" ? t.toggleActive : t.toggleIdle
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle("annual")}
+                  className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+                    billingCycle === "annual" ? t.toggleActive : t.toggleIdle
+                  }`}
+                >
+                  Annual (11 mo. for 12)
+                </button>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-sky-200/60 bg-white/50 px-3 py-3 text-sm dark:border-sky-800/50 dark:bg-slate-900/40">
+                {isAnnual ? (
+                  <>
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">
+                      Pay once: <strong>{annualTotalText}</strong>
+                    </p>
+                    <p className="mt-1 text-slate-600 dark:text-slate-400">
+                      ₹{selected.price.toLocaleString("en-IN")}/month × 11 = {annualTotalText} — covers <strong>12 months</strong>{" "}
+                      on the same usage caps.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">
+                      Pay each month: <strong>{selectedAmountText}</strong>
+                    </p>
+                    <p className="mt-1 text-slate-600 dark:text-slate-400">Same published monthly rate as on the pricing page.</p>
+                  </>
+                )}
+              </div>
             </div>
           )}
+
+          {selected && selected.price == null && (
+            <div className={`rounded-xl border p-4 sm:p-5 ${t.selectedBox}`}>
+              <p className={`text-sm ${t.selectedText}`}>Plan: {selectedPlanText}. Open pricing to see the rate for this plan.</p>
+            </div>
+          )}
+
           <div className={`rounded-xl border p-4 sm:p-5 ${t.upiBox}`}>
             <p className={`text-xs uppercase tracking-wide ${t.upiLabel}`}>UPI ID</p>
             <p className={`mt-1 break-all font-mono text-base sm:text-lg ${t.upiValue}`}>{info.upi_id}</p>
-          </div>
-          <div className={`rounded-xl border p-4 sm:p-5 ${t.upiBox}`}>
-            <p className={`text-xs uppercase tracking-wide ${t.upiLabel}`}>Scan QR to pay</p>
-            <div className="mt-3 flex flex-col items-center gap-3">
-              {qrDataUrl || qrImageUrl ? (
-                <img
-                  src={qrDataUrl || qrImageUrl}
-                  alt="UPI payment QR"
-                  className="h-56 w-56 rounded-lg border border-slate-300 bg-white p-2"
-                />
+            <p className={`mt-3 text-sm ${t.msg}`}>
+              In your UPI app, send{" "}
+              {selected?.price != null ? (
+                isAnnual ? (
+                  <strong>{annualTotalText}</strong>
+                ) : (
+                  <strong>₹{selected.price.toLocaleString("en-IN")}</strong>
+                )
               ) : (
-                <div className="w-full rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  QR image not available on this device/browser yet. Use the button below to open the UPI app directly.
-                </div>
-              )}
-              <p className={`text-xs ${t.msg}`}>
-                QR refreshes every 30 seconds
-                {selected?.price != null
-                  ? wantsAnnual
-                    ? ` (amount: 11× monthly = ₹${selected.price * 11})`
-                    : ` (${selectedAmountText})`
-                  : ""}
-                .
-              </p>
-              {upiPayload ? (
-                <a
-                  href={upiPayload}
-                  className="inline-flex min-h-10 items-center justify-center rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
-                >
-                  Open in UPI app
-                </a>
-              ) : null}
-            </div>
+                "the amount"
+              )}{" "}
+              {selected?.price != null && !isAnnual ? "for this month’s subscription" : selected?.price != null && isAnnual ? "for the annual prepay" : ""}{" "}
+              to this ID, then share the screenshot on WhatsApp.
+            </p>
           </div>
+
           <p className={`text-sm sm:text-base ${t.msg}`}>
             {selected
-              ? `You have chosen ${selectedPlanText}${selectedAmountText ? ` at ${selectedAmountText}` : ""}. Send money to this UPI ID and share payment screenshot on the WhatsApp number below.`
+              ? `You chose ${selectedPlanText}. Use WhatsApp below — your message includes this plan and billing choice.`
               : info.message}
           </p>
           <a
