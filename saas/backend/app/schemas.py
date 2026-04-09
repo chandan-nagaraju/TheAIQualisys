@@ -77,6 +77,7 @@ class SubscriptionStatusResponse(BaseModel):
     subscription_active: bool
     can_access_fir_workspace: bool
     trial_days_remaining: int | None = None
+    subscription_days_remaining: int | None = None
 
 
 class PlanInfo(BaseModel):

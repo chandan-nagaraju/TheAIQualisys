@@ -79,6 +79,16 @@ def subscription_is_active(company: Company, today: date | None = None) -> bool:
     return today <= company.subscription_end
 
 
+def subscription_days_remaining_company(company: Company, today: date | None = None) -> int | None:
+    """Days until subscription_end while subscription is active; None otherwise."""
+    today = today or datetime.now(timezone.utc).date()
+    if not subscription_is_active(company, today):
+        return None
+    if company.subscription_end is None:
+        return None
+    return max(0, (company.subscription_end - today).days)
+
+
 def can_create_invoice(
     db: Session,
     company: Company,

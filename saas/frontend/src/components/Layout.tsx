@@ -8,12 +8,41 @@ import HeaderBackButton from "./HeaderBackButton";
 import ThemeSwitcher from "./ThemeSwitcher";
 import { useTheme } from "../theme/ThemeContext";
 
+function formatDateShort(isoDate: string | null | undefined): string | null {
+  if (!isoDate) return null;
+  try {
+    const d = new Date(`${isoDate}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return isoDate;
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return isoDate;
+  }
+}
+
+function daysLabel(n: number) {
+  return n === 1 ? "1 day" : `${n} days`;
+}
+
+type SubBanner =
+  | {
+      kind: "trial";
+      daysLeft: number;
+      trialEndsLabel: string | null;
+      planType: string;
+    }
+  | {
+      kind: "paid";
+      daysLeft: number;
+      subscriptionEndsLabel: string | null;
+      planType: string;
+    };
+
 export default function Layout() {
   const loc = useLocation();
   const nav = useNavigate();
   const { theme } = useTheme();
   const [impersonating, setImpersonating] = useState(false);
-  const [trialDaysRemaining, setTrialDaysRemaining] = useState<number | null>(null);
+  const [subBanner, setSubBanner] = useState<SubBanner | null>(null);
 
   const companyTok = localStorage.getItem("fir_token");
   const adminTok = localStorage.getItem("fir_admin_token");
@@ -33,7 +62,7 @@ export default function Layout() {
       !showCompanyShellBannerPath(path) ||
       isTenantImpersonation()
     ) {
-      setTrialDaysRemaining(null);
+      setSubBanner(null);
       return;
     }
     (async () => {
@@ -41,15 +70,40 @@ export default function Layout() {
         const s = await apiFetch<{
           trial_active: boolean;
           trial_days_remaining: number | null;
+          subscription_active: boolean;
+          subscription_days_remaining: number | null;
+          company: {
+            plan_type: string;
+            subscription_status: string;
+            trial_end_date: string;
+            subscription_end: string | null;
+          };
         }>("/subscription/status");
         if (cancelled) return;
+
         if (s.trial_active && s.trial_days_remaining != null) {
-          setTrialDaysRemaining(s.trial_days_remaining);
-        } else {
-          setTrialDaysRemaining(null);
+          setSubBanner({
+            kind: "trial",
+            daysLeft: s.trial_days_remaining,
+            trialEndsLabel: formatDateShort(s.company.trial_end_date),
+            planType: s.company.plan_type,
+          });
+          return;
         }
+
+        if (s.subscription_active && s.subscription_days_remaining != null) {
+          setSubBanner({
+            kind: "paid",
+            daysLeft: s.subscription_days_remaining,
+            subscriptionEndsLabel: formatDateShort(s.company.subscription_end),
+            planType: s.company.plan_type,
+          });
+          return;
+        }
+
+        setSubBanner(null);
       } catch {
-        if (!cancelled) setTrialDaysRemaining(null);
+        if (!cancelled) setSubBanner(null);
       }
     })();
     return () => {
@@ -60,12 +114,12 @@ export default function Layout() {
   const showImpersonationStrip =
     impersonating && !!companyTok && !isAdminRoute && showCompanyShellBannerPath(loc.pathname);
 
-  const showTrialStrip =
+  const showSubscriptionStrip =
     !showImpersonationStrip &&
     !!companyTok &&
     !isAdminRoute &&
     showCompanyShellBannerPath(loc.pathname) &&
-    trialDaysRemaining !== null;
+    subBanner !== null;
 
   const impersonationBannerCls =
     theme === "dark"
@@ -80,6 +134,13 @@ export default function Layout() {
       : theme === "grey"
         ? "border-b border-sky-300 bg-sky-50 px-4 py-2 text-center text-sm text-sky-950"
         : "border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-950";
+
+  const paidBannerCls =
+    theme === "dark"
+      ? "border-b border-emerald-600/35 bg-emerald-950/25 px-4 py-2 text-center text-sm text-emerald-100"
+      : theme === "grey"
+        ? "border-b border-emerald-300 bg-emerald-50 px-4 py-2 text-center text-sm text-emerald-950"
+        : "border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm text-emerald-950";
 
   const shell =
     theme === "light"
@@ -145,8 +206,8 @@ export default function Layout() {
     nav("/login");
   }
 
-  const trialDayLabel =
-    trialDaysRemaining === 1 ? "1 day" : `${trialDaysRemaining ?? 0} days`;
+  const linkTrial = theme === "dark" ? "text-sky-200" : "text-sky-900";
+  const linkPaid = theme === "dark" ? "text-emerald-200" : "text-emerald-900";
 
   return (
     <div className={`flex min-h-screen flex-col ${shell}`}>
@@ -236,23 +297,57 @@ export default function Layout() {
           </button>
         </div>
       ) : null}
-      {showTrialStrip ? (
-        <div className={trialBannerCls} role="status">
-          Your company trial ends in <strong>{trialDayLabel}</strong>.{" "}
-          <Link
-            className={`font-semibold underline ${theme === "dark" ? "text-sky-200" : "text-sky-900"}`}
-            to="/upgrade"
-          >
-            Upgrade
-          </Link>{" "}
-          or{" "}
-          <Link
-            className={`font-semibold underline ${theme === "dark" ? "text-sky-200" : "text-sky-900"}`}
-            to="/dashboard/billing"
-          >
-            Usage &amp; billing
-          </Link>
-          .
+      {showSubscriptionStrip && subBanner ? (
+        <div
+          className={subBanner.kind === "paid" ? paidBannerCls : trialBannerCls}
+          role="status"
+        >
+          {subBanner.kind === "trial" ? (
+            <>
+              <span className="font-medium">FIR company trial</span> · Plan <strong>{subBanner.planType}</strong> ·{" "}
+              <strong>{daysLabel(subBanner.daysLeft)}</strong> left
+              {subBanner.trialEndsLabel ? (
+                <>
+                  {" "}
+                  (ends <strong>{subBanner.trialEndsLabel}</strong>)
+                </>
+              ) : null}
+              .{" "}
+              <Link className={`font-semibold underline ${linkTrial}`} to="/upgrade">
+                Upgrade
+              </Link>{" "}
+              or{" "}
+              <Link className={`font-semibold underline ${linkTrial}`} to="/dashboard/billing">
+                Usage &amp; billing
+              </Link>
+              .
+            </>
+          ) : (
+            <>
+              <span className="font-medium">Subscription active</span> · Plan <strong>{subBanner.planType}</strong> ·{" "}
+              <strong>{daysLabel(subBanner.daysLeft)}</strong> until renewal
+              {subBanner.subscriptionEndsLabel ? (
+                <>
+                  {" "}
+                  (ends <strong>{subBanner.subscriptionEndsLabel}</strong>)
+                </>
+              ) : null}
+              .{" "}
+              <Link className={`font-semibold underline ${linkPaid}`} to="/dashboard/billing">
+                Usage &amp; billing
+              </Link>
+              {subBanner.daysLeft <= 14 ? (
+                <>
+                  {" "}
+                  ·{" "}
+                  <Link className={`font-semibold underline ${linkPaid}`} to="/upgrade">
+                    Renew / upgrade
+                  </Link>
+                </>
+              ) : null}
+              .
+            </>
+          )}
         </div>
       ) : null}
       <main className="app-outlet mx-auto w-full max-w-6xl flex-1 px-3 py-6 sm:px-4 sm:py-8 lg:py-10">
