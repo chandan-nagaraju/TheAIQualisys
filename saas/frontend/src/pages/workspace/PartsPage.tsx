@@ -8,6 +8,11 @@ import {
 } from "../../api";
 import PartMasterExcelReview, { type PartMasterBundle } from "../../components/PartMasterExcelReview";
 
+/** Parts master: uppercase A–Z and digits 0–9 only (strip other characters). */
+function sanitizePartMasterAlnumUpper(v: string): string {
+  return v.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+}
+
 type Row = {
   part_id: number;
   part_no: string;
@@ -42,7 +47,7 @@ export default function PartsPage() {
     load().catch((e) => setErr(e.message));
   }, []);
 
-  const filterQ = part_no.trim().toLowerCase();
+  const filterQ = sanitizePartMasterAlnumUpper(part_no).toLowerCase();
   const visibleRows = useMemo(() => {
     if (!filterQ) return rows;
     return rows.filter((r) => r.part_no.toLowerCase().includes(filterQ));
@@ -50,10 +55,18 @@ export default function PartsPage() {
 
   /** Exact match: helps avoid duplicate uploads when the part already exists */
   const partNoExistsInMaster = useMemo(() => {
-    const q = part_no.trim().toLowerCase();
+    const q = sanitizePartMasterAlnumUpper(part_no).toLowerCase();
     if (!q) return false;
-    return rows.some((r) => r.part_no.trim().toLowerCase() === q);
+    return rows.some((r) => sanitizePartMasterAlnumUpper(r.part_no).toLowerCase() === q);
   }, [rows, part_no]);
+
+  const existingPartNoKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of rows) {
+      s.add(sanitizePartMasterAlnumUpper(r.part_no).toLowerCase());
+    }
+    return s;
+  }, [rows]);
 
   async function downloadAll() {
     setErr(null);
@@ -116,11 +129,30 @@ export default function PartsPage() {
         method: "POST",
         body: fd,
       });
-      setPendingExcelLabel(file.name);
-      setPendingExcelBundle(bundle);
       if (!bundle.parts?.length) {
         setErr("Excel parsed but no parts were found — check the Parts sheet and Part Number column.");
+        return;
       }
+      const dupes: string[] = [];
+      const seenDupe = new Set<string>();
+      for (const sl of bundle.parts) {
+        const raw = (sl.part?.part_no ?? "").trim();
+        const key = sanitizePartMasterAlnumUpper(raw).toLowerCase();
+        if (key && existingPartNoKeys.has(key) && !seenDupe.has(key)) {
+          seenDupe.add(key);
+          dupes.push(raw);
+        }
+      }
+      if (dupes.length) {
+        const shown = dupes.slice(0, 8);
+        const more = dupes.length - shown.length;
+        setErr(
+          `Part number(s) already in Parts master — remove them from the file or delete the existing part(s) first: ${shown.join(", ")}${more > 0 ? ` (+${more} more)` : ""}`,
+        );
+        return;
+      }
+      setPendingExcelLabel(file.name);
+      setPendingExcelBundle(bundle);
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Excel preview failed");
     } finally {
@@ -203,9 +235,9 @@ export default function PartsPage() {
   function startEdit(r: Row) {
     setEditingPartId(r.part_id);
     setOriginalDrawingRev(r.drawing_rev ?? null);
-    setPartNo(r.part_no);
+    setPartNo(sanitizePartMasterAlnumUpper(r.part_no));
     setDrawingRev(r.drawing_rev ?? "");
-    setDescription(r.description ?? "");
+    setDescription(sanitizePartMasterAlnumUpper(r.description ?? ""));
     setRevisionReason("");
     setPendingPdf(null);
     setErr(null);
@@ -361,12 +393,17 @@ export default function PartsPage() {
         <h2 className="text-sm font-semibold text-slate-800">{editingPartId != null ? "Update part" : "New part"}</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div>
-            <label className="text-xs text-slate-500">Part number * (also filters table below)</label>
+            <label className="text-xs text-slate-500">Part number * (also filters table below) — A–Z and 0–9 only</label>
             <div className="mt-1 flex items-center gap-2">
               <input
-                className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm uppercase"
                 value={part_no}
-                onChange={(e) => setPartNo(e.target.value)}
+                onChange={(e) => setPartNo(sanitizePartMasterAlnumUpper(e.target.value))}
+                inputMode="text"
+                autoCapitalize="characters"
+                spellCheck={false}
+                pattern="[A-Z0-9]+"
+                title="Letters A–Z and digits 0–9 only"
                 required
                 autoComplete="off"
                 aria-describedby={partNoExistsInMaster ? "parts-master-part-exists" : undefined}
@@ -404,11 +441,16 @@ export default function PartsPage() {
             />
           </div>
           <div className="md:col-span-2">
-            <label className="text-xs text-slate-500">Description</label>
+            <label className="text-xs text-slate-500">Description — A–Z and 0–9 only (optional)</label>
             <input
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm uppercase"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => setDescription(sanitizePartMasterAlnumUpper(e.target.value))}
+              inputMode="text"
+              autoCapitalize="characters"
+              spellCheck={false}
+              pattern="[A-Z0-9]*"
+              title="Letters A–Z and digits 0–9 only"
             />
           </div>
           <div className="md:col-span-2">
