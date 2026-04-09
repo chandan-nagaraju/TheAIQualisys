@@ -8,6 +8,8 @@ from typing import Any
 
 import pandas as pd
 
+from app.part_field_validation import sanitize_part_master_alnum_upper
+
 def _norm_header(s: Any) -> str:
     text = str(s or "").strip().lower()
     # Normalize punctuation and separators so variants like
@@ -105,6 +107,10 @@ def parse_invoice_excel(content: bytes) -> tuple[list[dict[str, Any]], list[str]
             f"{dupes_str}{extra}"
         )
     rows = extracted.to_dict(orient="records")
+    for row in rows:
+        pn = row.get("Part Number")
+        if pn is not None:
+            row["Part Number"] = sanitize_part_master_alnum_upper(str(pn))
     return rows, DISPLAY_COLS
 
 
