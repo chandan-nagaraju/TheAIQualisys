@@ -29,6 +29,7 @@ from app.deps import (
 )
 from app.fir_excel import enrich_rows_with_parts, parse_invoice_excel
 from app.fir_part_excel import build_part_master_template_xlsx, parse_parts_excel_to_bundle_dict
+from app.part_field_validation import sanitize_part_master_alnum_upper
 from app.subscription_logic import (
     FIR_WORKSPACE_FORBIDDEN_CODE,
     FIR_WORKSPACE_FORBIDDEN_MESSAGE,
@@ -455,15 +456,17 @@ class PartUpsert(BaseModel):
 
 @router.post("/parts")
 def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
-    part_no = body.part_no.strip()
+    part_no = sanitize_part_master_alnum_upper(body.part_no)
     if not part_no:
-        raise HTTPException(status_code=400, detail="part_no required")
+        raise HTTPException(status_code=400, detail="part_no must contain only A–Z and 0–9, at least one character")
+    description = sanitize_part_master_alnum_upper(body.description) if body.description is not None else None
+    description = description if description else None
 
     if body.part_id is not None:
         p = _get_part(ws, body.part_id)
         old_rev = p.drawing_rev
         p.part_no = part_no
-        p.description = body.description
+        p.description = description
         p.drawing_rev = body.drawing_rev
         _record_revision_if_changed(ws, p, old_rev, p.drawing_rev, body.revision_change_reason)
         ws.db.commit()
@@ -475,7 +478,7 @@ def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
     ).scalar_one_or_none()
     if existing:
         old_rev = existing.drawing_rev
-        existing.description = body.description
+        existing.description = description
         existing.drawing_rev = body.drawing_rev
         _record_revision_if_changed(ws, existing, old_rev, existing.drawing_rev, body.revision_change_reason)
         ws.db.commit()
@@ -490,7 +493,7 @@ def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
     p = PartV2(
         company_id=ws.company.id,
         part_no=part_no,
-        description=body.description,
+        description=description,
         drawing_rev=body.drawing_rev,
     )
     ws.db.add(p)
@@ -795,13 +798,25 @@ class PartMasterPartBlock(BaseModel):
     drawing_rev: str | None = None
     description: str | None = None
 
+    @field_validator("part_no", mode="before")
+    @classmethod
+    def _part_no_sanitize(cls, v: object) -> str:
+        return sanitize_part_master_alnum_upper(v if isinstance(v, str) else (str(v) if v is not None else None))
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _description_sanitize(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        s = sanitize_part_master_alnum_upper(v if isinstance(v, str) else str(v))
+        return s if s else None
+
     @field_validator("part_no")
     @classmethod
     def _part_no_nonempty(cls, v: str) -> str:
-        s = (v or "").strip()
-        if not s:
-            raise ValueError("part.part_no is required")
-        return s
+        if not v:
+            raise ValueError("part.part_no is required (A–Z and 0–9 only)")
+        return v
 
 
 class PartMasterRowAD(BaseModel):
@@ -918,6 +933,19 @@ def import_part_master(body: PartMasterImportBody, ws: WsContext = Depends(get_w
         material_rows=body.material_rows,
         coating_rows=body.coating_rows,
     )
+    pn = slice_body.part.part_no
+    existing_sanitized = {
+        sanitize_part_master_alnum_upper(r[0])
+        for r in ws.db.execute(
+            select(PartV2.part_no).where(PartV2.company_id == ws.company.id)
+        ).all()
+    }
+    existing_sanitized.discard("")
+    if pn in existing_sanitized:
+        raise HTTPException(
+            status_code=400,
+            detail=f'Part number "{pn}" is already in Parts master — delete it first or use a different part number.',
+        )
     p = _apply_part_master_slice(ws, slice_body)
     ws.db.commit()
     ws.db.refresh(p)
@@ -933,6 +961,28 @@ def import_part_bundle(body: PartMasterBundleBody, ws: WsContext = Depends(get_w
         )
     if not body.parts:
         raise HTTPException(status_code=400, detail="parts array is empty")
+    existing_sanitized = {
+        sanitize_part_master_alnum_upper(r[0])
+        for r in ws.db.execute(
+            select(PartV2.part_no).where(PartV2.company_id == ws.company.id)
+        ).all()
+    }
+    existing_sanitized.discard("")
+    conflicts: list[str] = []
+    for sl in body.parts:
+        pn = sl.part.part_no
+        if pn in existing_sanitized:
+            conflicts.append(pn)
+    if conflicts:
+        shown = conflicts[:12]
+        more = len(conflicts) - len(shown)
+        tail = f"; and {more} more" if more > 0 else ""
+        raise HTTPException(
+            status_code=400,
+            detail="Part number(s) already in Parts master — remove duplicates from the import or delete the existing part(s) first: "
+            + ", ".join(shown)
+            + tail,
+        )
     last: PartV2 | None = None
     for sl in body.parts:
         last = _apply_part_master_slice(ws, sl)
