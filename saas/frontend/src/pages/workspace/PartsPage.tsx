@@ -7,11 +7,7 @@ import {
   workspaceFetch,
 } from "../../api";
 import PartMasterExcelReview, { type PartMasterBundle } from "../../components/PartMasterExcelReview";
-
-/** Parts master: uppercase A–Z and digits 0–9 only (strip other characters). */
-function sanitizePartMasterAlnumUpper(v: string): string {
-  return v.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-}
+import { sanitizePartNoUpper as sanitizePartMasterAlnumUpper } from "../../utils/partFields";
 
 type Row = {
   part_id: number;

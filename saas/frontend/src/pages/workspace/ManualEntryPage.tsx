@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { workspaceFetch } from "../../api";
+import { sanitizePartNoUpper } from "../../utils/partFields";
 
 type ManualRow = {
   partNumber: string;
@@ -10,6 +11,10 @@ type ManualRow = {
 };
 
 const MAX_ROWS = 3;
+
+function partKeyFromInput(s: string): string {
+  return sanitizePartNoUpper(s).toLowerCase();
+}
 
 function blankRow(): ManualRow {
   return { partNumber: "", quantity: "", invoiceNumber: "", date: "" };
@@ -56,7 +61,7 @@ export default function ManualEntryPage() {
     workspaceFetch<PartMasterRow[]>("/api/app/parts")
       .then((parts) => {
         if (cancelled) return;
-        setPartMasterKeys(new Set(parts.map((p) => p.part_no.trim().toLowerCase())));
+        setPartMasterKeys(new Set(parts.map((p) => sanitizePartNoUpper(p.part_no).toLowerCase())));
       })
       .catch(() => {
         if (!cancelled) setPartMasterKeys(new Set());
@@ -84,7 +89,7 @@ export default function ManualEntryPage() {
   const sanitized = useMemo(() => {
     return rows
       .map((r) => ({
-        "Part Number": r.partNumber.trim(),
+        "Part Number": sanitizePartNoUpper(r.partNumber),
         Quantity: r.quantity.trim(),
         "Invoice Number": r.invoiceNumber.trim(),
         Date: fromDateInput(r.date),
@@ -141,10 +146,10 @@ export default function ManualEntryPage() {
         throw new Error("Add at least one customer before creating FIR manually.");
       }
       const parts = await workspaceFetch<PartMasterRow[]>("/api/app/parts");
-      const partMap = new Map(parts.map((p) => [p.part_no.trim().toLowerCase(), p]));
+      const partMap = new Map(parts.map((p) => [sanitizePartNoUpper(p.part_no).toLowerCase(), p]));
       const missing: string[] = [];
       const enrichedRows = sanitized.map((r) => {
-        const key = r["Part Number"].trim().toLowerCase();
+        const key = sanitizePartNoUpper(r["Part Number"]).toLowerCase();
         const part = partMap.get(key);
         if (!part) {
           missing.push(r["Part Number"]);
@@ -203,17 +208,22 @@ export default function ManualEntryPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm">
-                <span className="block text-slate-600">Part Number</span>
+                <span className="block text-slate-600">Part Number (A–Z, 0–9 only)</span>
                 <div className="mt-1 flex items-center gap-2">
                   <input
-                    className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2"
+                    className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 uppercase"
                     value={r.partNumber}
-                    onChange={(e) => updateRow(i, { partNumber: e.target.value })}
+                    onChange={(e) => updateRow(i, { partNumber: sanitizePartNoUpper(e.target.value) })}
                     autoComplete="off"
-                    aria-describedby={partMasterKeys.has(r.partNumber.trim().toLowerCase()) ? `part-in-master-${i}` : undefined}
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    pattern="[A-Z0-9]+"
+                    title="Letters A–Z and digits 0–9 only"
+                    aria-describedby={partMasterKeys.has(partKeyFromInput(r.partNumber)) ? `part-in-master-${i}` : undefined}
                   />
-                  {r.partNumber.trim() &&
-                  partMasterKeys.has(r.partNumber.trim().toLowerCase()) ? (
+                  {sanitizePartNoUpper(r.partNumber) &&
+                  partMasterKeys.has(partKeyFromInput(r.partNumber)) ? (
                     <span
                       id={`part-in-master-${i}`}
                       className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-100"
