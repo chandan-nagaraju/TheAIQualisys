@@ -26,6 +26,12 @@ todos:
   - id: workspace-pricing-annual-banner
     content: "PricingPage (variant=workspace only): horizontal promo banner — teal/sage palette, gift icon, headline + subline for annual prepay (pay for 11 months, get 12); CTA links to /upgrade with anchor or query annual=1 for WhatsApp context; responsive flex"
     status: completed
+  - id: parts-master-uppercase-alphanumeric
+    content: "PartsPage: Part number + Description inputs — force uppercase A–Z and 0–9 only (strip or block other chars on change); optional backend mirror validation on POST /api/app/parts"
+    status: completed
+  - id: parts-master-excel-duplicate-block
+    content: "PartsPage onExcelPickForReview: after preview-excel-master returns bundle, compare each extracted part_no (case-insensitive trim) to loaded rows; if any match, set error, clear pending review, block save — user must remove duplicate from Excel or delete existing part first"
+    status: completed
 ---
 
 # Roadmap: premium ZIP, asset readiness, size target, faster batches
@@ -152,3 +158,25 @@ todos:
 **Scope guard:** Show **only** for workspace variant; marketing `/pricing` can omit or use shorter strip later.
 
 **Files:** `saas/frontend/src/pages/PricingPage.tsx`; optional `UpgradePage.tsx` query-param handling for WhatsApp message if we add `billing=annual`.
+
+## Parts master: uppercase alphanumeric fields + Excel duplicate guard
+
+**Goal:** On **`/workspace/parts`**, keep **Part number** and **Description** aligned to **uppercase letters and digits only** (no spaces, punctuation, or lowercase). On **Upload Excel**, after the server parses the workbook (`POST /api/app/parts/preview-excel-master`), **block** proceeding to review/save if **any** extracted part number already exists in the current tenant’s part master (same behavior as “no duplicate part numbers”).
+
+### Uppercase + allowed charset (UI)
+
+- **Fields:** **Part number** and **Description** in the New part / Update part form (`PartsPage.tsx`).
+- **Behavior:** On each keystroke/paste, normalize to **uppercase** and **drop** (or reject) any character outside **`[A-Z0-9]`**. Empty description remains allowed unless product later requires non-empty.
+- **Edit mode:** When loading a row for edit, run the same sanitizer on initial values so legacy mixed-case data becomes consistent on next save.
+- **Optional hardening:** Mirror validation in FastAPI on create/update (`schemas` / parts router) so API clients cannot bypass the rule.
+
+### Excel: duplicate detection vs part master
+
+- **When:** Immediately after a successful **`preview-excel-master`** response, before opening **`PartMasterExcelReview`** (or right after setting state — same net effect).
+- **Data:** Build a **`Set`** of normalized keys from `rows` already loaded: `part_no.trim().toLowerCase()` (or uppercase — one canonical form).
+- **Check:** For each `bundle.parts[].part.part_no`, normalize the same way; if **any** key is in the set, **do not** show the review modal as a valid import path for that file:
+  - **`setErr`** with a clear message listing **which part number(s)** conflict (cap list length, e.g. first 5 + “and N more”).
+  - **`setPendingExcelBundle(null)`**, clear file label, **do not** call `confirmExcelImport` until the user fixes the Excel or removes the existing part from master.
+- **Edge case:** Multiple **new** rows in the same Excel with the **same** part number — optionally flag as duplicate-within-file (nice-to-have); primary requirement is **no overlap with server-backed master list**.
+
+**Files (primary):** `saas/frontend/src/pages/workspace/PartsPage.tsx`; optional `saas/backend/app/routers` + `schemas` for server-side charset validation.
