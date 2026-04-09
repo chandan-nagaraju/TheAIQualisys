@@ -48,7 +48,7 @@ export default function UploadPage() {
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h1 className="text-xl font-semibold">Upload invoice</h1>
+      <h1 className="text-xl font-semibold">Generate FIR</h1>
       <p className="mt-2 text-sm text-slate-600">
         Excel .xlsx or .xls. Extra columns are ignored; only Part Number, Description, Quantity, Invoice Number, Date are
         extracted.

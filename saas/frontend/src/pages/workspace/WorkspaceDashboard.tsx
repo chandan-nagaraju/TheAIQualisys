@@ -13,7 +13,7 @@ export default function WorkspaceDashboard() {
           to="/workspace/upload"
           className="rounded-lg border border-slate-200 bg-slate-50 p-5 transition hover:border-blue-400 hover:bg-white"
         >
-          <h2 className="font-semibold text-blue-800">Upload invoice</h2>
+          <h2 className="font-semibold text-blue-800">Generate FIR</h2>
           <p className="mt-1 text-sm text-slate-600">Excel .xlsx / .xls → extracted table → inspection → FIR preview</p>
         </Link>
         <Link
@@ -28,7 +28,7 @@ export default function WorkspaceDashboard() {
           className="rounded-lg border border-slate-200 bg-slate-50 p-5 transition hover:border-blue-400 hover:bg-white"
         >
           <h2 className="font-semibold text-blue-800">Parts master</h2>
-          <p className="mt-1 text-sm text-slate-600">Dimensions (A), complaints (B), material (C), coating (D)</p>
+          <p className="mt-1 text-sm text-slate-600">Save part data</p>
         </Link>
         <Link
           to="/workspace/settings"
