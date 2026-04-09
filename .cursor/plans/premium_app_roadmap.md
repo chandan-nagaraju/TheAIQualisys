@@ -20,6 +20,9 @@ todos:
   - id: layout-trial-days-banner
     content: "Layout: banner below header (same slot as admin impersonation strip) showing company FIR trial days remaining for signed-in company users only — hide when platform admin impersonation strip is shown or user is not in company shell"
     status: completed
+  - id: upgrade-page-fir-pricing-link
+    content: "UpgradePage: section for used modules & pricing — v1 show single actionable row for FIR Automation linking to /workspace/pricing (workspace FIR pricing; handles plan selection + WhatsApp). Later extend from /api/modules/overview + module catalog when more modules ship"
+    status: completed
 ---
 
 # Roadmap: premium ZIP, asset readiness, size target, faster batches
@@ -116,3 +119,17 @@ todos:
 - `saas/frontend/src/components/Layout.tsx` — conditional second strip for trial countdown.
 - `saas/backend/app/routers/subscription.py` + `saas/backend/app/schemas.py` — optional `trial_days_remaining` on `/subscription/status`.
 - `saas/frontend/src/api` usage — same `apiFetch` pattern as other pages.
+
+## Upgrade page: modules used & pricing (FIR first)
+
+**Goal:** On **`/upgrade`**, give users a clear path to see **which modules they use** and **pricing**, without replacing the manual UPI/WhatsApp flow.
+
+**v1 (current product scope — FIR only aired):**
+
+- Add a compact section **above or below** the intro paragraph on `UpgradePage.tsx` (theme-aware card), titled e.g. **“Your modules & pricing”**.
+- Show **one row**: **FIR Automation** — short line that FIR billing is usage-based plans (optional one-line hint from existing `/subscription/plans` or static copy).
+- Primary action: **`Link` to `/workspace/pricing`** with copy like **“View FIR pricing & plans”** — that route (`App.tsx` → `WorkspaceLayout` → `PricingPage variant="workspace"`) already lists FIR plans and WhatsApp upgrade; user must be logged in (same as Upgrade).
+
+**Not in v1:** Full dynamic matrix of all QMS modules from `/api/modules/overview` until those modules are productized the same way; then extend the section to list rows per module with links to `/pricing/modules/:slug` or workspace equivalents.
+
+**Files:** `saas/frontend/src/pages/UpgradePage.tsx` (primary); optional thin helper or copy constants if the section grows.
