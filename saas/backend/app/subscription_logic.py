@@ -62,6 +62,14 @@ def trial_is_valid(company: Company, today: date | None = None) -> bool:
     return company.subscription_status == SubscriptionStatus.trial.value and today <= company.trial_end_date
 
 
+def trial_days_remaining_company(company: Company, today: date | None = None) -> int | None:
+    """Calendar days left in company FIR trial window, or None if not in trial."""
+    today = today or datetime.now(timezone.utc).date()
+    if not trial_is_valid(company, today):
+        return None
+    return max(0, (company.trial_end_date - today).days)
+
+
 def subscription_is_active(company: Company, today: date | None = None) -> bool:
     today = today or datetime.now(timezone.utc).date()
     if company.subscription_status != SubscriptionStatus.active.value:

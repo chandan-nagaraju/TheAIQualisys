@@ -723,9 +723,20 @@
       return Promise.all(
         imgs.map(function(img) {
           if (!img.getAttribute("src")) return Promise.resolve();
-          if (img.complete && img.naturalWidth) return Promise.resolve();
+          if (img.complete && img.naturalWidth) {
+            if (img.decode && typeof img.decode === "function") {
+              return img.decode().catch(function() { return undefined; });
+            }
+            return Promise.resolve();
+          }
           return new Promise(function(res) {
-            img.onload = function() { res(); };
+            img.onload = function() {
+              if (img.decode && typeof img.decode === "function") {
+                img.decode().catch(function() {}).finally(function() { res(); });
+              } else {
+                res();
+              }
+            };
             img.onerror = function() { res(); };
           });
         })

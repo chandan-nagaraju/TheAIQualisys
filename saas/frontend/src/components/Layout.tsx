@@ -1,25 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { setWorkspaceCustomerId } from "../api";
+import { apiFetch, setWorkspaceCustomerId } from "../api";
 import { exitTenantImpersonation, isTenantImpersonation } from "../impersonation";
+import { showCompanyShellBannerPath } from "../layout/companyShellBannerPaths";
 import BrandLogo from "./BrandLogo";
 import HeaderBackButton from "./HeaderBackButton";
 import ThemeSwitcher from "./ThemeSwitcher";
 import { useTheme } from "../theme/ThemeContext";
-
-/** Company shell routes where we show the platform-admin impersonation strip (not FIR workspace). */
-function showImpersonationBannerPath(pathname: string): boolean {
-  if (pathname === "/dashboard" || pathname === "/upgrade") return true;
-  if (pathname.startsWith("/dashboard/")) return true;
-  if (pathname.startsWith("/modules/")) return true;
-  return false;
-}
 
 export default function Layout() {
   const loc = useLocation();
   const nav = useNavigate();
   const { theme } = useTheme();
   const [impersonating, setImpersonating] = useState(false);
+  const [trialDaysRemaining, setTrialDaysRemaining] = useState<number | null>(null);
 
   const companyTok = localStorage.getItem("fir_token");
   const adminTok = localStorage.getItem("fir_admin_token");
@@ -30,8 +24,48 @@ export default function Layout() {
     setImpersonating(isTenantImpersonation());
   }, [loc.pathname]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const path = loc.pathname;
+    if (
+      !companyTok ||
+      isAdminRoute ||
+      !showCompanyShellBannerPath(path) ||
+      isTenantImpersonation()
+    ) {
+      setTrialDaysRemaining(null);
+      return;
+    }
+    (async () => {
+      try {
+        const s = await apiFetch<{
+          trial_active: boolean;
+          trial_days_remaining: number | null;
+        }>("/subscription/status");
+        if (cancelled) return;
+        if (s.trial_active && s.trial_days_remaining != null) {
+          setTrialDaysRemaining(s.trial_days_remaining);
+        } else {
+          setTrialDaysRemaining(null);
+        }
+      } catch {
+        if (!cancelled) setTrialDaysRemaining(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loc.pathname, companyTok, isAdminRoute]);
+
   const showImpersonationStrip =
-    impersonating && !!companyTok && !isAdminRoute && showImpersonationBannerPath(loc.pathname);
+    impersonating && !!companyTok && !isAdminRoute && showCompanyShellBannerPath(loc.pathname);
+
+  const showTrialStrip =
+    !showImpersonationStrip &&
+    !!companyTok &&
+    !isAdminRoute &&
+    showCompanyShellBannerPath(loc.pathname) &&
+    trialDaysRemaining !== null;
 
   const impersonationBannerCls =
     theme === "dark"
@@ -39,6 +73,13 @@ export default function Layout() {
       : theme === "grey"
         ? "border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-950"
         : "border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-950";
+
+  const trialBannerCls =
+    theme === "dark"
+      ? "border-b border-sky-600/35 bg-sky-950/30 px-4 py-2 text-center text-sm text-sky-100"
+      : theme === "grey"
+        ? "border-b border-sky-300 bg-sky-50 px-4 py-2 text-center text-sm text-sky-950"
+        : "border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-950";
 
   const shell =
     theme === "light"
@@ -103,6 +144,9 @@ export default function Layout() {
     localStorage.removeItem("fir_admin_token");
     nav("/login");
   }
+
+  const trialDayLabel =
+    trialDaysRemaining === 1 ? "1 day" : `${trialDaysRemaining ?? 0} days`;
 
   return (
     <div className={`flex min-h-screen flex-col ${shell}`}>
@@ -190,6 +234,25 @@ export default function Layout() {
           >
             Exit to admin
           </button>
+        </div>
+      ) : null}
+      {showTrialStrip ? (
+        <div className={trialBannerCls} role="status">
+          Your company trial ends in <strong>{trialDayLabel}</strong>.{" "}
+          <Link
+            className={`font-semibold underline ${theme === "dark" ? "text-sky-200" : "text-sky-900"}`}
+            to="/upgrade"
+          >
+            Upgrade
+          </Link>{" "}
+          or{" "}
+          <Link
+            className={`font-semibold underline ${theme === "dark" ? "text-sky-200" : "text-sky-900"}`}
+            to="/dashboard/billing"
+          >
+            Usage &amp; billing
+          </Link>
+          .
         </div>
       ) : null}
       <main className="app-outlet mx-auto w-full max-w-6xl flex-1 px-3 py-6 sm:px-4 sm:py-8 lg:py-10">

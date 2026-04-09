@@ -285,9 +285,11 @@ export default function InspectionResultsPage() {
       await Promise.all(workers);
 
       const zip = new JSZip();
+      let largePdfCount = 0;
       for (let i = 0; i < n; i++) {
         const result = results[i];
         if (!result?.blob) throw new Error(`Report ${i + 1} produced no PDF data.`);
+        if (result.sizeWarning === "over_200kb") largePdfCount += 1;
         const name = (result.filename || `FIR_${i + 1}.pdf`).replace(/[/\\]/g, "_");
         zip.file(name, result.blob);
       }
@@ -318,7 +320,11 @@ export default function InspectionResultsPage() {
       }
       const q2 = await workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`);
       setFirQuota(q2);
-      setBatchMsg("ZIP download started. Check your downloads folder.");
+      const sizeNote =
+        largePdfCount > 0
+          ? ` ${largePdfCount} PDF(s) exceeded the ~200 KB size target (still included).`
+          : "";
+      setBatchMsg(`ZIP download started. Check your downloads folder.${sizeNote}`);
     } catch (e) {
       setBatchErr(e instanceof Error ? e.message : "ZIP build failed");
     } finally {

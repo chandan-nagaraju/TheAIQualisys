@@ -4,18 +4,21 @@ overview: "ZIP export UX (progress, ETA, no double-submit), asset-ready gating b
 todos:
   - id: zip-progress-ux
     content: "InspectionResultsPage: determinate ZIP progress (e.g. Generating PDF 3/12), ETA from rolling average, disable button while zipping, clear success/error copy"
-    status: pending
+    status: completed
   - id: asset-ready-gate
     content: "fir_preview.html + InspectionResultsPage: wait for fonts/images (Quali data-URI, logo/signature imgs) before FIR_PREVIEW_API marks export-ready; optional generatePdfBlob pre-step"
-    status: pending
+    status: completed
   - id: pdf-size-target
     content: "Tune fir_preview.html html2pdf/html2canvas JPEG scale/quality to hit 100–200 KB typical; warn if over; document tradeoffs; optional server-side tuning"
-    status: pending
+    status: completed
   - id: faster-batch-same-output
     content: "Speed: capped parallel generatePdfBlob (e.g. 2–3) or queue; verify identical options per iframe so PDF bytes/quality unchanged vs sequential"
-    status: pending
+    status: completed
   - id: brand-logo-hybrid-svg
     content: "BrandLogo: hybrid lockup — inline SVG for Q group only (user stroke/circuit paths, viewBox ~0–140×140); wordmark remains HTML text (Tailwind) for responsive sizing; no SVG <text> for TheAIQualisys"
+    status: completed
+  - id: layout-trial-days-banner
+    content: "Layout: banner below header (same slot as admin impersonation strip) showing company FIR trial days remaining for signed-in company users only — hide when platform admin impersonation strip is shown or user is not in company shell"
     status: completed
 ---
 
@@ -85,3 +88,31 @@ todos:
 - **`wordmark={false}`** path: icon-only span; **`wordmark` default true**: `inline-flex items-center gap-2` + icon + `<span>TheAIQualisys</span>`.
 
 **Files:** `saas/frontend/src/components/BrandLogo.tsx` (primary).
+
+## Company trial days banner (QMS shell — non-admin users)
+
+**Goal:** Show **pending trial days** in the **same horizontal band** as the yellow “platform admin” impersonation banner (between global header and `<main>`), for **regular company users** — **not** when a platform admin is viewing the tenant (that slot stays the admin strip).
+
+**Visibility rules**
+
+- **Show** when: user has **`fir_token`**, **`showImpersonationBannerPath(pathname)`** is true (same routes as today: `/dashboard`, `/upgrade`, `/dashboard/*`, `/modules/*`), and **`trial_active`** (company still in FIR trial window).
+- **Hide** when: **impersonation strip** is active (`fir_impersonating` + company token + same path rules) — admins keep the yellow banner only.
+- **Hide** when: not logged in as company user, or trial no longer active (paid / expired) — optional copy for expired can be a separate follow-up.
+
+**Data**
+
+- Prefer **`GET /subscription/status`**: already returns **`trial_active`** and **`company`** (`trial_end_date`, `subscription_status`). Either:
+  - **A (recommended):** add **`trial_days_remaining: int | null`** to `SubscriptionStatusResponse` computed server-side with the same `date` logic as `trial_is_valid` (avoids client timezone off-by-one on date-only strings), or
+  - **B:** derive on the client from `company.trial_end_date` with careful **date-only** parsing.
+
+**UI**
+
+- Reuse **full-width** strip pattern from `Layout.tsx` (`impersonationBannerCls` sibling); use a **distinct** palette (e.g. sky/neutral info) so it is not confused with the **amber admin** warning.
+- Copy example: “Your company trial ends in **N** day(s).” Optional link to **`/upgrade`** or **`/dashboard/billing`**.
+- Fetch on route change / mount; handle loading and errors quietly (omit banner if fetch fails).
+
+**Files (primary)**
+
+- `saas/frontend/src/components/Layout.tsx` — conditional second strip for trial countdown.
+- `saas/backend/app/routers/subscription.py` + `saas/backend/app/schemas.py` — optional `trial_days_remaining` on `/subscription/status`.
+- `saas/frontend/src/api` usage — same `apiFetch` pattern as other pages.

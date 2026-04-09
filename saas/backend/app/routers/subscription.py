@@ -18,6 +18,7 @@ from app.subscription_logic import (
     count_invoices_this_month,
     plan_invoice_limit,
     subscription_is_active,
+    trial_days_remaining_company,
     trial_is_valid,
 )
 
@@ -89,6 +90,7 @@ def subscription_status(
         can_access_fir_workspace=can_access_fir_workspace(
             company, enable_subscription=settings.enable_subscription, today=today
         ),
+        trial_days_remaining=trial_days_remaining_company(company, today),
     )
 
 
