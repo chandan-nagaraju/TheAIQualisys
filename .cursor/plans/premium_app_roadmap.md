@@ -32,6 +32,12 @@ todos:
   - id: parts-master-excel-duplicate-block
     content: "PartsPage onExcelPickForReview: after preview-excel-master returns bundle, compare each extracted part_no (case-insensitive trim) to loaded rows; if any match, set error, clear pending review, block save — user must remove duplicate from Excel or delete existing part first"
     status: completed
+  - id: part-number-global-fe
+    content: "Shared sanitizePartNo (or reuse part_field_validation parity): ManualEntryPage part number input onChange/paste; optional ExtractedPage editable Part Number column if we add inline edit — same [A-Z0-9] uppercase strip; normalize partMasterKeys lookups with sanitizer"
+    status: completed
+  - id: part-number-global-be
+    content: "fir_excel.parse_invoice_excel: after building rows, sanitize Part Number column with same logic as sanitize_part_master_alnum_upper; fir_part_excel: normalize part_no strings when assigning from cells/sheets so Excel/section imports match Parts master"
+    status: completed
 ---
 
 # Roadmap: premium ZIP, asset readiness, size target, faster batches
@@ -180,3 +186,22 @@ todos:
 - **Edge case:** Multiple **new** rows in the same Excel with the **same** part number — optionally flag as duplicate-within-file (nice-to-have); primary requirement is **no overlap with server-backed master list**.
 
 **Files (primary):** `saas/frontend/src/pages/workspace/PartsPage.tsx`; optional `saas/backend/app/routers` + `schemas` for server-side charset validation.
+
+## Part number normalization everywhere (FIR flows)
+
+**Rule (same as Parts master part number):** On input (including paste), **uppercase** and **only `[A-Z0-9]`** — strip everything else.
+
+**Already done:** `PartsPage.tsx` (part number field), backend `sanitize_part_master_alnum_upper` on workspace parts APIs and bundle import.
+
+**Frontend — still apply the shared helper**
+
+- **`ManualEntryPage.tsx`**: Part Number text inputs — wire `onChange` to the same sanitizer as Parts page; when comparing to Parts master (`partMasterKeys`), normalize both sides with the sanitizer + lowercase key (or compare sanitized strings).
+- **`ExtractedPage.tsx`**: Read-only table today; if Part Number becomes editable, use the same sanitizer. If it stays read-only, normalization can be **server-side** on upload so the preview table shows canonical values (see backend).
+- **Optional:** Move `sanitizePartMasterAlnumUpper` to e.g. `saas/frontend/src/utils/partFields.ts` and import from `PartsPage` + `ManualEntryPage` to avoid drift.
+
+**Backend — canonical values at parse time**
+
+- **`fir_excel.py` (`parse_invoice_excel`)**: After building each row’s `"Part Number"` string, apply **`sanitize_part_master_alnum_upper`** so invoice Excel upload → extracted → inspection all see the same part keys as Parts master.
+- **`fir_part_excel.py`**: When setting `part_no` from sheet cells or grouped keys, apply the same sanitizer so part master Excel import/review matches DB and FIR rows.
+
+**Out of scope for this rule:** Admin read-only tables that only **display** `part_no` from the API (no user typing).
