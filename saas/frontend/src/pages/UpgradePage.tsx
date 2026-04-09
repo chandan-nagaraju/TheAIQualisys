@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
+import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -87,6 +88,14 @@ export default function UpgradePage() {
           : "border-sky-700/40 bg-sky-950/30",
     selectedTitle: theme === "dark" ? "text-sky-200" : "text-sky-900",
     selectedText: theme === "dark" ? "text-slate-200" : "text-slate-700",
+    modulesBox:
+      theme === "light"
+        ? "border-slate-200 bg-slate-50"
+        : theme === "grey"
+          ? "border-zinc-300 bg-zinc-100/90"
+          : "border-slate-700 bg-slate-950/50",
+    modulesHeading: theme === "dark" ? "text-white" : "text-slate-900",
+    modulesBody: theme === "dark" ? "text-slate-300" : "text-slate-600",
   };
 
   const selectedPlanText = selected
@@ -164,6 +173,21 @@ export default function UpgradePage() {
         We use a simple UPI + WhatsApp flow. After you pay, send the screenshot on WhatsApp; our admin activates your
         subscription.
       </p>
+
+      <div className={`mt-6 rounded-xl border p-4 sm:p-5 ${t.modulesBox}`}>
+        <h2 className={`text-base font-semibold sm:text-lg ${t.modulesHeading}`}>Your modules &amp; pricing</h2>
+        <p className={`mt-2 text-sm leading-relaxed ${t.modulesBody}`}>
+          <strong className={theme === "dark" ? "text-slate-100" : "text-slate-800"}>FIR Automation</strong> — usage-based
+          monthly plans (invoice + FIR report caps). Review plans and start checkout from the FIR pricing page.
+        </p>
+        <Link
+          to="/workspace/pricing"
+          className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          View FIR pricing &amp; plans
+        </Link>
+      </div>
+
       {err && <p className={`mt-4 text-sm ${t.err}`}>{err}</p>}
       {info && (
         <div className="mt-6 space-y-4 sm:mt-8">
