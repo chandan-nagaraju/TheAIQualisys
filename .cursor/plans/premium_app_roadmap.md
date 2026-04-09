@@ -38,6 +38,9 @@ todos:
   - id: part-number-global-be
     content: "fir_excel.parse_invoice_excel: after building rows, sanitize Part Number column with same logic as sanitize_part_master_alnum_upper; fir_part_excel: normalize part_no strings when assigning from cells/sheets so Excel/section imports match Parts master"
     status: completed
+  - id: workspace-dashboard-intro-copy
+    content: "WorkspaceDashboard.tsx: replace legacy/PostgreSQL lead paragraph with user-facing FIR Automation module description (what users do: generate inspection reports from invoice data, manage customers/vendors/parts, configure company FIR branding) — no stack or legacy references"
+    status: completed
 ---
 
 # Roadmap: premium ZIP, asset readiness, size target, faster batches
@@ -205,3 +208,13 @@ todos:
 - **`fir_part_excel.py`**: When setting `part_no` from sheet cells or grouped keys, apply the same sanitizer so part master Excel import/review matches DB and FIR rows.
 
 **Out of scope for this rule:** Admin read-only tables that only **display** `part_no` from the API (no user typing).
+
+## Workspace dashboard: module intro copy
+
+**Where:** `saas/frontend/src/pages/workspace/WorkspaceDashboard.tsx` — the `<p>` under the **Dashboard** heading.
+
+**Remove:** References to “legacy app,” “PostgreSQL,” and “SaaS company” (implementation detail).
+
+**Replace with (user-facing, ~1–2 sentences):** Explain that **FIR Automation** helps quality teams turn **invoice / line-item data** into **Final Inspection Reports**: import or enter details, run the inspection step, preview and download FIR PDFs, while **customers/vendors**, **parts master**, and **global FIR settings** (branding, signatures) stay under one workspace.
+
+**Example copy (tune for tone):** *“FIR Automation helps you produce Final Inspection Reports from your invoice data: import or enter line items, complete inspection, then preview and download FIRs. Manage customers, parts, and company-wide FIR branding from this workspace.”*
