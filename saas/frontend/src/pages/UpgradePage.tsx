@@ -8,6 +8,10 @@ type PlanInfo = { plan_type: string; name: string; price_inr: number };
 
 type BillingCycle = "monthly" | "annual";
 
+function fmtInr(n: number) {
+  return `₹${n.toLocaleString("en-IN")}`;
+}
+
 export default function UpgradePage() {
   const loc = useLocation();
   const [info, setInfo] = useState<UpgradeInfo | null>(null);
@@ -105,21 +109,21 @@ export default function UpgradePage() {
     modulesBody: theme === "dark" ? "text-slate-300" : "text-slate-600",
     toggleWrap:
       theme === "light"
-        ? "rounded-xl border border-slate-200 bg-slate-100/80 p-1"
+        ? "border border-slate-200 bg-slate-100/90"
         : theme === "grey"
-          ? "rounded-xl border border-zinc-300 bg-zinc-200/80 p-1"
-          : "rounded-xl border border-slate-600 bg-slate-800/80 p-1",
-    toggleActive: theme === "dark" ? "bg-slate-700 text-white shadow" : "bg-white text-slate-900 shadow",
+          ? "border border-zinc-300 bg-zinc-200/90"
+          : "border border-slate-600 bg-slate-800/90",
+    toggleActive: theme === "dark" ? "bg-slate-700 text-white" : "bg-white text-slate-900 shadow-inner",
     toggleIdle:
-      theme === "dark" ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900",
+      theme === "dark" ? "text-slate-400 hover:bg-slate-700/50 hover:text-slate-100" : "text-slate-600 hover:bg-white/70 hover:text-slate-900",
   };
 
   const selectedPlanText = selected
     ? `${selected.planName}${selected.planType ? ` (${selected.planType})` : ""}`
     : null;
-  const selectedAmountText = selected?.price != null ? `₹${selected.price.toLocaleString("en-IN")}/month` : null;
-  const annualTotalText =
-    selected?.price != null ? `₹${(selected.price * 11).toLocaleString("en-IN")}` : null;
+
+  const annualTotal = selected?.price != null ? selected.price * 11 : null;
+  const annualLine = annualTotal != null ? fmtInr(annualTotal) : null;
 
   const whatsappHref = useMemo(() => {
     if (!info) return "";
@@ -140,11 +144,11 @@ export default function UpgradePage() {
       }
       const annualBit =
         isAnnual && selected.price != null
-          ? ` Billing: annual prepay ₹${selected.price}/month × 11 = ₹${selected.price * 11} for 12 months (same usage caps).`
+          ? ` Pay: Year — ${fmtInr(selected.price)}/month × 11 = ${fmtInr(selected.price * 11)} for 12 months (same usage caps).`
           : isAnnual
-            ? " Billing: annual prepay (11 months for 12 months on this plan)."
+            ? " Pay: Year — annual prepay (11 months for 12 months on this plan)."
             : selected.price != null
-              ? ` Billing: monthly ₹${selected.price}/month.`
+              ? ` Pay: Month — ${fmtInr(selected.price)}/month.`
               : "";
       const msgParts = [
         `I have chosen the ${selected.planName} plan${selected.planType ? ` (${selected.planType})` : ""}.`,
@@ -187,47 +191,53 @@ export default function UpgradePage() {
             <div className={`rounded-xl border p-4 sm:p-5 ${t.selectedBox}`}>
               <p className={`text-xs uppercase tracking-wide ${t.selectedTitle}`}>Selected plan</p>
               <p className={`mt-1 text-base font-semibold sm:text-lg ${t.selectedText}`}>{selectedPlanText}</p>
-              <p className={`mt-1 text-sm ${t.selectedText}`}>Base rate from pricing: {selectedAmountText}</p>
 
-              <p className={`mt-4 text-xs font-semibold uppercase tracking-wide ${t.selectedTitle}`}>Billing</p>
-              <div className={`mt-2 flex max-w-md rounded-xl ${t.toggleWrap}`}>
+              <p className={`mt-4 text-xs font-semibold uppercase tracking-wide ${t.selectedTitle}`}>Pay as</p>
+              <div className={`mt-2 grid max-w-lg grid-cols-2 overflow-hidden rounded-xl ${t.toggleWrap}`}>
                 <button
                   type="button"
                   onClick={() => setBillingCycle("monthly")}
-                  className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+                  className={`border-r border-slate-300/80 px-3 py-3.5 text-center text-sm font-semibold transition dark:border-slate-600 ${
                     billingCycle === "monthly" ? t.toggleActive : t.toggleIdle
                   }`}
                 >
-                  Monthly
+                  Month
                 </button>
                 <button
                   type="button"
                   onClick={() => setBillingCycle("annual")}
-                  className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+                  className={`px-3 py-3.5 text-center text-sm font-semibold transition ${
                     billingCycle === "annual" ? t.toggleActive : t.toggleIdle
                   }`}
                 >
-                  Annual (11 mo. for 12)
+                  Year
                 </button>
               </div>
 
-              <div className="mt-4 rounded-lg border border-sky-200/60 bg-white/50 px-3 py-3 text-sm dark:border-sky-800/50 dark:bg-slate-900/40">
+              <div
+                className="mt-4 rounded-xl border border-sky-300/70 bg-white px-4 py-5 text-center dark:border-sky-700/50 dark:bg-slate-900/50"
+                role="status"
+                aria-live="polite"
+              >
                 {isAnnual ? (
                   <>
-                    <p className="font-semibold text-slate-900 dark:text-slate-100">
-                      Pay once: <strong>{annualTotalText}</strong>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-300">
+                      Amount to pay (year)
                     </p>
-                    <p className="mt-1 text-slate-600 dark:text-slate-400">
-                      ₹{selected.price.toLocaleString("en-IN")}/month × 11 = {annualTotalText} — covers <strong>12 months</strong>{" "}
-                      on the same usage caps.
+                    <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{annualLine}</p>
+                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                      One payment for 12 months: {fmtInr(selected.price)}/month × 11 = {annualLine}
                     </p>
                   </>
                 ) : (
                   <>
-                    <p className="font-semibold text-slate-900 dark:text-slate-100">
-                      Pay each month: <strong>{selectedAmountText}</strong>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-300">
+                      Amount to pay (month)
                     </p>
-                    <p className="mt-1 text-slate-600 dark:text-slate-400">Same published monthly rate as on the pricing page.</p>
+                    <p className="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+                      {fmtInr(selected.price)}
+                    </p>
+                    <p className="mt-1 text-base font-medium text-slate-600 dark:text-slate-300">per month</p>
                   </>
                 )}
               </div>
@@ -247,21 +257,21 @@ export default function UpgradePage() {
               In your UPI app, send{" "}
               {selected?.price != null ? (
                 isAnnual ? (
-                  <strong>{annualTotalText}</strong>
+                  <strong>{annualLine}</strong>
                 ) : (
-                  <strong>₹{selected.price.toLocaleString("en-IN")}</strong>
+                  <strong>{fmtInr(selected.price)}</strong>
                 )
               ) : (
                 "the amount"
               )}{" "}
-              {selected?.price != null && !isAnnual ? "for this month’s subscription" : selected?.price != null && isAnnual ? "for the annual prepay" : ""}{" "}
+              {selected?.price != null && !isAnnual ? "for this month’s subscription" : selected?.price != null && isAnnual ? "for the year (annual prepay)" : ""}{" "}
               to this ID, then share the screenshot on WhatsApp.
             </p>
           </div>
 
           <p className={`text-sm sm:text-base ${t.msg}`}>
             {selected
-              ? `You chose ${selectedPlanText}. Use WhatsApp below — your message includes this plan and billing choice.`
+              ? `You chose ${selectedPlanText}. Use WhatsApp below — your message includes Month or Year and the amount.`
               : info.message}
           </p>
           <a
