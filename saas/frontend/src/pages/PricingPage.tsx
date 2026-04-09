@@ -89,6 +89,44 @@ export default function PricingPage({ variant = "marketing" }: Props) {
 
       {err && <p className={t.err}>{err}</p>}
 
+      {ws && (
+        <div className="mx-auto mt-8 flex max-w-4xl flex-col gap-4 rounded-xl border border-teal-200/80 bg-gradient-to-r from-emerald-50 to-teal-50/90 px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex min-w-0 gap-3 sm:gap-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-teal-100 text-teal-800" aria-hidden>
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M12 6v2M8 8h8M10 10h4M9 14h6M8 18h8"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M4 10c0-2.5 2-4.5 4.5-4.5h7C18 5.5 20 7.5 20 10v8c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2v-8z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+                <path d="M12 5V3M9 4l3-1 3 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </span>
+            <div className="min-w-0 text-left">
+              <p className="text-base font-semibold text-teal-950 sm:text-lg">
+                Prefer annual billing? Pay for 11 months, get 12.
+              </p>
+              <p className="mt-1 text-sm leading-snug text-teal-900/85">
+                Same FIR usage caps — we confirm your annual total and activate after payment on WhatsApp.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/upgrade?billing=annual"
+            className="inline-flex shrink-0 items-center justify-center rounded-lg border-2 border-teal-700 bg-white/80 px-4 py-2.5 text-sm font-semibold text-teal-900 shadow-sm transition hover:bg-teal-50 sm:min-w-[11rem]"
+          >
+            Ask for annual
+          </Link>
+        </div>
+      )}
+
       <div className="mt-14 grid gap-8 md:grid-cols-2 xl:grid-cols-3">
         {plans.map((plan) => {
           const isEnterprise = plan.plan_type === "enterprise";

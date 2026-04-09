@@ -23,6 +23,9 @@ todos:
   - id: upgrade-page-fir-pricing-link
     content: "UpgradePage: section for used modules & pricing — v1 show single actionable row for FIR Automation linking to /workspace/pricing (workspace FIR pricing; handles plan selection + WhatsApp). Later extend from /api/modules/overview + module catalog when more modules ship"
     status: completed
+  - id: workspace-pricing-annual-banner
+    content: "PricingPage (variant=workspace only): horizontal promo banner — teal/sage palette, gift icon, headline + subline for annual prepay (pay for 11 months, get 12); CTA links to /upgrade with anchor or query annual=1 for WhatsApp context; responsive flex"
+    status: completed
 ---
 
 # Roadmap: premium ZIP, asset readiness, size target, faster batches
@@ -133,3 +136,19 @@ todos:
 **Not in v1:** Full dynamic matrix of all QMS modules from `/api/modules/overview` until those modules are productized the same way; then extend the section to list rows per module with links to `/pricing/modules/:slug` or workspace equivalents.
 
 **Files:** `saas/frontend/src/pages/UpgradePage.tsx` (primary); optional thin helper or copy constants if the section grows.
+
+## Workspace FIR pricing: annual savings banner
+
+**Where:** `PricingPage.tsx` when **`variant === "workspace"`** (`/workspace/pricing`) — insert **below the hero** (H1 + lead) and **above the plan grid** so it frames the monthly cards with an annual alternative.
+
+**Visual (inspired by reference):** Full-width (within `max-w-*` container) **rounded-xl** bar; **soft sage / mint** background (`bg-emerald-50` or `bg-teal-50`); **teal** text and **outline** CTA; optional small **gift** SVG inline (no new asset file) or emoji fallback for accessibility.
+
+**Copy (effective, honest):**
+
+- **Headline:** e.g. *“Prefer annual billing? Pay for 11 months, get 12.”* (clearer than “save 20%” when the product promise is one free month).
+- **Subline (optional):** *“Same FIR usage caps — we’ll confirm your plan and activate after payment on WhatsApp.”*
+- **CTA:** *“Ask for annual on WhatsApp”* or *“Upgrade — annual”* → links to **`/upgrade`** (manual flow). Optionally append query e.g. **`?billing=annual`** and teach `UpgradePage` / WhatsApp prefill to mention annual so support can quote **11× monthly** as yearly total.
+
+**Scope guard:** Show **only** for workspace variant; marketing `/pricing` can omit or use shorter strip later.
+
+**Files:** `saas/frontend/src/pages/PricingPage.tsx`; optional `UpgradePage.tsx` query-param handling for WhatsApp message if we add `billing=annual`.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { apiFetch } from "../api";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -8,14 +8,22 @@ type UpgradeInfo = { upi_id: string; whatsapp_url: string; message: string };
 type PlanInfo = { plan_type: string; name: string; price_inr: number };
 
 export default function UpgradePage() {
+  const loc = useLocation();
   const [info, setInfo] = useState<UpgradeInfo | null>(null);
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [qrTick, setQrTick] = useState(0);
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const { theme } = useTheme();
+
+  const wantsAnnual = useMemo(() => {
+    const q = new URLSearchParams(loc.search);
+    const b = (q.get("billing") || "").toLowerCase();
+    return b === "annual" || b === "yearly" || b === "1";
+  }, [loc.search]);
+
   const selected = useMemo(() => {
-    const q = new URLSearchParams(window.location.search);
+    const q = new URLSearchParams(loc.search);
     const planName = (q.get("plan_name") || q.get("plan") || "").trim();
     const planType = (q.get("plan_type") || "").trim();
     const priceRaw = (
@@ -39,7 +47,7 @@ export default function UpgradePage() {
       planType: planType || matched?.plan_type || "",
       price: price ?? matched?.price_inr ?? null,
     };
-  }, [plans]);
+  }, [plans, loc.search]);
 
   useEffect(() => {
     (async () => {
@@ -105,12 +113,31 @@ export default function UpgradePage() {
 
   const whatsappHref = useMemo(() => {
     if (!info) return "";
-    if (!selected) return info.whatsapp_url;
     try {
       const u = new URL(info.whatsapp_url);
+      if (!selected) {
+        if (wantsAnnual) {
+          u.searchParams.set(
+            "text",
+            [
+              "Hi — I'm interested in TheAIQualisys FIR annual billing: pay for 11 months, get 12 months on the same plan limits.",
+              `UPI ID: ${info.upi_id}.`,
+              "Please confirm the annual total and next steps after I share the payment screenshot.",
+            ].join(" "),
+          );
+        }
+        return u.toString();
+      }
+      const annualBit =
+        wantsAnnual && selected.price != null
+          ? ` I want annual prepay: ₹${selected.price}/month × 11 = ₹${selected.price * 11} for 12 months (same usage caps).`
+          : wantsAnnual
+            ? " I want annual prepay (11 months paid for 12 months on this plan)."
+            : "";
       const msgParts = [
         `I have chosen the ${selected.planName} plan${selected.planType ? ` (${selected.planType})` : ""}.`,
         selected.price != null ? `Plan amount: ₹${selected.price}/month.` : "",
+        annualBit,
         `I will pay to UPI: ${info.upi_id}.`,
         "Please share activation confirmation after payment screenshot.",
       ].filter(Boolean);
@@ -119,7 +146,7 @@ export default function UpgradePage() {
     } catch {
       return info.whatsapp_url;
     }
-  }, [info, selected]);
+  }, [info, selected, wantsAnnual]);
 
   const upiPayload = useMemo(() => {
     if (!info) return "";
@@ -127,17 +154,21 @@ export default function UpgradePage() {
     q.set("pa", info.upi_id);
     q.set("pn", "TheAIQualisys");
     q.set("cu", "INR");
-    if (selected?.price != null) q.set("am", String(selected.price));
+    if (selected?.price != null) {
+      const amount = wantsAnnual ? selected.price * 11 : selected.price;
+      q.set("am", String(amount));
+    }
     if (selected?.planName) {
+      const label = wantsAnnual ? "Annual FIR" : "Subscription";
       q.set(
         "tn",
-        `Subscription ${selected.planName}${selected.planType ? ` (${selected.planType})` : ""} #${Date.now()}`,
+        `${label} ${selected.planName}${selected.planType ? ` (${selected.planType})` : ""} #${Date.now()}`,
       );
     } else {
-      q.set("tn", `Subscription payment #${Date.now()}`);
+      q.set("tn", wantsAnnual ? `FIR annual prepay #${Date.now()}` : `Subscription payment #${Date.now()}`);
     }
     return `upi://pay?${q.toString()}`;
-  }, [info, selected, qrTick]);
+  }, [info, selected, wantsAnnual, qrTick]);
 
   const qrImageUrl = useMemo(() => {
     if (!upiPayload) return "";
@@ -191,6 +222,12 @@ export default function UpgradePage() {
       {err && <p className={`mt-4 text-sm ${t.err}`}>{err}</p>}
       {info && (
         <div className="mt-6 space-y-4 sm:mt-8">
+          {wantsAnnual && (
+            <div className="rounded-xl border border-teal-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3 text-sm text-teal-950">
+              <strong>Annual prepay:</strong> pay for <strong>11 months</strong> to cover <strong>12 months</strong> on the
+              same FIR plan limits. Choose a plan below or open WhatsApp — we confirm the total before you pay.
+            </div>
+          )}
           {/* Visible marker so users can confirm this is the new QR-enabled upgrade page. */}
           <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
             QR payment mode enabled
@@ -202,6 +239,11 @@ export default function UpgradePage() {
               {selectedAmountText && (
                 <p className={`mt-1 text-sm font-medium sm:text-base ${t.selectedText}`}>
                   You have chosen the plan with rate: <strong>{selectedAmountText}</strong>.
+                  {wantsAnnual && selected.price != null && (
+                    <span className="mt-1 block text-sm">
+                      Annual UPI amount preset: <strong>₹{selected.price * 11}</strong> (11× monthly for 12 months).
+                    </span>
+                  )}
                 </p>
               )}
             </div>
@@ -225,8 +267,13 @@ export default function UpgradePage() {
                 </div>
               )}
               <p className={`text-xs ${t.msg}`}>
-                QR refreshes every 30 seconds with this plan amount
-                {selectedAmountText ? ` (${selectedAmountText})` : ""}.
+                QR refreshes every 30 seconds
+                {selected?.price != null
+                  ? wantsAnnual
+                    ? ` (amount: 11× monthly = ₹${selected.price * 11})`
+                    : ` (${selectedAmountText})`
+                  : ""}
+                .
               </p>
               {upiPayload ? (
                 <a
