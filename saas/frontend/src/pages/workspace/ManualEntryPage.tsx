@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { workspaceFetch } from "../../api";
+import { getWorkspaceCustomerId, setWorkspaceCustomerId, workspaceFetch } from "../../api";
 import { sanitizePartNoUpper } from "../../utils/partFields";
 
 type ManualRow = {
@@ -15,6 +15,8 @@ const MAX_ROWS = 3;
 function partKeyFromInput(s: string): string {
   return sanitizePartNoUpper(s).toLowerCase();
 }
+
+type CustomerRow = { id: number; vendor_code: string; name: string };
 
 function blankRow(): ManualRow {
   return { partNumber: "", quantity: "", invoiceNumber: "", date: "" };
@@ -55,10 +57,37 @@ export default function ManualEntryPage() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [partMasterKeys, setPartMasterKeys] = useState<Set<string>>(new Set());
+  const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [scopeCustomerId, setScopeCustomerId] = useState<number | null>(null);
+
+  useEffect(() => {
+    workspaceFetch<CustomerRow[]>("/api/app/customers")
+      .then((list) => {
+        setCustomers(list);
+        const ws = getWorkspaceCustomerId();
+        if (list.length === 1) {
+          setScopeCustomerId(list[0].id);
+          setWorkspaceCustomerId(list[0].id);
+        } else if (ws != null && list.some((c) => c.id === ws)) {
+          setScopeCustomerId(ws);
+        } else if (list.length > 1) {
+          const pick = ws != null && list.some((c) => c.id === ws) ? ws : list[0].id;
+          setScopeCustomerId(pick);
+          setWorkspaceCustomerId(pick);
+        }
+      })
+      .catch(() => setCustomers([]));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    workspaceFetch<PartMasterRow[]>("/api/app/parts")
+    if (scopeCustomerId == null) {
+      setPartMasterKeys(new Set());
+      return;
+    }
+    setWorkspaceCustomerId(scopeCustomerId);
+    const q = `?customer_id=${scopeCustomerId}`;
+    workspaceFetch<PartMasterRow[]>(`/api/app/parts${q}`)
       .then((parts) => {
         if (cancelled) return;
         setPartMasterKeys(new Set(parts.map((p) => sanitizePartNoUpper(p.part_no).toLowerCase())));
@@ -69,7 +98,7 @@ export default function ManualEntryPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [scopeCustomerId]);
 
   const canAddMore = rows.length < MAX_ROWS;
 
@@ -145,7 +174,10 @@ export default function ManualEntryPage() {
       if (!pre.ok && pre.reason === "no_customers") {
         throw new Error("Add at least one customer before creating FIR manually.");
       }
-      const parts = await workspaceFetch<PartMasterRow[]>("/api/app/parts");
+      if (scopeCustomerId == null) {
+        throw new Error('Select a customer for this FIR.');
+      }
+      const parts = await workspaceFetch<PartMasterRow[]>(`/api/app/parts?customer_id=${scopeCustomerId}`);
       const partMap = new Map(parts.map((p) => [sanitizePartNoUpper(p.part_no).toLowerCase(), p]));
       const missing: string[] = [];
       const enrichedRows = sanitized.map((r) => {
@@ -190,6 +222,25 @@ export default function ManualEntryPage() {
       <p className="mt-1 text-sm text-slate-600">
         Add up to {MAX_ROWS} parts and continue to inspection/results to generate and download FIR reports.
       </p>
+      {customers.length > 1 && (
+        <div className="mt-4 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+          <label className="flex flex-wrap items-center gap-2 text-sm text-slate-800">
+            <span className="font-medium">Customer for this FIR</span>
+            <select
+              className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              value={scopeCustomerId ?? ""}
+              onChange={(e) => setScopeCustomerId(Number(e.target.value))}
+            >
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.vendor_code} — {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-1 text-xs text-slate-500">Parts master is matched for this customer only.</p>
+        </div>
+      )}
 
       <div className="mt-4 space-y-3">
         {rows.map((r, i) => (

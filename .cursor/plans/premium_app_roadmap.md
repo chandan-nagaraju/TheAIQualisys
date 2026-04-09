@@ -41,6 +41,12 @@ todos:
   - id: workspace-dashboard-intro-copy
     content: "WorkspaceDashboard.tsx: replace legacy/PostgreSQL lead paragraph with user-facing FIR Automation module description (what users do: generate inspection reports from invoice data, manage customers/vendors/parts, configure company FIR branding) — no stack or legacy references"
     status: completed
+  - id: parts-master-customer-schema
+    content: "DB + API: add PartV2.customer_id (FK fir_customers, nullable index); replace uq_parts_v2_company_part with uniqueness per (company_id, customer_id, part_no) using partial/NULLS NOT DISTINCT per Postgres version; data migration backfill customer_id = sole customer when company has exactly one FIR customer"
+    status: completed
+  - id: parts-master-customer-ui
+    content: "PartsPage: customer dropdown (all + each customer) to filter table; new/edit part form includes customer selector — hidden or auto-filled when only one customer; list/detail/export/import-bundle paths pass customer scope"
+    status: completed
 ---
 
 # Roadmap: premium ZIP, asset readiness, size target, faster batches
@@ -208,6 +214,32 @@ todos:
 - **`fir_part_excel.py`**: When setting `part_no` from sheet cells or grouped keys, apply the same sanitizer so part master Excel import/review matches DB and FIR rows.
 
 **Out of scope for this rule:** Admin read-only tables that only **display** `part_no` from the API (no user typing).
+
+## Parts master: classify parts by FIR customer (vendor)
+
+**Problem today:** `PartV2` is scoped only by **`company_id`** (`uq_parts_v2_company_part`). **Customers** live in `fir_customers` and are **not** linked to parts — so the app cannot store “this part belongs to Customer A vs B” inside the same tenant.
+
+**Product rules**
+
+1. **Single customer** for the company: treat all parts as belonging to that customer — **auto-assign** `customer_id` on create (and **backfill** existing parts in migration).
+2. **Multiple customers:** user **classifies** each part with a **customer** (vendor). Parts master shows a **dropdown** at the top (same interaction pattern as admin “pick tenant / open workspace”: select scope, then content updates) to filter the table to **one customer** or **All customers**.
+3. **Part number uniqueness** becomes **per customer** (same `part_no` allowed for two different customers in one company), unless product insists on global uniqueness — default here is **per `(company_id, customer_id)`**.
+
+**Schema / API (summary)**
+
+- Add **`customer_id`** nullable FK on `parts_v2` → `fir_customers.id` (index). Drop old unique constraint; add new uniqueness on **`(company_id, customer_id, part_no)`** (handle `NULL` semantics: prefer **no NULLs in app** after backfill, or use **partial unique indexes** / Postgres **`UNIQUE NULLS NOT DISTINCT`** if supported).
+- **`GET/POST /api/app/parts`**, import-bundle, export, part detail: include **`customer_id`** (or nested customer summary) and filter `GET` by optional `?customer_id=`.
+- **Migration:** for each company with exactly **one** `fir_customers` row, set **`parts_v2.customer_id`** to that id. Companies with **zero** customers: leave null until first customer exists, then prompt or batch-assign.
+
+**Frontend**
+
+- **`PartsPage.tsx`:** customer `<select>` — options “All”, then each `{vendor_code — name}`; filter client-side or server-side. Form fields: customer dropdown for new/update when **multiple** customers; **omit or pre-fill** when **one** customer.
+- Reuse styling patterns from **`AdminDashboardPage`** tenant selector (label + select + primary action) for familiarity — not necessarily the same component.
+
+**Risks / follow-ups**
+
+- **FIR flows** (`ManualEntryPage`, invoice upload, inspection) today match parts by **part number** only within company — may need to prefer **`workspaceCustomerId`** (session customer) when resolving parts so the correct customer’s part master row is used. Track as a separate sub-task if not bundled.
+- **JSON/Excel import**: extend bundle format or map file parts to selected customer in UI before import.
 
 ## Workspace dashboard: module intro copy
 

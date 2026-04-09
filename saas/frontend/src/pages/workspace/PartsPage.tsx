@@ -5,6 +5,8 @@ import {
   openWorkspacePdfInNewTab,
   workspaceDownloadBlob,
   workspaceFetch,
+  getWorkspaceCustomerId,
+  setWorkspaceCustomerId,
 } from "../../api";
 import PartMasterExcelReview, { type PartMasterBundle } from "../../components/PartMasterExcelReview";
 import { sanitizePartNoUpper as sanitizePartMasterAlnumUpper } from "../../utils/partFields";
@@ -12,10 +14,15 @@ import { sanitizePartNoUpper as sanitizePartMasterAlnumUpper } from "../../utils
 type Row = {
   part_id: number;
   part_no: string;
+  customer_id: number;
+  customer_vendor_code?: string;
+  customer_name?: string;
   drawing_rev: string | null;
   description: string | null;
   has_drawing?: boolean;
 };
+
+type CustomerOpt = { id: number; vendor_code: string; name: string };
 
 export default function PartsPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -34,14 +41,47 @@ export default function PartsPage() {
   const [deleteBusyId, setDeleteBusyId] = useState<number | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const excelRef = useRef<HTMLInputElement>(null);
+  const [customers, setCustomers] = useState<CustomerOpt[]>([]);
+  /** Table filter: null = all customers */
+  const [filterCustomerId, setFilterCustomerId] = useState<number | null>(null);
+  /** Part form / import target customer (required when multiple customers) */
+  const [formCustomerId, setFormCustomerId] = useState<number | null>(null);
 
   async function load() {
-    setRows(await workspaceFetch<Row[]>("/api/app/parts"));
+    const q = filterCustomerId != null ? `?customer_id=${filterCustomerId}` : "";
+    setRows(await workspaceFetch<Row[]>(`/api/app/parts${q}`));
   }
 
   useEffect(() => {
-    load().catch((e) => setErr(e.message));
+    workspaceFetch<CustomerOpt[]>("/api/app/customers")
+      .then((list) => {
+        setCustomers(list);
+        const ws = getWorkspaceCustomerId();
+        if (list.length === 1) {
+          setFormCustomerId(list[0].id);
+        } else if (ws != null && list.some((c) => c.id === ws)) {
+          setFormCustomerId(ws);
+        } else if (list.length > 1) {
+          setFormCustomerId((prev) => prev ?? list[0].id);
+        }
+      })
+      .catch(() => setCustomers([]));
   }, []);
+
+  useEffect(() => {
+    load().catch((e) => setErr(e.message));
+  }, [filterCustomerId]);
+  useEffect(() => {
+    if (formCustomerId != null) {
+      setWorkspaceCustomerId(formCustomerId);
+    }
+  }, [formCustomerId]);
+
+
+  const formRows = useMemo(
+    () => rows.filter((r) => formCustomerId == null || r.customer_id === formCustomerId),
+    [rows, formCustomerId],
+  );
 
   const filterQ = sanitizePartMasterAlnumUpper(part_no).toLowerCase();
   const visibleRows = useMemo(() => {
@@ -53,22 +93,23 @@ export default function PartsPage() {
   const partNoExistsInMaster = useMemo(() => {
     const q = sanitizePartMasterAlnumUpper(part_no).toLowerCase();
     if (!q) return false;
-    return rows.some((r) => sanitizePartMasterAlnumUpper(r.part_no).toLowerCase() === q);
-  }, [rows, part_no]);
+    return formRows.some((r) => sanitizePartMasterAlnumUpper(r.part_no).toLowerCase() === q);
+  }, [formRows, part_no]);
 
   const existingPartNoKeys = useMemo(() => {
     const s = new Set<string>();
-    for (const r of rows) {
+    for (const r of formRows) {
       s.add(sanitizePartMasterAlnumUpper(r.part_no).toLowerCase());
     }
     return s;
-  }, [rows]);
+  }, [formRows]);
 
   async function downloadAll() {
     setErr(null);
     setImportMsg(null);
     try {
-      const blob = await workspaceDownloadBlob("/api/app/parts/export-all");
+      const exq = filterCustomerId != null ? `?customer_id=${filterCustomerId}` : "";
+      const blob = await workspaceDownloadBlob(`/api/app/parts/export-all${exq}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -205,6 +246,7 @@ export default function PartsPage() {
           description: description || null,
           part_id: editingPartId,
           revision_change_reason: revisionReason.trim() || null,
+          customer_id: formCustomerId,
         }),
       });
       if (pendingPdf) {
@@ -230,6 +272,7 @@ export default function PartsPage() {
 
   function startEdit(r: Row) {
     setEditingPartId(r.part_id);
+    setFormCustomerId(r.customer_id);
     setOriginalDrawingRev(r.drawing_rev ?? null);
     setPartNo(sanitizePartMasterAlnumUpper(r.part_no));
     setDrawingRev(r.drawing_rev ?? "");
@@ -241,6 +284,12 @@ export default function PartsPage() {
 
   function cancelEdit() {
     setEditingPartId(null);
+    const ws = getWorkspaceCustomerId();
+    if (customers.length === 1) {
+      setFormCustomerId(customers[0].id);
+    } else if (ws != null && customers.some((c) => c.id === ws)) {
+      setFormCustomerId(ws);
+    }
     setOriginalDrawingRev(null);
     setPartNo("");
     setDrawingRev("");
@@ -320,6 +369,43 @@ export default function PartsPage() {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h1 className="text-xl font-semibold text-slate-900">Parts master</h1>
+      {customers.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+          <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+            <span className="text-slate-600">Show parts for</span>
+            <select
+              className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              value={filterCustomerId ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setFilterCustomerId(v === "" ? null : Number(v));
+              }}
+            >
+              <option value="">All customers</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.vendor_code} — {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+            <span className="text-slate-600">Add / import for customer</span>
+            <select
+              className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              value={formCustomerId ?? ""}
+              onChange={(e) => setFormCustomerId(Number(e.target.value))}
+              disabled={customers.length <= 1}
+            >
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.vendor_code} — {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
       <p className="mt-2 text-sm text-slate-600">
         Same layout as legacy Flask: filter the table with the part number field, add or edit core fields, then open{" "}
         <strong>Edit A–D</strong> for dimension / complaint / material / coating rows.
@@ -499,6 +585,7 @@ export default function PartsPage() {
             <tr className="border-b border-slate-200 bg-slate-100 text-slate-700">
               <th className="px-3 py-2 font-semibold">#</th>
               <th className="px-3 py-2 font-semibold">Part number</th>
+              <th className="px-3 py-2 font-semibold">Customer</th>
               <th className="px-3 py-2 font-semibold">Drawing rev</th>
               <th className="px-3 py-2 font-semibold">Description</th>
               <th className="px-3 py-2 font-semibold">Drawing</th>
@@ -509,7 +596,7 @@ export default function PartsPage() {
           <tbody>
             {visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                   {rows.length === 0
                     ? "No parts yet — add one above, import JSON, or upload Excel."
                     : "No parts match the filter."}
@@ -523,6 +610,10 @@ export default function PartsPage() {
                     <Link className="hover:underline" to={`/workspace/parts/${r.part_id}`}>
                       {r.part_no}
                     </Link>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-slate-600">
+                    {r.customer_vendor_code ?? "—"}
+                    {r.customer_name ? <span className="text-slate-500"> · {r.customer_name}</span> : null}
                   </td>
                   <td className="px-3 py-2 text-slate-700">{r.drawing_rev ?? ""}</td>
                   <td className="px-3 py-2 text-slate-700">{r.description ?? ""}</td>
