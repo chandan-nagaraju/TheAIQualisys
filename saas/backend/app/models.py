@@ -112,10 +112,13 @@ class InvoiceV2(Base):
 
 class PartV2(Base):
     __tablename__ = "parts_v2"
-    __table_args__ = (UniqueConstraint("company_id", "part_no", name="uq_parts_v2_company_part"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", "customer_id", "part_no", name="uq_parts_v2_company_customer_part"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("fir_customers.id", ondelete="RESTRICT"), nullable=False, index=True)
     part_no: Mapped[str] = mapped_column(String(255), nullable=False)
     drawing_rev: Mapped[str | None] = mapped_column(String(128), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -124,6 +127,7 @@ class PartV2(Base):
     drawing_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     company: Mapped[Company] = relationship("Company", back_populates="parts")
+    customer: Mapped["Customer"] = relationship("Customer", back_populates="parts")
     specs: Mapped[list[PartSpecV2]] = relationship(
         "PartSpecV2", back_populates="part", cascade="all, delete-orphan"
     )
@@ -183,6 +187,7 @@ class Customer(Base):
     fir_report_events: Mapped[list["FirReportEvent"]] = relationship(
         "FirReportEvent", back_populates="customer"
     )
+    parts: Mapped[list["PartV2"]] = relationship("PartV2", back_populates="customer")
 
 
 class FirReportEvent(Base):

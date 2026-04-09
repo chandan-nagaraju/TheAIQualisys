@@ -300,6 +300,36 @@ def _get_part(ws: WsContext, part_id: int) -> PartV2:
     return p
 
 
+def _resolve_default_customer_id(ws: WsContext) -> int:
+    rows = (
+        ws.db.execute(select(Customer).where(Customer.company_id == ws.company.id).order_by(Customer.id))
+        .scalars()
+        .all()
+    )
+    if not rows:
+        raise HTTPException(status_code=400, detail="Add at least one customer before managing parts.")
+    if len(rows) == 1:
+        return rows[0].id
+    if ws.customer is not None:
+        return ws.customer.id
+    raise HTTPException(status_code=400, detail="select_customer_required")
+
+
+def _get_customer_for_part_upsert(ws: WsContext, customer_id: int | None) -> Customer:
+    if customer_id is None:
+        cid = _resolve_default_customer_id(ws)
+        c = ws.db.get(Customer, cid)
+        if not c:
+            raise HTTPException(status_code=400, detail="Customer not found")
+        return c
+    c = ws.db.execute(
+        select(Customer).where(Customer.id == customer_id, Customer.company_id == ws.company.id)
+    ).scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=400, detail="Invalid customer for this workspace")
+    return c
+
+
 # --- Customers ---
 @router.get("/customers")
 def list_customers(ws: WsContext = Depends(get_ws)):
@@ -426,18 +456,23 @@ async def save_settings(
 
 # --- Parts ---
 @router.get("/parts")
-def list_parts(ws: WsContext = Depends(get_ws)):
-    rows = (
-        ws.db.execute(
-            select(PartV2).where(PartV2.company_id == ws.company.id).order_by(PartV2.part_no)
-        )
-        .scalars()
-        .all()
-    )
+def list_parts(
+    customer_id: int | None = Query(None),
+    ws: WsContext = Depends(get_ws),
+):
+    q = select(PartV2).where(PartV2.company_id == ws.company.id)
+    if customer_id is not None:
+        q = q.where(PartV2.customer_id == customer_id)
+    rows = ws.db.execute(q.order_by(PartV2.part_no)).scalars().all()
+    cust_rows = ws.db.execute(select(Customer).where(Customer.company_id == ws.company.id)).scalars().all()
+    cust_by_id = {c.id: c for c in cust_rows}
     return [
         {
             "part_id": r.id,
             "part_no": r.part_no,
+            "customer_id": r.customer_id,
+            "customer_vendor_code": cust_by_id[r.customer_id].vendor_code if r.customer_id in cust_by_id else "",
+            "customer_name": cust_by_id[r.customer_id].name if r.customer_id in cust_by_id else "",
             "drawing_rev": r.drawing_rev,
             "description": r.description,
             "has_drawing": _drawing_file_exists(ws.company.id, r),
@@ -452,6 +487,7 @@ class PartUpsert(BaseModel):
     drawing_rev: str | None = None
     part_id: int | None = None
     revision_change_reason: str | None = None
+    customer_id: int | None = None
 
 
 @router.post("/parts")
@@ -462,10 +498,14 @@ def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
     description = sanitize_part_master_alnum_upper(body.description) if body.description is not None else None
     description = description if description else None
 
+    cust = _get_customer_for_part_upsert(ws, body.customer_id)
+    cust_id = cust.id
+
     if body.part_id is not None:
         p = _get_part(ws, body.part_id)
         old_rev = p.drawing_rev
         p.part_no = part_no
+        p.customer_id = cust_id
         p.description = description
         p.drawing_rev = body.drawing_rev
         _record_revision_if_changed(ws, p, old_rev, p.drawing_rev, body.revision_change_reason)
@@ -474,7 +514,11 @@ def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
         return {"part_id": p.id, "part_no": p.part_no, "drawing_rev": p.drawing_rev, "description": p.description}
 
     existing = ws.db.execute(
-        select(PartV2).where(PartV2.company_id == ws.company.id, PartV2.part_no == part_no)
+        select(PartV2).where(
+            PartV2.company_id == ws.company.id,
+            PartV2.customer_id == cust_id,
+            PartV2.part_no == part_no,
+        )
     ).scalar_one_or_none()
     if existing:
         old_rev = existing.drawing_rev
@@ -492,6 +536,7 @@ def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
 
     p = PartV2(
         company_id=ws.company.id,
+        customer_id=cust_id,
         part_no=part_no,
         description=description,
         drawing_rev=body.drawing_rev,
@@ -544,9 +589,13 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
         .scalars()
         .all()
     )
+    cust = ws.db.get(Customer, p.customer_id)
     return {
         "part_id": p.id,
         "part_no": p.part_no,
+        "customer_id": p.customer_id,
+        "customer_vendor_code": cust.vendor_code if cust else "",
+        "customer_name": cust.name if cust else "",
         "drawing_rev": p.drawing_rev,
         "description": p.description,
         "drawing_pdf_filename": p.drawing_pdf_filename,
@@ -853,19 +902,29 @@ class PartMasterBundleBody(BaseModel):
     parts: list[PartMasterSlice]
 
 
-def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice) -> PartV2:
+def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice, *, customer_id: int) -> PartV2:
     pn = body.part.part_no
     drawing_rev = _norm_opt_str(body.part.drawing_rev)
     description = _norm_opt_str(body.part.description)
 
     p = ws.db.execute(
-        select(PartV2).where(PartV2.company_id == ws.company.id, PartV2.part_no == pn)
+        select(PartV2).where(
+            PartV2.company_id == ws.company.id,
+            PartV2.customer_id == customer_id,
+            PartV2.part_no == pn,
+        )
     ).scalar_one_or_none()
     if p:
         p.drawing_rev = drawing_rev
         p.description = description
     else:
-        p = PartV2(company_id=ws.company.id, part_no=pn, drawing_rev=drawing_rev, description=description)
+        p = PartV2(
+            company_id=ws.company.id,
+            customer_id=customer_id,
+            part_no=pn,
+            drawing_rev=drawing_rev,
+            description=description,
+        )
         ws.db.add(p)
         ws.db.flush()
 
@@ -934,19 +993,21 @@ def import_part_master(body: PartMasterImportBody, ws: WsContext = Depends(get_w
         coating_rows=body.coating_rows,
     )
     pn = slice_body.part.part_no
-    existing_sanitized = {
-        sanitize_part_master_alnum_upper(r[0])
-        for r in ws.db.execute(
-            select(PartV2.part_no).where(PartV2.company_id == ws.company.id)
-        ).all()
-    }
+    cust = _get_customer_for_part_upsert(ws, None)
+    existing = ws.db.execute(
+        select(PartV2.part_no).where(
+            PartV2.company_id == ws.company.id,
+            PartV2.customer_id == cust.id,
+        )
+    ).all()
+    existing_sanitized = {sanitize_part_master_alnum_upper(r[0]) for r in existing}
     existing_sanitized.discard("")
     if pn in existing_sanitized:
         raise HTTPException(
             status_code=400,
-            detail=f'Part number "{pn}" is already in Parts master — delete it first or use a different part number.',
+            detail=f'Part number "{pn}" is already in Parts master for this customer — delete it first or use a different part number.',
         )
-    p = _apply_part_master_slice(ws, slice_body)
+    p = _apply_part_master_slice(ws, slice_body, customer_id=cust.id)
     ws.db.commit()
     ws.db.refresh(p)
     return {"ok": True, "part_id": p.id, "part_no": p.part_no}
@@ -961,12 +1022,14 @@ def import_part_bundle(body: PartMasterBundleBody, ws: WsContext = Depends(get_w
         )
     if not body.parts:
         raise HTTPException(status_code=400, detail="parts array is empty")
-    existing_sanitized = {
-        sanitize_part_master_alnum_upper(r[0])
-        for r in ws.db.execute(
-            select(PartV2.part_no).where(PartV2.company_id == ws.company.id)
-        ).all()
-    }
+    cust = _get_customer_for_part_upsert(ws, None)
+    existing_rows = ws.db.execute(
+        select(PartV2.part_no).where(
+            PartV2.company_id == ws.company.id,
+            PartV2.customer_id == cust.id,
+        )
+    ).all()
+    existing_sanitized = {sanitize_part_master_alnum_upper(r[0]) for r in existing_rows}
     existing_sanitized.discard("")
     conflicts: list[str] = []
     for sl in body.parts:
@@ -979,13 +1042,13 @@ def import_part_bundle(body: PartMasterBundleBody, ws: WsContext = Depends(get_w
         tail = f"; and {more} more" if more > 0 else ""
         raise HTTPException(
             status_code=400,
-            detail="Part number(s) already in Parts master — remove duplicates from the import or delete the existing part(s) first: "
+            detail="Part number(s) already in Parts master for this customer — remove duplicates from the import or delete the existing part(s) first: "
             + ", ".join(shown)
             + tail,
         )
     last: PartV2 | None = None
     for sl in body.parts:
-        last = _apply_part_master_slice(ws, sl)
+        last = _apply_part_master_slice(ws, sl, customer_id=cust.id)
     ws.db.commit()
     if last:
         ws.db.refresh(last)
@@ -1049,9 +1112,10 @@ async def import_part_master_excel(
         body = PartMasterBundleBody(**bundle_dict)
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=f"Structure error: {e}") from e
+    cust = _get_customer_for_part_upsert(ws, None)
     last: PartV2 | None = None
     for sl in body.parts:
-        last = _apply_part_master_slice(ws, sl)
+        last = _apply_part_master_slice(ws, sl, customer_id=cust.id)
     ws.db.commit()
     if last:
         ws.db.refresh(last)
@@ -1059,12 +1123,14 @@ async def import_part_master_excel(
 
 
 @router.get("/parts/export-all")
-def export_all_parts_master(ws: WsContext = Depends(get_ws)):
-    rows = (
-        ws.db.execute(select(PartV2).where(PartV2.company_id == ws.company.id).order_by(PartV2.part_no))
-        .scalars()
-        .all()
-    )
+def export_all_parts_master(
+    customer_id: int | None = Query(None),
+    ws: WsContext = Depends(get_ws),
+):
+    q = select(PartV2).where(PartV2.company_id == ws.company.id)
+    if customer_id is not None:
+        q = q.where(PartV2.customer_id == customer_id)
+    rows = ws.db.execute(q.order_by(PartV2.part_no)).scalars().all()
     parts_out: list[dict[str, Any]] = []
     for p in rows:
         inner = _serialize_part_detail(ws, p)
@@ -1109,6 +1175,9 @@ def export_all_parts_master(ws: WsContext = Depends(get_ws)):
                     "part_no": _safe_text(inner["part_no"]),
                     "drawing_rev": _safe_text(inner.get("drawing_rev")),
                     "description": _safe_text(inner.get("description")),
+                    "customer_id": inner.get("customer_id"),
+                    "customer_vendor_code": _safe_text(inner.get("customer_vendor_code")),
+                    "customer_name": _safe_text(inner.get("customer_name")),
                 },
                 "spec_rows": spec_rows,
                 "ccp_rows": ccp_rows,
@@ -1170,20 +1239,23 @@ class EnrichBody(BaseModel):
 
 @router.post("/inspection/enrich")
 def inspection_enrich(body: EnrichBody, ws: WsContext = Depends(get_ws)):
+    cust_id = _resolve_default_customer_id(ws)
     parts = ws.db.execute(
-        select(PartV2.id, PartV2.part_no, PartV2.drawing_rev).where(PartV2.company_id == ws.company.id)
+        select(PartV2.id, PartV2.part_no, PartV2.drawing_rev, PartV2.customer_id).where(PartV2.company_id == ws.company.id)
     ).all()
-    parts_by_no: dict[str, tuple[str | None, int | None]] = {}
-    for row in parts:
-        pid, pno, dr = row[0], row[1], row[2]
-        parts_by_no[str(pno).strip()] = (dr, pid)
+    part_rows = [(str(pno).strip(), dr, pid, cid) for pid, pno, dr, cid in parts]
     counts = {
         r[0]: r[1]
         for r in ws.db.execute(
             select(PartSpecV2.part_id, func.count(PartSpecV2.id)).group_by(PartSpecV2.part_id)
         ).all()
     }
-    enriched = enrich_rows_with_parts(body.rows, parts_by_no=parts_by_no, param_count_by_part_id=counts)
+    enriched = enrich_rows_with_parts(
+        body.rows,
+        part_rows=part_rows,
+        workspace_customer_id=cust_id,
+        param_count_by_part_id=counts,
+    )
     customer = None
     if ws.customer:
         customer = {

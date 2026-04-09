@@ -14,7 +14,7 @@ from app.deps import (
     require_invoice_create_allowed,
     require_subscription_access,
 )
-from app.models import Company, CompanyUser, InvoiceV2, PartSpecV2, PartV2
+from app.models import Company, CompanyUser, Customer, InvoiceV2, PartSpecV2, PartV2
 from app.schemas import (
     CompanyOut,
     CompanyUserOut,
@@ -36,6 +36,17 @@ from app.subscription_logic import (
 )
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
+
+def _v2_default_customer_id(db: Session, company_id: int) -> int:
+    rows = db.execute(select(Customer).where(Customer.company_id == company_id).order_by(Customer.id)).scalars().all()
+    if not rows:
+        c = Customer(company_id=company_id, vendor_code="IMPORT", name="Imported parts")
+        db.add(c)
+        db.flush()
+        return c.id
+    return rows[0].id
+
+
 
 
 @router.get("/me", response_model=MeResponse)
@@ -123,13 +134,19 @@ def create_part(
     db: Session = Depends(get_db_session),
 ):
     _, company = user_company
+    cid = _v2_default_customer_id(db, company.id)
     exists = db.execute(
-        select(PartV2).where(PartV2.company_id == company.id, PartV2.part_no == body.part_no.strip())
+        select(PartV2).where(
+            PartV2.company_id == company.id,
+            PartV2.customer_id == cid,
+            PartV2.part_no == body.part_no.strip(),
+        )
     ).scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=400, detail="Part number already exists for this company")
     p = PartV2(
         company_id=company.id,
+        customer_id=cid,
         part_no=body.part_no.strip(),
         drawing_rev=body.drawing_rev,
         description=body.description,
@@ -268,6 +285,7 @@ async def import_data(
     specs_in = data.get("specs") or []
     invoices_in = data.get("invoices") or []
 
+    cid_imp = _v2_default_customer_id(db, company.id)
     part_by_no: dict[str, PartV2] = {}
     for row in parts_in:
         if not isinstance(row, dict):
@@ -277,6 +295,7 @@ async def import_data(
             continue
         p = PartV2(
             company_id=company.id,
+            customer_id=cid_imp,
             part_no=pn,
             drawing_rev=row.get("drawing_rev"),
             description=row.get("description"),
