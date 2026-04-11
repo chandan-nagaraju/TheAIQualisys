@@ -4,7 +4,6 @@ import JSZip from "jszip";
 import { apiFetch, firPreviewUrl, workspaceFetch } from "../../api";
 
 type FirSubscriptionGate = {
-  enable_subscription: boolean;
   trial_active: boolean;
   subscription_active: boolean;
 };
@@ -98,11 +97,11 @@ export default function InspectionResultsPage() {
       .then((s) => {
         if (cancelled) return;
         const entitled = s.trial_active || s.subscription_active;
-        if (s.enable_subscription || entitled) setFirEntitled("yes");
+        if (entitled) setFirEntitled("yes");
         else setFirEntitled("no");
       })
       .catch(() => {
-        if (!cancelled) setFirEntitled("yes");
+        if (!cancelled) setFirEntitled("no");
       });
     return () => {
       cancelled = true;
@@ -378,7 +377,7 @@ export default function InspectionResultsPage() {
     return <p className="text-slate-600">Checking access…</p>;
   }
   if (firEntitled === "no") {
-    return <Navigate to="/upgrade" replace state={{ workspaceBlocked: true }} />;
+    return <Navigate to="/workspace/pricing" replace state={{ workspaceBlocked: true }} />;
   }
 
   if (err) {

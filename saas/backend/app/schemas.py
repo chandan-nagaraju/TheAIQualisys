@@ -62,6 +62,8 @@ class MeResponse(BaseModel):
     invoice_limit: int | None
     can_create_invoice: bool
     can_record_fir_report: bool
+    trial_active: bool
+    subscription_active: bool
     can_access_fir_workspace: bool
     subscription_message: str | None = None
 

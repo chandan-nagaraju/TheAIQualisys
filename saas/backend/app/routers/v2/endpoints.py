@@ -28,6 +28,8 @@ from app.schemas import (
 )
 from app.subscription_logic import (
     can_access_fir_workspace,
+    subscription_is_active,
+    trial_is_valid,
     can_create_invoice,
     can_record_fir_reports,
     count_combined_usage_this_month,
@@ -75,6 +77,8 @@ def v2_me(
         invoice_limit=limit,
         can_create_invoice=ok,
         can_record_fir_report=ok_fir,
+        trial_active=trial_is_valid(company, today),
+        subscription_active=subscription_is_active(company, today),
         can_access_fir_workspace=can_access_fir_workspace(
             company, enable_subscription=settings.enable_subscription, today=today
         ),

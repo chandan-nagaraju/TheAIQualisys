@@ -185,11 +185,11 @@ def can_access_app(company: Company, *, enable_subscription: bool, today: date |
 
 def can_access_fir_workspace(company: Company, *, enable_subscription: bool, today: date | None = None) -> bool:
     """
-    FIR workspace (/api/app/*) — when subscription enforcement is on, require an active trial or paid period.
-    Company billing routes (v2 /me, /subscription/status, etc.) stay reachable via can_access_app.
+    FIR workspace (/api/app/*) — always requires an active company trial or paid subscription window.
+    `enable_subscription` is kept for call-site compatibility; it does not bypass this gate.
+    Invoice limits and some v2 flows may still be relaxed when enable_subscription is False.
     """
-    if not enable_subscription:
-        return True
+    _ = enable_subscription  # kept for API compatibility; FIR gate is always on
     today = today or datetime.now(timezone.utc).date()
     if trial_is_valid(company, today):
         return True

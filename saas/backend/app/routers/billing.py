@@ -38,8 +38,7 @@ def _company_status(company, today: date) -> str:
 
 
 def _fir_module_status(company, today: date, enable_sub: bool) -> str:
-    if not enable_sub:
-        return "Unenforced (dev)"
+    _ = enable_sub # FIR workspace always gated; label matches access only
     if trial_is_valid(company, today):
         return "Trial"
     if subscription_is_active(company, today):

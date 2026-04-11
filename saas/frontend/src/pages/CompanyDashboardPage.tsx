@@ -64,13 +64,17 @@ export default function CompanyDashboardPage() {
 
       {workspaceBlocked && (
         <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
-          The FIR workspace is unavailable until you have an active trial or paid FIR plan.{" "}
+          The FIR workspace requires an active trial or paid FIR plan.{" "}
+          <Link className="font-semibold text-brand-500 hover:underline" to="/workspace/pricing">
+            View FIR pricing
+          </Link>{" "}
+          or{" "}
           <Link className="font-semibold text-brand-500 hover:underline" to="/upgrade">
             Upgrade
           </Link>{" "}
-          or review{" "}
+          — see also{" "}
           <Link className="font-semibold text-brand-500 hover:underline" to="/dashboard/billing">
-            this page
+            usage &amp; billing
           </Link>
           .
         </div>
@@ -78,8 +82,8 @@ export default function CompanyDashboardPage() {
 
       {!data.enable_subscription && (
         <div className="rounded-lg border border-sky-700/40 bg-sky-950/25 px-4 py-3 text-sm text-sky-100">
-          Subscription enforcement is off in this environment (FIR workspace and limits are not blocked). In production,
-          set <code className="rounded bg-slate-800 px-1">ENABLE_SUBSCRIPTION=true</code>.
+          <code className="rounded bg-slate-800 px-1">ENABLE_SUBSCRIPTION=false</code> on the API relaxes invoice/usage cap
+          enforcement only. The FIR workspace still requires an active trial or paid period.
         </div>
       )}
 
@@ -227,7 +231,15 @@ export default function CompanyDashboardPage() {
               go directly to FIR
             </Link>
           </>
-        ) : null}
+        ) : (
+          <>
+            {" "}
+            or{" "}
+            <Link className="text-brand-500 hover:underline" to="/workspace/pricing">
+              FIR pricing
+            </Link>
+          </>
+        )}
         .
       </p>
     </div>

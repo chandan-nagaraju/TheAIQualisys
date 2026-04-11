@@ -3,8 +3,8 @@ import { Navigate, Outlet } from "react-router-dom";
 import { apiUrl } from "../api";
 
 type SubStatus = {
-  enable_subscription: boolean;
-  can_access_fir_workspace: boolean;
+  trial_active: boolean;
+  subscription_active: boolean;
 };
 
 function authHeader(): HeadersInit {
@@ -33,7 +33,7 @@ export default function WorkspaceSubscriptionGate() {
         }
         const s = (await res.json()) as SubStatus;
         if (cancelled) return;
-        if (!s.enable_subscription || s.can_access_fir_workspace) setState("ok");
+        if (s.trial_active || s.subscription_active) setState("ok");
         else setState("blocked");
       } catch {
         if (!cancelled) setState("blocked");
@@ -52,7 +52,7 @@ export default function WorkspaceSubscriptionGate() {
     );
   }
   if (state === "blocked") {
-    return <Navigate to="/dashboard" replace state={{ workspaceBlocked: true }} />;
+    return <Navigate to="/workspace/pricing" replace state={{ workspaceBlocked: true }} />;
   }
   return <Outlet />;
 }

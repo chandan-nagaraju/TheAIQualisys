@@ -8,6 +8,8 @@ type Me = {
   fir_reports_this_month: number;
   usage_this_month: number;
   can_access_fir_workspace: boolean;
+  trial_active: boolean;
+  subscription_active: boolean;
 };
 
 type OverviewModule = {
@@ -93,6 +95,8 @@ export default function ModulesDashboardPage() {
     return <p className="text-slate-400">Loading…</p>;
   }
 
+  const firEntitled = me.trial_active || me.subscription_active;
+
   return (
     <div className="space-y-10">
       <div>
@@ -104,13 +108,13 @@ export default function ModulesDashboardPage() {
 
       {workspaceBlocked && (
         <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
-          The FIR workspace is unavailable until you have an active trial or paid FIR plan. Open{" "}
+          The FIR workspace requires an active trial or paid plan.{" "}
+          <Link className="font-semibold text-brand-500 hover:underline" to="/workspace/pricing">
+            View FIR pricing
+          </Link>{" "}
+          or{" "}
           <Link className="font-semibold text-brand-500 hover:underline" to="/upgrade">
             Upgrade
-          </Link>{" "}
-          or check{" "}
-          <Link className="font-semibold text-brand-500 hover:underline" to="/dashboard/billing">
-            usage &amp; billing
           </Link>
           .
         </div>
@@ -136,7 +140,7 @@ export default function ModulesDashboardPage() {
           badgeLabel="Live"
           badgeKey="live"
           footer={
-            me.can_access_fir_workspace ? (
+            firEntitled ? (
               <Link
                 to="/workspace/dashboard"
                 className="mt-4 inline-flex w-full justify-center rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
@@ -145,10 +149,10 @@ export default function ModulesDashboardPage() {
               </Link>
             ) : (
               <Link
-                to="/upgrade"
+                to="/workspace/pricing"
                 className="mt-4 inline-flex w-full justify-center rounded-lg border border-amber-600/50 py-2.5 text-sm font-semibold text-amber-200 hover:bg-amber-950/40"
               >
-                Activate FIR access
+                View FIR pricing &amp; subscribe
               </Link>
             )
           }

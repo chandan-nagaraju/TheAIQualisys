@@ -38,6 +38,8 @@ from app.subscription_logic import (
     count_fir_reports_this_month,
     count_invoices_this_month,
     plan_invoice_limit,
+    subscription_is_active,
+    trial_is_valid,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -201,6 +203,8 @@ def me(
         invoice_limit=limit,
         can_create_invoice=ok,
         can_record_fir_report=ok_fir,
+        trial_active=trial_is_valid(company, today),
+        subscription_active=subscription_is_active(company, today),
         subscription_message=None if ok else sub_msg,
         can_access_fir_workspace=can_access_fir_workspace(
             company, enable_subscription=settings.enable_subscription, today=today
