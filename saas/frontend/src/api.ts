@@ -28,7 +28,7 @@ function authHeader(kind: TokenKind): HeadersInit {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-function apiUrl(path: string): string {
+export function apiUrl(path: string): string {
   const base = API_BASE.trim().replace(/\/+$/, "");
   if (!base) return path;
   // If deploy config uses VITE_API_URL ending with /api and caller already passes /api/*,
