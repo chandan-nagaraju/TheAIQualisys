@@ -7,6 +7,7 @@ type BillingOverview = {
   company_name: string;
   vendor_code: string;
   plan_name: string;
+  enable_subscription: boolean;
   company_status: string;
   trial_end_date: string | null;
   subscription_start: string | null;
@@ -72,6 +73,13 @@ export default function CompanyDashboardPage() {
             this page
           </Link>
           .
+        </div>
+      )}
+
+      {!data.enable_subscription && (
+        <div className="rounded-lg border border-sky-700/40 bg-sky-950/25 px-4 py-3 text-sm text-sky-100">
+          Subscription enforcement is off in this environment (FIR workspace and limits are not blocked). In production,
+          set <code className="rounded bg-slate-800 px-1">ENABLE_SUBSCRIPTION=true</code>.
         </div>
       )}
 

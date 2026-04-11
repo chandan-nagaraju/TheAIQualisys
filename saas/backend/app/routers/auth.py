@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.dates import billing_today
 from app.deps import get_current_company_user, get_db_session, get_company_for_user
 from app.email_util import is_email_configured, send_password_reset_email
 from app.models import Company, CompanyUser, PasswordResetToken, PlanType, PlatformAdmin, SubscriptionStatus
@@ -53,7 +54,7 @@ def signup(body: SignupRequest, db: Session = Depends(get_db_session)):
     if exists_vc:
         raise HTTPException(status_code=400, detail="Vendor code already in use")
 
-    today = date.today()
+    today = billing_today()
     trial_end = today + timedelta(days=7)
 
     company = Company(
@@ -181,7 +182,7 @@ def me(
 ):
     settings = get_settings()
     company = get_company_for_user(user, db)
-    today = date.today()
+    today = billing_today()
     inv = count_invoices_this_month(db, company.id, today)
     fir = count_fir_reports_this_month(db, company.id, today)
     usage = count_combined_usage_this_month(db, company.id, today)

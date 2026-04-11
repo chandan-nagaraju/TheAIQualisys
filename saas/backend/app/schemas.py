@@ -306,6 +306,7 @@ class BillingOverviewResponse(BaseModel):
     company_name: str
     vendor_code: str
     plan_name: str
+    enable_subscription: bool = True
     company_status: str
     trial_end_date: date | None = None
     subscription_start: date | None = None

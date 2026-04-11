@@ -180,7 +180,7 @@ export default function ModulesDashboardPage() {
                   </p>
                 ) : row?.access === "denied" && row.trial_expired_message ? (
                   <p className="mt-2 text-xs text-amber-300/90">{row.trial_expired_message}</p>
-                ) : (
+                ) : def.landingStatus === "available" ? (
                   <p className="mt-2 text-xs text-slate-500">
                     {(() => {
                       const pr = priceByModule.get(def.moduleName);
@@ -189,6 +189,8 @@ export default function ModulesDashboardPage() {
                       return `${d}-day trial · ${u} actions when you open the module.`;
                     })()}
                   </p>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">Not available yet.</p>
                 )
               }
               footer={

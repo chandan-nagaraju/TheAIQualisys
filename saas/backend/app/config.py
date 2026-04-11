@@ -36,10 +36,10 @@ class Settings(BaseSettings):
     admin_jwt_secret: str = "change-me-admin-jwt-separate"
     admin_access_token_expire_minutes: int = 60 * 8
 
-    # When False, v2 APIs skip subscription/trial/limit enforcement (rollout flag).
+    # When False, FIR workspace and limits are not enforced (local/dev only). Production should use True.
     # When True, expired trial / inactive subscription blocks the FIR workspace (/api/app) but not billing pages.
     enable_subscription: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("ENABLE_SUBSCRIPTION", "enable_subscription"),
     )
 
