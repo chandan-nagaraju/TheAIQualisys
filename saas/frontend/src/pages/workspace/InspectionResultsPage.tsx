@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import JSZip from "jszip";
-import { firPreviewUrl, workspaceFetch } from "../../api";
+import { apiFetch, firPreviewUrl, workspaceFetch } from "../../api";
+
+type FirSubscriptionGate = {
+  enable_subscription: boolean;
+  trial_active: boolean;
+  subscription_active: boolean;
+};
 
 type Row = Record<string, unknown> & {
   draw_rev?: string;
@@ -63,6 +69,24 @@ export default function InspectionResultsPage() {
   const [batchMsg, setBatchMsg] = useState<string | null>(null);
   const [batchErr, setBatchErr] = useState<string | null>(null);
   const [firQuota, setFirQuota] = useState<FirQuota | null>(null);
+  const [firEntitled, setFirEntitled] = useState<"loading" | "yes" | "no">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<FirSubscriptionGate>("/subscription/status")
+      .then((s) => {
+        if (cancelled) return;
+        const entitled = s.trial_active || s.subscription_active;
+        if (s.enable_subscription || entitled) setFirEntitled("yes");
+        else setFirEntitled("no");
+      })
+      .catch(() => {
+        if (!cancelled) setFirEntitled("yes");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!st?.rows?.length) return;
@@ -239,6 +263,13 @@ export default function InspectionResultsPage() {
         </button>
       </div>
     );
+  }
+
+  if (firEntitled === "loading") {
+    return <p className="text-slate-600">Checking access…</p>;
+  }
+  if (firEntitled === "no") {
+    return <Navigate to="/upgrade" replace state={{ workspaceBlocked: true }} />;
   }
 
   if (err) {
