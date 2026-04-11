@@ -21,6 +21,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.dates import billing_today
 from app.deps import (
     get_company_for_user,
     get_company_user_from_token_str,
@@ -73,7 +74,11 @@ def get_ws(
 ) -> WsContext:
     settings = get_settings()
     company = get_company_for_user(user, db)
-    if not can_access_fir_workspace(company, enable_subscription=settings.enable_subscription):
+    if not can_access_fir_workspace(
+        company,
+        enable_subscription=settings.enable_subscription,
+        today=billing_today(),
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -1142,7 +1147,7 @@ def inspection_fir_quota(
 ):
     """Headroom for batch ZIP: invoices + FIR reports share the same monthly cap when billing is on."""
     settings = get_settings()
-    today = date.today()
+    today = billing_today()
     company = ws.company
     inv = count_invoices_this_month(ws.db, company.id, today)
     fir = count_fir_reports_this_month(ws.db, company.id, today)
@@ -1170,7 +1175,7 @@ def inspection_fir_quota(
 def inspection_record_reports(body: EnrichBody, ws: WsContext = Depends(get_ws)):
     """Persist one ledger row per FIR included in a batch (e.g. after ZIP). Counts toward monthly usage."""
     settings = get_settings()
-    today = date.today()
+    today = billing_today()
     rows_in = body.rows or []
     normalized: list[tuple[str, str | None]] = []
     for row in rows_in:
@@ -1222,7 +1227,11 @@ def fir_preview(
 ):
     company = get_company_for_user(user, db)
     settings = get_settings()
-    if not can_access_fir_workspace(company, enable_subscription=settings.enable_subscription):
+    if not can_access_fir_workspace(
+        company,
+        enable_subscription=settings.enable_subscription,
+        today=billing_today(),
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={

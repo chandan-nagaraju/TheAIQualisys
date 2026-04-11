@@ -1,5 +1,7 @@
 from datetime import date, timedelta
 
+from app.dates import billing_today
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -203,7 +205,7 @@ def list_companies(
     db: Session = Depends(get_db_session),
 ):
     companies = db.execute(select(Company).order_by(Company.id)).scalars().all()
-    today = date.today()
+    today = billing_today()
     out: list[AdminCompanySummary] = []
     for c in companies:
         inv = count_invoices_this_month(db, c.id, today)
@@ -246,7 +248,7 @@ def patch_company(
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    today = date.today()
+    today = billing_today()
 
     if body.action == "activate":
         end = body.subscription_end or (today + timedelta(days=30))
@@ -312,7 +314,7 @@ def company_usage(
     c = db.get(Company, company_id)
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
-    today = date.today()
+    today = billing_today()
     inv = count_invoices_this_month(db, company_id, today)
     fir = count_fir_reports_this_month(db, company_id, today)
     return {

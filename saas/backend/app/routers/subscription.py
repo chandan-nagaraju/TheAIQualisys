@@ -1,10 +1,10 @@
-from datetime import date
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.dates import billing_today
 from app.deps import get_company_for_user, get_current_company_user, get_db_session
 from app.models import CompanyUser
 from app.pricing_catalog import list_fir_plan_rows
@@ -65,7 +65,7 @@ def subscription_status(
 ):
     settings = get_settings()
     company = get_company_for_user(user, db)
-    today = date.today()
+    today = billing_today()
     inv = count_invoices_this_month(db, company.id, today)
     fir = count_fir_reports_this_month(db, company.id, today)
     usage = count_combined_usage_this_month(db, company.id, today)

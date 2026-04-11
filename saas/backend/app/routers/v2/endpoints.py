@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.dates import billing_today
 from app.deps import (
     get_company_for_user,
     get_current_company_user,
@@ -45,7 +46,7 @@ def v2_me(
 ):
     user, company = user_company
     settings = get_settings()
-    today = date.today()
+    today = billing_today()
     inv = count_invoices_this_month(db, company.id, today)
     fir = count_fir_reports_this_month(db, company.id, today)
     usage = count_combined_usage_this_month(db, company.id, today)
