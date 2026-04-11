@@ -369,7 +369,7 @@ export default function PartsPage() {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h1 className="text-xl font-semibold text-slate-900">Parts master</h1>
-      {customers.length > 0 && (
+      {customers.length > 1 && (
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
           <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
             <span className="text-slate-600">Show parts for</span>
@@ -395,7 +395,6 @@ export default function PartsPage() {
               className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
               value={formCustomerId ?? ""}
               onChange={(e) => setFormCustomerId(Number(e.target.value))}
-              disabled={customers.length <= 1}
             >
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -406,10 +405,6 @@ export default function PartsPage() {
           </label>
         </div>
       )}
-      <p className="mt-2 text-sm text-slate-600">
-        Same layout as legacy Flask: filter the table with the part number field, add or edit core fields, then open{" "}
-        <strong>Edit A–D</strong> for dimension / complaint / material / coating rows.
-      </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 sm:gap-3 sm:px-4">
         <button
@@ -457,17 +452,6 @@ export default function PartsPage() {
           {excelBusy ? "Reading Excel…" : "Upload Excel (first sheet only, review before save)"}
         </button>
       </div>
-      <p className="mt-2 text-xs text-slate-500">
-        <strong>Excel:</strong> sheets <code className="rounded bg-slate-100 px-1">Parts</code>,{" "}
-        <code className="rounded bg-slate-100 px-1">Section_A</code>–<code className="rounded bg-slate-100 px-1">D</code>{" "}
-        (dimensions, CCP, material grade, coating). After upload you review extracted part master fields;{" "}
-        <strong>OK</strong> saves the same way as JSON <code className="rounded bg-slate-100 px-1">import-bundle</code>. See{" "}
-        <code className="rounded bg-slate-100 px-1">docs/PART_MASTER_EXCEL.md</code>.
-      </p>
-      <p className="mt-1 text-xs text-slate-500">
-        <strong>JSON</strong> import matches legacy bundle / single-part formats.
-      </p>
-
       {importMsg && <p className="mt-2 text-sm text-green-700">{importMsg}</p>}
       {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
 
