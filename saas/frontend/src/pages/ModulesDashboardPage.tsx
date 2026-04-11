@@ -29,6 +29,7 @@ type PricingRow = {
   module_name: string;
   trial_days: number;
   usage_limit: number;
+  listing_active?: boolean;
 };
 
 const badgeStylesDark: Record<string, string> = {
@@ -82,14 +83,18 @@ export default function ModulesDashboardPage() {
     return map;
   }, [overview]);
 
-  const trialAlerts =
-    overview?.modules.filter((m) => m.notify_trial_ending && m.access === "trial") ?? [];
-
   const priceByModule = useMemo(() => {
     const map = new Map<string, PricingRow>();
     pricingRows?.forEach((r) => map.set(r.module_name, r));
     return map;
   }, [pricingRows]);
+
+  const trialAlerts =
+    overview?.modules.filter((m) => {
+      if (!(m.notify_trial_ending && m.access === "trial")) return false;
+      const pr = priceByModule.get(m.module_name);
+      return Boolean(pr?.listing_active);
+    }) ?? [];
 
   if (!me || !overview || !pricingRows) {
     return <p className="text-slate-400">Loading…</p>;
@@ -166,52 +171,71 @@ export default function ModulesDashboardPage() {
 
         {QMS_MODULES.map((def) => {
           const row = overviewBySlug.get(def.slug);
-          const badgeKey =
-            row?.badge === "live" ? "live" : row?.badge === "trial" ? "trial" : row?.access === "denied" ? "locked" : "locked";
+          const pr = priceByModule.get(def.moduleName);
+          const listed = Boolean(pr?.listing_active);
           const pricingHref = `/pricing/modules/${def.slug}`;
+          const badgeKey = !listed
+            ? "coming_soon"
+            : row?.badge === "live"
+              ? "live"
+              : row?.badge === "trial"
+                ? "trial"
+                : "locked";
+          const badgeLabel = !listed ? "Coming soon" : row?.badge === "trial" ? "Trial" : row?.badge === "live" ? "Live" : "Locked";
           return (
             <ModuleCard
               key={def.slug}
               title={def.title}
               description={def.shortDescription}
-              badgeLabel={row?.badge === "trial" ? "Trial" : row?.badge === "live" ? "Live" : "Locked"}
+              badgeLabel={badgeLabel}
               badgeKey={badgeKey}
               stats={
-                row?.access === "trial" ? (
+                !listed ? (
+                  <p className="mt-2 text-xs text-slate-500">Not available yet — stay tuned.</p>
+                ) : row?.access === "trial" ? (
                   <p className="mt-2 text-xs text-slate-500">
                     {row.days_remaining != null ? `${row.days_remaining} days left · ` : ""}
                     {row.actions_remaining != null ? `${row.actions_remaining} trial actions left` : ""}
                   </p>
                 ) : row?.access === "denied" && row.trial_expired_message ? (
                   <p className="mt-2 text-xs text-amber-300/90">{row.trial_expired_message}</p>
-                ) : def.landingStatus === "available" ? (
+                ) : (
                   <p className="mt-2 text-xs text-slate-500">
                     {(() => {
-                      const pr = priceByModule.get(def.moduleName);
                       const d = pr?.trial_days ?? 14;
                       const u = pr?.usage_limit ?? 5;
                       return `${d}-day trial · ${u} actions when you open the module.`;
                     })()}
                   </p>
-                ) : (
-                  <p className="mt-2 text-xs text-slate-500">Not available yet.</p>
                 )
               }
               footer={
-                <div className="mt-4 flex flex-col gap-2">
-                  <Link
-                    to={`/modules/${def.slug}`}
-                    className="inline-flex w-full justify-center rounded-lg bg-slate-100 py-2.5 text-sm font-semibold text-slate-900 hover:bg-white"
-                  >
-                    Open module
-                  </Link>
-                  <Link
-                    to={pricingHref}
-                    className="text-center text-xs font-medium text-brand-500 hover:underline"
-                  >
-                    View pricing &amp; enroll
-                  </Link>
-                </div>
+                !listed ? (
+                  <div className="mt-4 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      disabled
+                      className="inline-flex w-full cursor-not-allowed justify-center rounded-lg border border-slate-700 bg-slate-800/50 py-2.5 text-sm font-semibold text-slate-500"
+                    >
+                      Open module
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-col gap-2">
+                    <Link
+                      to={`/modules/${def.slug}`}
+                      className="inline-flex w-full justify-center rounded-lg bg-slate-100 py-2.5 text-sm font-semibold text-slate-900 hover:bg-white"
+                    >
+                      Open module
+                    </Link>
+                    <Link
+                      to={pricingHref}
+                      className="text-center text-xs font-medium text-brand-500 hover:underline"
+                    >
+                      View pricing &amp; enroll
+                    </Link>
+                  </div>
+                )
               }
             />
           );

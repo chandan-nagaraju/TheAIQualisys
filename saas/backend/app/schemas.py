@@ -275,6 +275,7 @@ class ModulePricingPublicOut(BaseModel):
     invoice_max: int | None = None
     highlight: str | None = None
     sort_order: int
+    listing_active: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -289,6 +290,7 @@ class ModulePricingPatch(BaseModel):
     invoice_max: int | None = None
     highlight: str | None = Field(default=None, max_length=255)
     sort_order: int | None = Field(default=None, ge=0)
+    listing_active: bool | None = None
 
 
 class BillingModuleRow(BaseModel):

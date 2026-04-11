@@ -4,6 +4,7 @@ import enum
 from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -322,3 +323,4 @@ class ModulePricing(Base):
     invoice_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
     highlight: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    listing_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
