@@ -52,8 +52,14 @@ DISPLAY_COLS = [
 ]
 
 
-def parse_invoice_excel(content: bytes) -> tuple[list[dict[str, Any]], list[str]]:
-    df = pd.read_excel(io.BytesIO(content))
+def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple[list[dict[str, Any]], list[str]]:
+    """Read .xlsx via openpyxl; Excel 97–2003 .xls via xlrd (BIFF)."""
+    buf = io.BytesIO(content)
+    fn = (filename or "").lower()
+    if fn.endswith(".xls") and not fn.endswith(".xlsx"):
+        df = pd.read_excel(buf, engine="xlrd")
+    else:
+        df = pd.read_excel(buf, engine="openpyxl")
     # Build target columns explicitly so multiple source columns can map to the
     # same canonical field without creating duplicate labels.
     matched_sources: dict[str, list[Any]] = {k: [] for k in DISPLAY_COLS}
