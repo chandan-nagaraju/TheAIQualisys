@@ -25,7 +25,7 @@ export default function ModuleProductPricingPage() {
     (async () => {
       try {
         const [u, all] = await Promise.all([
-          apiFetch<UpgradeInfo>("/subscription/upgrade-info"),
+          apiFetch<UpgradeInfo>("/api/subscription/upgrade-info"),
           apiFetch<PricingRow[]>("/api/pricing/modules"),
         ]);
         setInfo(u);

@@ -17,7 +17,7 @@ export default function LoginPage() {
     setErr(null);
     setLoading(true);
     try {
-      const res = await apiFetch<{ access_token: string; role: string }>("/auth/unified-login", {
+      const res = await apiFetch<{ access_token: string; role: string }>("/api/auth/unified-login", {
         method: "POST",
         body: JSON.stringify({ identifier, password }),
       });

@@ -78,7 +78,7 @@ export default function Layout() {
             trial_end_date: string;
             subscription_end: string | null;
           };
-        }>("/subscription/status");
+        }>("/api/subscription/status");
         if (cancelled) return;
 
         if (s.trial_active && s.trial_days_remaining != null) {

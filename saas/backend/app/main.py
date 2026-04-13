@@ -51,6 +51,9 @@ def create_app() -> FastAPI:
     app = FastAPI(title="FIR Automation SaaS API", lifespan=lifespan)
 
     origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    pub = settings.public_app_url.strip().rstrip("/")
+    if pub and pub not in origins:
+        origins.append(pub)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins or ["http://localhost:5173"],

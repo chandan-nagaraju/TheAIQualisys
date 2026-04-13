@@ -19,7 +19,7 @@ export default function ResetPasswordPage() {
     }
     setLoading(true);
     try {
-      await apiFetch("/auth/reset-password", {
+      await apiFetch("/api/auth/reset-password", {
         method: "POST",
         body: JSON.stringify({ token, new_password: password }),
       });

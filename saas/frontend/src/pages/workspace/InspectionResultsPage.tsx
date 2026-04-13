@@ -93,7 +93,7 @@ export default function InspectionResultsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<FirSubscriptionGate>("/subscription/status")
+    apiFetch<FirSubscriptionGate>("/api/subscription/status")
       .then((s) => {
         if (cancelled) return;
         const entitled = s.trial_active || s.subscription_active;

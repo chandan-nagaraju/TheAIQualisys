@@ -46,8 +46,8 @@ export default function AdminUsersPage() {
     (async () => {
       try {
         const [u, c] = await Promise.all([
-          apiFetch<TenantUser[]>("/admin/tenant-users", { token: "admin" }),
-          apiFetch<FirCustomer[]>("/admin/fir-customers", { token: "admin" }),
+          apiFetch<TenantUser[]>("/api/admin/tenant-users", { token: "admin" }),
+          apiFetch<FirCustomer[]>("/api/admin/fir-customers", { token: "admin" }),
         ]);
         setTenantUsers(u);
         setFirCustomers(c);
@@ -64,8 +64,8 @@ export default function AdminUsersPage() {
     setMsg(null);
     try {
       const endpoint = currentlyBlocked
-        ? `/admin/tenant-users/${userId}/unblock`
-        : `/admin/tenant-users/${userId}/block`;
+        ? `/api/admin/tenant-users/${userId}/unblock`
+        : `/api/admin/tenant-users/${userId}/block`;
       const res = await apiFetch<{ ok: boolean; user_id: number; is_blocked: boolean }>(endpoint, {
         token: "admin",
         method: "POST",
@@ -88,7 +88,7 @@ export default function AdminUsersPage() {
     setErr(null);
     setMsg(null);
     try {
-      await apiFetch(`/admin/tenant-users/${userId}`, {
+      await apiFetch(`/api/admin/tenant-users/${userId}`, {
         token: "admin",
         method: "DELETE",
       });

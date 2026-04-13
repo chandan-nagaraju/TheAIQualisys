@@ -65,7 +65,7 @@ function RowEditor({ row, onSaved }: { row: AdminPricingRow; onSaved: () => void
       body.highlight = highlight.trim() === "" ? null : highlight;
     }
     try {
-      await apiFetch(`/admin/pricing-modules/${encodeURIComponent(row.module_name)}`, {
+      await apiFetch(`/api/admin/pricing-modules/${encodeURIComponent(row.module_name)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
         token: "admin",
@@ -219,7 +219,7 @@ export default function AdminPricingPage() {
       setLoading(true);
       setLoadErr(null);
       try {
-        const data = await apiFetch<AdminPricingRow[]>("/admin/pricing-modules", { token: "admin" });
+        const data = await apiFetch<AdminPricingRow[]>("/api/admin/pricing-modules", { token: "admin" });
         if (!cancelled) setRows(data.map((r) => ({ ...r, listing_active: Boolean((r as { listing_active?: boolean }).listing_active) })));
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to load";
