@@ -36,8 +36,8 @@ export default function AdminDashboardPage() {
     (async () => {
       try {
         const [d, c] = await Promise.all([
-          apiFetch<Dash>("/admin/dashboard", { token: "admin" }),
-          apiFetch<Row[]>("/admin/companies", { token: "admin" }),
+          apiFetch<Dash>("/api/admin/dashboard", { token: "admin" }),
+          apiFetch<Row[]>("/api/admin/companies", { token: "admin" }),
         ]);
         setDash(d);
         setRows(c);
@@ -55,7 +55,7 @@ export default function AdminDashboardPage() {
     try {
       sessionStorage.setItem("fir_admin_token_backup", adminTok);
       sessionStorage.setItem("fir_impersonating", "1");
-      const res = await apiFetch<{ access_token: string }>(`/admin/companies/${companyId}/impersonate`, {
+      const res = await apiFetch<{ access_token: string }>(`/api/admin/companies/${companyId}/impersonate`, {
         method: "POST",
         body: "{}",
         token: "admin",

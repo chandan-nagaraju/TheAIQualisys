@@ -73,12 +73,12 @@ export default function AdminCompanyPage() {
     if (!id) return;
     const cid = Number(id);
     const [c, u, usr, fi] = await Promise.all([
-      apiFetch<Company>(`/admin/companies/${cid}`, { token: "admin" }),
-      apiFetch<Usage>(`/admin/companies/${cid}/usage`, { token: "admin" }),
-      apiFetch<{ id: number; email: string; name: string | null }[]>(`/admin/companies/${cid}/users`, {
+      apiFetch<Company>(`/api/admin/companies/${cid}`, { token: "admin" }),
+      apiFetch<Usage>(`/api/admin/companies/${cid}/usage`, { token: "admin" }),
+      apiFetch<{ id: number; email: string; name: string | null }[]>(`/api/admin/companies/${cid}/users`, {
         token: "admin",
       }),
-      apiFetch<FirIntel>(`/admin/companies/${cid}/fir-intelligence`, { token: "admin" }),
+      apiFetch<FirIntel>(`/api/admin/companies/${cid}/fir-intelligence`, { token: "admin" }),
     ]);
     setCompany(c);
     setUsage(u);
@@ -99,7 +99,7 @@ export default function AdminCompanyPage() {
   async function patch(body: object) {
     if (!id) return;
     setMsg(null);
-    const c = await apiFetch<Company>(`/admin/companies/${id}`, {
+    const c = await apiFetch<Company>(`/api/admin/companies/${id}`, {
       method: "PATCH",
       token: "admin",
       body: JSON.stringify(body),

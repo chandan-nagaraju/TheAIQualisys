@@ -58,8 +58,8 @@ export default function UpgradePage() {
     (async () => {
       try {
         const [upgradeInfo, planRows] = await Promise.all([
-          apiFetch<UpgradeInfo>("/subscription/upgrade-info"),
-          apiFetch<PlanInfo[]>("/subscription/plans"),
+          apiFetch<UpgradeInfo>("/api/subscription/upgrade-info"),
+          apiFetch<PlanInfo[]>("/api/subscription/plans"),
         ]);
         setInfo(upgradeInfo);
         setPlans(planRows);

@@ -9,18 +9,6 @@
       "source": "/api/:path*",
       "destination": "https://theaiqualisys-api-production.up.railway.app/api/:path*"
     },
-    {
-      "source": "/auth/:path*",
-      "destination": "https://theaiqualisys-api-production.up.railway.app/api/auth/:path*"
-    },
-    {
-      "source": "/subscription/:path*",
-      "destination": "https://theaiqualisys-api-production.up.railway.app/api/subscription/:path*"
-    },
-    {
-      "source": "/admin/:path*",
-      "destination": "https://theaiqualisys-api-production.up.railway.app/api/admin/:path*"
-    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

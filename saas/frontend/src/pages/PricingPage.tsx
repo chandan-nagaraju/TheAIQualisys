@@ -33,8 +33,8 @@ export default function PricingPage({ variant = "marketing" }: Props) {
     (async () => {
       try {
         const [p, u, all] = await Promise.all([
-          apiFetch<Plan[]>("/subscription/plans"),
-          apiFetch<UpgradeInfo>("/subscription/upgrade-info"),
+          apiFetch<Plan[]>("/api/subscription/plans"),
+          apiFetch<UpgradeInfo>("/api/subscription/upgrade-info"),
           apiFetch<PricingRow[]>("/api/pricing/modules"),
         ]);
         setPlans(p);

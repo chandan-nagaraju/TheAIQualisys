@@ -46,7 +46,7 @@ export default function LandingPage() {
     (async () => {
       try {
         const [p, all] = await Promise.all([
-          apiFetch<Plan[]>("/subscription/plans"),
+          apiFetch<Plan[]>("/api/subscription/plans"),
           apiFetch<PricingModule[]>("/api/pricing/modules"),
         ]);
         setPlans(p);

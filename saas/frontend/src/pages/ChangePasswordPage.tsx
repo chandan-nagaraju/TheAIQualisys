@@ -15,7 +15,7 @@ export default function ChangePasswordPage() {
     setOk(false);
     setLoading(true);
     try {
-      await apiFetch("/auth/change-password", {
+      await apiFetch("/api/auth/change-password", {
         method: "POST",
         body: JSON.stringify({
           current_password: currentPassword,

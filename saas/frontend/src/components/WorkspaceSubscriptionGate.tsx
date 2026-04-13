@@ -19,7 +19,7 @@ export default function WorkspaceSubscriptionGate() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(apiUrl("/subscription/status"), {
+        const res = await fetch(apiUrl("/api/subscription/status"), {
           headers: { "Content-Type": "application/json", ...authHeader() },
         });
         if (cancelled) return;
