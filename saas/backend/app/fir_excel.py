@@ -72,16 +72,56 @@ def _invoice_excel_engine(content: bytes, filename: str | None) -> str:
     return "openpyxl"
 
 
+def _looks_like_html_xls(content: bytes) -> bool:
+    head = content.lstrip()[:256].lower()
+    return head.startswith(b"<!") or head.startswith(b"<html") or head.startswith(b"<head") or head.startswith(b"<meta")
+
+
 def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple[list[dict[str, Any]], list[str]]:
     """Read .xlsx via openpyxl; Excel 97–2003 .xls via xlrd (BIFF)."""
     primary = _invoice_excel_engine(content, filename)
-    secondary = "openpyxl" if primary == "xlrd" else "xlrd"
-    buf = io.BytesIO(content)
-    try:
-        df = pd.read_excel(buf, engine=primary)
-    except Exception:
-        buf = io.BytesIO(content)
-        df = pd.read_excel(buf, engine=secondary)
+    fn = (filename or "").lower()
+
+    def try_xlrd() -> Any:
+        return pd.read_excel(io.BytesIO(content), engine="xlrd")
+
+    def try_openpyxl() -> Any:
+        return pd.read_excel(io.BytesIO(content), engine="openpyxl")
+
+    if primary == "xlrd":
+        try:
+            df = try_xlrd()
+        except Exception as e:
+            if _looks_like_html_xls(content):
+                raise ValueError(
+                    "This file is not a real Excel workbook (it looks like HTML). "
+                    "Open it in Microsoft Excel and use Save As → Excel 97–2003 Worksheet (.xls) or .xlsx."
+                ) from e
+            raise ValueError(
+                "Could not read this .xls file as Excel. Open it in Excel and save again as .xls or .xlsx, "
+                f"or confirm the server has the 'xlrd' package installed. Detail: {e}"
+            ) from e
+    else:
+        try:
+            df = try_openpyxl()
+        except Exception as e:
+            if (fn.endswith(".xls") and not fn.endswith(".xlsx")) or (
+                len(content) >= len(_OLE2_MAGIC) and content[: len(_OLE2_MAGIC)] == _OLE2_MAGIC
+            ):
+                try:
+                    df = try_xlrd()
+                except Exception as e2:
+                    if _looks_like_html_xls(content):
+                        raise ValueError(
+                            "This file is not a real Excel workbook (it looks like HTML). "
+                            "Save from Excel as .xls or .xlsx, not as Web Page."
+                        ) from e2
+                    raise ValueError(
+                        "Could not read this Excel file as .xlsx or .xls. "
+                        f"xlsx: {e}; xls: {e2}"
+                    ) from e2
+            else:
+                raise
     # Build target columns explicitly so multiple source columns can map to the
     # same canonical field without creating duplicate labels.
     matched_sources: dict[str, list[Any]] = {k: [] for k in DISPLAY_COLS}
