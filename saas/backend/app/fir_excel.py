@@ -57,6 +57,93 @@ DISPLAY_COLS = [
 _OLE2_MAGIC = bytes.fromhex("d0cf11e0a1b11ae1")
 
 
+def _local_tag(tag: str) -> str:
+    return tag.split("}")[-1] if "}" in tag else tag
+
+
+def _looks_like_excel2003_xml(content: bytes) -> bool:
+    """Excel 2003 XML Spreadsheet is often saved with a .xls extension; content starts with <?xml (not binary BIFF)."""
+    s = content.lstrip()
+    if s.startswith(bytes([0xEF, 0xBB, 0xBF])):
+        s = s[3:]
+    return s.startswith(b"<?xml")
+
+
+def _decode_spreadsheetml(content: bytes) -> str:
+    if content.startswith(bytes([0xFF, 0xFE])) or content.startswith(bytes([0xFE, 0xFF])):
+        return content.decode("utf-16")
+    s = content
+    if s.startswith(bytes([0xEF, 0xBB, 0xBF])):
+        s = s[3:]
+    return s.decode("utf-8", errors="replace")
+
+
+def _cell_text(cell: Any) -> str:
+    val = ""
+    for child in cell:
+        if _local_tag(child.tag) == "Data":
+            val = (child.text or "").strip()
+            break
+    return val
+
+
+def _parse_spreadsheetml_table(table: Any) -> list[list[str]]:
+    """One <Table> → grid of string rows (handles ss:Index column skips)."""
+    grid: list[list[str]] = []
+    for row in table:
+        if _local_tag(row.tag) != "Row":
+            continue
+        cells: list[str] = []
+        col_idx = 0
+        for cell in row:
+            if _local_tag(cell.tag) != "Cell":
+                continue
+            idx_attr = None
+            for ak, av in cell.attrib.items():
+                if ak.endswith("Index") or _local_tag(ak) == "Index":
+                    try:
+                        idx_attr = int(av)
+                    except ValueError:
+                        idx_attr = None
+                    break
+            if idx_attr is not None:
+                while len(cells) < idx_attr - 1:
+                    cells.append("")
+                col_idx = idx_attr - 1
+            while len(cells) <= col_idx:
+                cells.append("")
+            cells[col_idx] = _cell_text(cell)
+            col_idx += 1
+        if any(c.strip() for c in cells):
+            grid.append(cells)
+    return grid
+
+
+def _read_excel2003_xml_as_dataframe(content: bytes) -> Any:
+    import xml.etree.ElementTree as ET
+
+    xml_text = _decode_spreadsheetml(content)
+    root = ET.fromstring(xml_text)
+    tables: list[Any] = [el for el in root.iter() if _local_tag(el.tag) == "Table"]
+    if not tables:
+        raise ValueError("Excel XML has no Table element (not a 2003 XML Spreadsheet?)")
+
+    grid: list[list[str]] = []
+    for table in tables:
+        grid = _parse_spreadsheetml_table(table)
+        if grid:
+            break
+    if not grid:
+        return pd.DataFrame()
+    max_len = max(len(r) for r in grid)
+    for r in grid:
+        while len(r) < max_len:
+            r.append("")
+    header = [str(h).strip() for h in grid[0]]
+    body = grid[1:]
+    return pd.DataFrame(body, columns=header)
+
+
 def _invoice_excel_engine(content: bytes, filename: str | None) -> str:
     """
     Pick pandas engine without relying on filename alone (some clients omit or alter it).
@@ -78,50 +165,54 @@ def _looks_like_html_xls(content: bytes) -> bool:
 
 
 def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple[list[dict[str, Any]], list[str]]:
-    """Read .xlsx via openpyxl; Excel 97–2003 .xls via xlrd (BIFF)."""
-    primary = _invoice_excel_engine(content, filename)
+    """Read .xlsx (openpyxl), binary .xls (xlrd), or Excel 2003 XML Spreadsheet (often mislabeled .xls)."""
     fn = (filename or "").lower()
 
-    def try_xlrd() -> Any:
-        return pd.read_excel(io.BytesIO(content), engine="xlrd")
-
-    def try_openpyxl() -> Any:
-        return pd.read_excel(io.BytesIO(content), engine="openpyxl")
-
-    if primary == "xlrd":
-        try:
-            df = try_xlrd()
-        except Exception as e:
-            if _looks_like_html_xls(content):
-                raise ValueError(
-                    "This file is not a real Excel workbook (it looks like HTML). "
-                    "Open it in Microsoft Excel and use Save As → Excel 97–2003 Worksheet (.xls) or .xlsx."
-                ) from e
-            raise ValueError(
-                "Could not read this .xls file as Excel. Open it in Excel and save again as .xls or .xlsx, "
-                f"or confirm the server has the 'xlrd' package installed. Detail: {e}"
-            ) from e
+    if _looks_like_excel2003_xml(content):
+        df = _read_excel2003_xml_as_dataframe(content)
     else:
-        try:
-            df = try_openpyxl()
-        except Exception as e:
-            if (fn.endswith(".xls") and not fn.endswith(".xlsx")) or (
-                len(content) >= len(_OLE2_MAGIC) and content[: len(_OLE2_MAGIC)] == _OLE2_MAGIC
-            ):
-                try:
-                    df = try_xlrd()
-                except Exception as e2:
-                    if _looks_like_html_xls(content):
-                        raise ValueError(
-                            "This file is not a real Excel workbook (it looks like HTML). "
-                            "Save from Excel as .xls or .xlsx, not as Web Page."
-                        ) from e2
+        primary = _invoice_excel_engine(content, filename)
+
+        def try_xlrd() -> Any:
+            return pd.read_excel(io.BytesIO(content), engine="xlrd")
+
+        def try_openpyxl() -> Any:
+            return pd.read_excel(io.BytesIO(content), engine="openpyxl")
+
+        if primary == "xlrd":
+            try:
+                df = try_xlrd()
+            except Exception as e:
+                if _looks_like_html_xls(content):
                     raise ValueError(
-                        "Could not read this Excel file as .xlsx or .xls. "
-                        f"xlsx: {e}; xls: {e2}"
-                    ) from e2
-            else:
-                raise
+                        "This file is not a real Excel workbook (it looks like HTML). "
+                        "Open it in Microsoft Excel and use Save As → Excel 97–2003 Worksheet (.xls) or .xlsx."
+                    ) from e
+                raise ValueError(
+                    "Could not read this .xls file as Excel. Open it in Excel and save again as .xls or .xlsx, "
+                    f"or confirm the server has the 'xlrd' package installed. Detail: {e}"
+                ) from e
+        else:
+            try:
+                df = try_openpyxl()
+            except Exception as e:
+                if (fn.endswith(".xls") and not fn.endswith(".xlsx")) or (
+                    len(content) >= len(_OLE2_MAGIC) and content[: len(_OLE2_MAGIC)] == _OLE2_MAGIC
+                ):
+                    try:
+                        df = try_xlrd()
+                    except Exception as e2:
+                        if _looks_like_html_xls(content):
+                            raise ValueError(
+                                "This file is not a real Excel workbook (it looks like HTML). "
+                                "Save from Excel as .xls or .xlsx, not as Web Page."
+                            ) from e2
+                        raise ValueError(
+                            "Could not read this Excel file as .xlsx or .xls. "
+                            f"xlsx: {e}; xls: {e2}"
+                        ) from e2
+                else:
+                    raise
     # Build target columns explicitly so multiple source columns can map to the
     # same canonical field without creating duplicate labels.
     matched_sources: dict[str, list[Any]] = {k: [] for k in DISPLAY_COLS}
