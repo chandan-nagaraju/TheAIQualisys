@@ -1231,7 +1231,7 @@ async def upload_invoice(ws: WsContext = Depends(get_ws), invoice_file: UploadFi
         raise HTTPException(status_code=400, detail="Only .xlsx or .xls supported")
     raw = invoice_file.file.read()
     try:
-        rows, columns = parse_invoice_excel(raw)
+        rows, columns = parse_invoice_excel(raw, filename=invoice_file.filename)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read Excel: {e}") from e
 
