@@ -53,15 +53,35 @@ DISPLAY_COLS = [
     "Date",
 ]
 
+# Excel 97–2003 .xls (OLE compound document)
+_OLE2_MAGIC = bytes.fromhex("d0cf11e0a1b11ae1")
+
+
+def _invoice_excel_engine(content: bytes, filename: str | None) -> str:
+    """
+    Pick pandas engine without relying on filename alone (some clients omit or alter it).
+    .xlsx is ZIP (PK); legacy .xls is OLE2.
+    """
+    if len(content) >= 2 and content[:2] == b"PK":
+        return "openpyxl"
+    if len(content) >= len(_OLE2_MAGIC) and content[: len(_OLE2_MAGIC)] == _OLE2_MAGIC:
+        return "xlrd"
+    fn = (filename or "").lower()
+    if fn.endswith(".xls") and not fn.endswith(".xlsx"):
+        return "xlrd"
+    return "openpyxl"
+
 
 def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple[list[dict[str, Any]], list[str]]:
     """Read .xlsx via openpyxl; Excel 97–2003 .xls via xlrd (BIFF)."""
+    primary = _invoice_excel_engine(content, filename)
+    secondary = "openpyxl" if primary == "xlrd" else "xlrd"
     buf = io.BytesIO(content)
-    fn = (filename or "").lower()
-    if fn.endswith(".xls") and not fn.endswith(".xlsx"):
-        df = pd.read_excel(buf, engine="xlrd")
-    else:
-        df = pd.read_excel(buf, engine="openpyxl")
+    try:
+        df = pd.read_excel(buf, engine=primary)
+    except Exception:
+        buf = io.BytesIO(content)
+        df = pd.read_excel(buf, engine=secondary)
     # Build target columns explicitly so multiple source columns can map to the
     # same canonical field without creating duplicate labels.
     matched_sources: dict[str, list[Any]] = {k: [] for k in DISPLAY_COLS}
