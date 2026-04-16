@@ -295,7 +295,11 @@
   const noOfParamsParam = parseInt(urlParams.get('noOfParams'));
   const totalRows = FIR_SPEC_DATA.length > 0 ? FIR_SPEC_DATA.length : (noOfParamsParam || 18);
 
-  /** How many "Actual Measured Values" columns are active (1–5). Invalid/empty → 5 for backward compatibility. */
+  /**
+   * How many "Actual Measured Values" columns to use (1–5) for sections A, B, D.
+   * Table always shows 5 columns; only the first N get data. Invalid/empty → 5 (legacy URLs).
+   * Values above 5 are treated as 5 (sample size is never expected > 5 in production).
+   */
   function firParseSampleSizeN(raw) {
     const s = (raw == null || raw === undefined) ? "" : String(raw).trim();
     if (!s) return 5;
@@ -665,11 +669,13 @@
   }
 
   function autoFillMeasuredValues() {
+    firApplyMeasuredColumnAvailability();
     ["dimension-table", "ccp-table", "coating-table"].forEach(tableId => {
       const table = document.getElementById(tableId);
       if (!table) return;
       table.querySelectorAll("tbody tr").forEach(tr => fillOneRow(tr));
     });
+    firApplyMeasuredColumnAvailability();
     const materialTable = document.getElementById("material-table");
     if (materialTable) {
       materialTable.querySelectorAll("tbody tr").forEach(tr => {
