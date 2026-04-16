@@ -10,10 +10,10 @@ type PlanInfo = { plan_type: string; name: string; price_inr: number };
 const QR_REFRESH_MS = 60_000;
 
 const BILLING_OPTIONS = [
-  { id: "1m" as const, label: "Month" },
-  { id: "3m" as const, label: "Quarterly" },
-  { id: "6m" as const, label: "Half yearly" },
-  { id: "12m" as const, label: "Yearly" },
+  { id: "1m" as const, label: "Month", displayMo: null as number | null },
+  { id: "3m" as const, label: "Quarterly", displayMo: 3 },
+  { id: "6m" as const, label: "Half yearly", displayMo: 6 },
+  { id: "12m" as const, label: "Yearly", displayMo: 11 },
 ];
 
 type BillingId = (typeof BILLING_OPTIONS)[number]["id"];
@@ -261,18 +261,25 @@ export default function UpgradePage() {
             <div className={`rounded-xl border p-4 sm:p-5 ${t.upiBox}`}>
               <p className={`text-xs font-semibold uppercase tracking-wide ${t.upiLabel}`}>How do you want to pay?</p>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {BILLING_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setBillingSelection(opt.id)}
-                    className={`rounded-xl border-2 px-3 py-5 text-center text-sm font-semibold transition sm:py-6 sm:text-base ${
-                      billingSelection === opt.id ? t.payBtnOn : t.payBtnOff
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+                {BILLING_OPTIONS.map((opt) => {
+                  const tileTotal = billingTotalInr(selected.price, opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setBillingSelection(opt.id)}
+                      className={`rounded-xl border-2 px-3 py-4 text-center text-sm font-semibold transition sm:py-5 sm:text-base ${
+                        billingSelection === opt.id ? t.payBtnOn : t.payBtnOff
+                      }`}
+                    >
+                      <span className="block">{opt.label}</span>
+                      <span className="mt-2 block text-xs font-normal opacity-90">
+                        ₹{tileTotal}
+                        {opt.displayMo != null ? ` · ${opt.displayMo}× mo` : ""}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
               <p className={`mt-4 text-center text-xs ${t.msg}`}>
                 Tap <strong className="font-medium">Month</strong>, <strong className="font-medium">Quarterly</strong>,{" "}
@@ -314,7 +321,10 @@ export default function UpgradePage() {
                       directly.
                     </div>
                   )}
-                  <p className={`text-xs ${t.msg}`}>New QR in ~{secondsToRefresh}s ({billingLabel})</p>
+                  <p className={`text-xs ${t.msg}`}>
+                    New QR in ~{secondsToRefresh}s ({billingLabel}
+                    {payAmount != null ? ` · ₹${payAmount}` : ""})
+                  </p>
                   {upiPayload ? (
                     <a
                       href={upiPayload}
