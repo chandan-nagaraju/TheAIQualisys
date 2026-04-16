@@ -274,10 +274,14 @@ def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple
 def sample_size_for_quantity(qty_val: float) -> int | str:
     if qty_val <= 0:
         return ""
-    if qty_val <= 5:
+    if qty_val <= 1:
+        return 1
+    if qty_val <= 2:
         return 2
-    if qty_val <= 10:
+    if qty_val <= 3:
         return 3
+    if qty_val <= 4:
+        return 4
     return 5
 
 
