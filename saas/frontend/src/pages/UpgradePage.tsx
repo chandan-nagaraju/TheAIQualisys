@@ -10,13 +10,29 @@ type PlanInfo = { plan_type: string; name: string; price_inr: number };
 const QR_REFRESH_MS = 60_000;
 
 const BILLING_OPTIONS = [
-  { id: "1m" as const, label: "Month", months: 1 },
-  { id: "3m" as const, label: "Quarterly", months: 3 },
-  { id: "6m" as const, label: "Half yearly", months: 6 },
-  { id: "12m" as const, label: "Yearly", months: 12 },
+  { id: "1m" as const, label: "Month" },
+  { id: "3m" as const, label: "Quarterly" },
+  { id: "6m" as const, label: "Half yearly" },
+  { id: "12m" as const, label: "Yearly" },
 ];
 
 type BillingId = (typeof BILLING_OPTIONS)[number]["id"];
+
+/** Total INR for UPI (integers). Yearly = 11× list month; half-yearly = 6× − list/2 (rounded). */
+function billingTotalInr(monthly: number, id: BillingId): number {
+  switch (id) {
+    case "1m":
+      return monthly;
+    case "3m":
+      return monthly * 3;
+    case "6m":
+      return Math.round(monthly * 6 - monthly / 2);
+    case "12m":
+      return monthly * 11;
+    default:
+      return monthly;
+  }
+}
 
 export default function UpgradePage() {
   const [info, setInfo] = useState<UpgradeInfo | null>(null);
@@ -54,15 +70,10 @@ export default function UpgradePage() {
     };
   }, [plans]);
 
-  const months = useMemo(() => {
-    if (!billingSelection) return 1;
-    return BILLING_OPTIONS.find((o) => o.id === billingSelection)?.months ?? 1;
-  }, [billingSelection]);
-
   const payAmount = useMemo(() => {
     if (!billingSelection || selected?.price == null) return null;
-    return selected.price * months;
-  }, [selected?.price, months, billingSelection]);
+    return billingTotalInr(selected.price, billingSelection);
+  }, [selected?.price, billingSelection]);
 
   useEffect(() => {
     (async () => {
@@ -140,9 +151,7 @@ export default function UpgradePage() {
   const whatsappHref = useMemo(() => {
     if (!info || !billingSelection) return "";
     const periodLine =
-      payAmount != null && selected?.price != null
-        ? `Billing: ${billingLabel} — ₹${selected.price}/mo × ${months} = ₹${payAmount} total.`
-        : "";
+      payAmount != null ? `Billing: ${billingLabel}. Total due: ₹${payAmount}.` : "";
     if (!selected) return info.whatsapp_url;
     try {
       const u = new URL(info.whatsapp_url);
@@ -158,7 +167,7 @@ export default function UpgradePage() {
     } catch {
       return info.whatsapp_url;
     }
-  }, [info, selected, payAmount, months, billingLabel, listPriceLine, billingSelection]);
+  }, [info, selected, payAmount, billingLabel, listPriceLine, billingSelection]);
 
   const upiPayload = useMemo(() => {
     if (!info || !billingSelection || payAmount == null) return "";
@@ -168,7 +177,7 @@ export default function UpgradePage() {
     q.set("cu", "INR");
     q.set("am", String(payAmount));
     const period = BILLING_OPTIONS.find((o) => o.id === billingSelection);
-    const periodPart = period ? `${period.label} ${period.months}mo` : billingSelection;
+    const periodPart = period ? period.label.replace(/\s+/g, "") : billingSelection;
     if (selected?.planName) {
       q.set(
         "tn",
@@ -257,15 +266,11 @@ export default function UpgradePage() {
                     key={opt.id}
                     type="button"
                     onClick={() => setBillingSelection(opt.id)}
-                    className={`rounded-xl border-2 px-3 py-4 text-center text-sm font-semibold transition sm:py-5 sm:text-base ${
+                    className={`rounded-xl border-2 px-3 py-5 text-center text-sm font-semibold transition sm:py-6 sm:text-base ${
                       billingSelection === opt.id ? t.payBtnOn : t.payBtnOff
                     }`}
                   >
-                    <span className="block">{opt.label}</span>
-                    <span className="mt-2 block text-xs font-normal opacity-90">
-                      ₹{selected.price * opt.months}
-                      {opt.months > 1 ? ` · ${opt.months}× mo` : ""}
-                    </span>
+                    {opt.label}
                   </button>
                 ))}
               </div>
@@ -285,9 +290,6 @@ export default function UpgradePage() {
             >
               <p className={`text-xs uppercase tracking-wide ${t.upiLabel}`}>Amount to pay ({billingLabel})</p>
               <p className={`mt-1 text-2xl font-bold ${t.title}`}>₹{payAmount}</p>
-              <p className={`mt-1 text-sm ${t.msg}`}>
-                {months === 1 ? "per month" : `total for ${months} months (₹${selected?.price}/month)`}
-              </p>
             </div>
           )}
 
@@ -312,10 +314,7 @@ export default function UpgradePage() {
                       directly.
                     </div>
                   )}
-                  <p className={`text-xs ${t.msg}`}>
-                    New QR in ~{secondsToRefresh}s ({billingLabel}
-                    {payAmount != null ? ` · ₹${payAmount}` : ""})
-                  </p>
+                  <p className={`text-xs ${t.msg}`}>New QR in ~{secondsToRefresh}s ({billingLabel})</p>
                   {upiPayload ? (
                     <a
                       href={upiPayload}
@@ -331,13 +330,7 @@ export default function UpgradePage() {
 
           <p className={`text-sm sm:text-base ${t.msg}`}>
             {billingSelection && selected
-              ? `You have chosen ${selectedPlanText}${
-                  payAmount != null
-                    ? ` — ${billingLabel}, ₹${payAmount} total`
-                    : listPriceLine
-                      ? ` — ${listPriceLine}`
-                      : ""
-                }. Send money to this UPI ID and share payment screenshot on the WhatsApp number below.`
+              ? `You have chosen ${selectedPlanText} — ${billingLabel}. Send money to this UPI ID and share payment screenshot on the WhatsApp number below.`
               : selected
                 ? listPriceLine || "Select a billing period above to generate your payment QR."
                 : info.message}
