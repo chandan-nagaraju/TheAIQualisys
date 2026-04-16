@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.dates import billing_today
 from app.deps import (
+    company_impersonated_by_admin,
     get_company_for_user,
     get_current_company_user,
     get_db_session,
@@ -56,6 +57,7 @@ def _v2_default_customer_id(db: Session, company_id: int) -> int:
 def v2_me(
     user_company: tuple[CompanyUser, Company] = Depends(require_subscription_access),
     db: Session = Depends(get_db_session),
+    admin_impersonation: bool = Depends(company_impersonated_by_admin),
 ):
     user, company = user_company
     settings = get_settings()
@@ -80,7 +82,10 @@ def v2_me(
         trial_active=trial_is_valid(company, today),
         subscription_active=subscription_is_active(company, today),
         can_access_fir_workspace=can_access_fir_workspace(
-            company, enable_subscription=settings.enable_subscription, today=today
+            company,
+            enable_subscription=settings.enable_subscription,
+            today=today,
+            impersonated_by_admin=admin_impersonation,
         ),
         subscription_message=None if ok else sub_msg,
     )

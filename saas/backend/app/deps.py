@@ -13,6 +13,19 @@ from app.subscription_logic import can_access_app, can_create_invoice
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
+def impersonated_by_admin_from_token(token: str) -> bool:
+    p = decode_access_token(token)
+    return bool(p and p.get("typ") == "company" and p.get("impersonated_by_admin"))
+
+
+def company_impersonated_by_admin(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> bool:
+    if not creds or creds.scheme.lower() != "bearer":
+        return False
+    return impersonated_by_admin_from_token(creds.credentials)
+
+
 def get_db_session() -> Generator[Session, None, None]:
     yield from get_db()
 
@@ -101,6 +114,12 @@ def get_bearer_token_or_query(
     if token:
         return token
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+
+def impersonated_by_admin_from_request(
+    token: str = Depends(get_bearer_token_or_query),
+) -> bool:
+    return impersonated_by_admin_from_token(token)
 
 
 def get_company_user_from_token_str(

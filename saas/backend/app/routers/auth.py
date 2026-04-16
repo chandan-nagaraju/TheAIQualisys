@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.dates import billing_today
-from app.deps import get_current_company_user, get_db_session, get_company_for_user
+from app.deps import company_impersonated_by_admin, get_current_company_user, get_db_session, get_company_for_user
 from app.email_util import is_email_configured, send_password_reset_email
 from app.models import Company, CompanyUser, PasswordResetToken, PlanType, PlatformAdmin, SubscriptionStatus
 from app.schemas import (
@@ -181,6 +181,7 @@ def unified_login(body: LoginRequest, db: Session = Depends(get_db_session)):
 def me(
     user: CompanyUser = Depends(get_current_company_user),
     db: Session = Depends(get_db_session),
+    admin_impersonation: bool = Depends(company_impersonated_by_admin),
 ):
     settings = get_settings()
     company = get_company_for_user(user, db)
@@ -207,7 +208,10 @@ def me(
         subscription_active=subscription_is_active(company, today),
         subscription_message=None if ok else sub_msg,
         can_access_fir_workspace=can_access_fir_workspace(
-            company, enable_subscription=settings.enable_subscription, today=today
+            company,
+            enable_subscription=settings.enable_subscription,
+            today=today,
+            impersonated_by_admin=admin_impersonation,
         ),
     )
 
