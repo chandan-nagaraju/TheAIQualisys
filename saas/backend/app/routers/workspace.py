@@ -26,6 +26,7 @@ from app.deps import (
     get_company_for_user,
     get_company_user_from_token_str,
     get_db_session,
+    impersonated_by_admin_from_request,
 )
 from app.fir_excel import enrich_rows_with_parts, parse_invoice_excel
 from app.fir_part_excel import build_part_master_template_xlsx, parse_parts_excel_to_bundle_dict
@@ -71,6 +72,7 @@ def get_ws(
     user: CompanyUser = Depends(get_company_user_from_token_str),
     db: Session = Depends(get_db_session),
     x_customer_id: Annotated[int | None, Header(alias="X-Customer-Id")] = None,
+    admin_impersonation: bool = Depends(impersonated_by_admin_from_request),
 ) -> WsContext:
     settings = get_settings()
     company = get_company_for_user(user, db)
@@ -78,6 +80,7 @@ def get_ws(
         company,
         enable_subscription=settings.enable_subscription,
         today=billing_today(),
+        impersonated_by_admin=admin_impersonation,
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1223,6 +1226,7 @@ def fir_preview(
     request: Request,
     user: CompanyUser = Depends(get_company_user_from_token_str),
     db: Session = Depends(get_db_session),
+    admin_impersonation: bool = Depends(impersonated_by_admin_from_request),
     partName: str = "",
 ):
     company = get_company_for_user(user, db)
@@ -1231,6 +1235,7 @@ def fir_preview(
         company,
         enable_subscription=settings.enable_subscription,
         today=billing_today(),
+        impersonated_by_admin=admin_impersonation,
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

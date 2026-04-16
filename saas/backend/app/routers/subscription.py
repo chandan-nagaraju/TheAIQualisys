@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.dates import billing_today
-from app.deps import get_company_for_user, get_current_company_user, get_db_session
+from app.deps import company_impersonated_by_admin, get_company_for_user, get_current_company_user, get_db_session
 from app.models import CompanyUser
 from app.pricing_catalog import list_fir_plan_rows
 from app.schemas import CompanyOut, PlanInfo, SubscriptionStatusResponse, UpgradeInfoResponse
@@ -62,6 +62,7 @@ def list_plans(db: Session = Depends(get_db_session)):
 def subscription_status(
     user: CompanyUser = Depends(get_current_company_user),
     db: Session = Depends(get_db_session),
+    admin_impersonation: bool = Depends(company_impersonated_by_admin),
 ):
     settings = get_settings()
     company = get_company_for_user(user, db)
@@ -87,7 +88,10 @@ def subscription_status(
         trial_active=trial_is_valid(company, today),
         subscription_active=subscription_is_active(company, today),
         can_access_fir_workspace=can_access_fir_workspace(
-            company, enable_subscription=settings.enable_subscription, today=today
+            company,
+            enable_subscription=settings.enable_subscription,
+            today=today,
+            impersonated_by_admin=admin_impersonation,
         ),
     )
 

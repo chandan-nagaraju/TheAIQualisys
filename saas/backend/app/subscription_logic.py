@@ -63,12 +63,23 @@ def trial_is_valid(company: Company, today: date | None = None) -> bool:
 
 
 def subscription_is_active(company: Company, today: date | None = None) -> bool:
+    """
+    True when the company's paid subscription window covers `today`.
+
+    Do not require subscription_status == "active": billing flows sometimes leave
+    status as "trial" until a job updates it, which incorrectly blocked FIR access
+    between trial_end and subscription_end.
+    """
     today = today or datetime.now(timezone.utc).date()
-    if company.subscription_status != SubscriptionStatus.active.value:
+    if company.subscription_status == SubscriptionStatus.expired.value:
         return False
     if company.subscription_end is None:
         return False
-    return today <= company.subscription_end
+    if today > company.subscription_end:
+        return False
+    if company.subscription_start is not None and today < company.subscription_start:
+        return False
+    return True
 
 
 def can_create_invoice(
@@ -165,12 +176,21 @@ def can_access_app(company: Company, *, enable_subscription: bool, today: date |
     return True
 
 
-def can_access_fir_workspace(company: Company, *, enable_subscription: bool, today: date | None = None) -> bool:
+def can_access_fir_workspace(
+    company: Company,
+    *,
+    enable_subscription: bool,
+    today: date | None = None,
+    impersonated_by_admin: bool = False,
+) -> bool:
     """
     FIR workspace (/api/app/*) — when subscription enforcement is on, require an active trial or paid period.
     Company billing routes (v2 /me, /subscription/status, etc.) stay reachable via can_access_app.
+    Platform admins impersonating a tenant always get workspace access for support.
     """
     if not enable_subscription:
+        return True
+    if impersonated_by_admin:
         return True
     today = today or datetime.now(timezone.utc).date()
     if trial_is_valid(company, today):
