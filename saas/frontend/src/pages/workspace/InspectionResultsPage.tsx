@@ -40,6 +40,15 @@ type FirPreviewApi = {
 
 const PDF_CONCURRENCY = 3;
 
+/** FIR header DATE: use invoice row date from upload when present, else server fallback (ISO → dd.mm.yyyy). */
+function reportDateForFIR(r: Row, fallbackIso: string): string {
+  const raw = String(r["Date"] ?? "").trim();
+  if (raw) return raw;
+  const m = fallbackIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+  return fallbackIso;
+}
+
 function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: string): Record<string, string> {
   const partName = String(r["Part Number"] ?? "").trim();
   const description = String(r["Description"] ?? "").trim() || "-";
@@ -61,7 +70,7 @@ function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: s
     vendorCode,
     customer: customerName,
     reportNo: "1",
-    reportDate: currentDate,
+    reportDate: reportDateForFIR(r, currentDate),
   };
 }
 
