@@ -168,9 +168,64 @@ export default function UpgradePage() {
     ? (BILLING_OPTIONS.find((o) => o.id === billingSelection)?.label ?? "")
     : "";
 
-  const marketingBlurb = enterprisePricing
-    ? "You are on Enterprise — your prepay total reflects partner-tier billing: a sharper half-yearly rate and our best yearly value (11 months billed for a full year of access). Complete payment below to lock in uninterrupted FIR workspace and priority activation."
-    : "Simple, transparent prepay: quarterly is three months at the list rate, half-yearly is six full months, and yearly is eleven months price for twelve months of access — strong value without surprise fees. Pay below and we will verify and activate your plan fast.";
+  const marketingContent = enterprisePricing ? (
+    <>
+      <p className={t.marketBody}>
+        Each option below shows a different prepay total from the same monthly list price. Longer prepay means fewer payment cycles
+        and predictable cost for your FIR workspace—helpful for budgets, audits, and keeping the team on the tool without monthly
+        renewals.
+      </p>
+      <ul className={`mt-3 list-disc space-y-1.5 pl-5 text-sm leading-relaxed sm:text-[0.9375rem] ${t.marketBody}`}>
+        <li>
+          <strong className="font-semibold">Month</strong> — one month at list price. Maximum flexibility if you prefer paying as you
+          go.
+        </li>
+        <li>
+          <strong className="font-semibold">Quarterly</strong> — three months at the list rate (3× the monthly amount). One payment
+          covers a quarter of access with less admin than three separate months.
+        </li>
+        <li>
+          <strong className="font-semibold">Half yearly</strong> — six months at the Enterprise partner total: 5.5× your monthly list
+          price (rounded to the nearest rupee), which is better than paying six separate months.
+        </li>
+        <li>
+          <strong className="font-semibold">Yearly</strong> — twelve months of access for the price of eleven months (11× monthly).
+          Best per-month value and the least interruption for finance and operations.
+        </li>
+      </ul>
+      <p className={`mt-3 ${t.marketBody}`}>
+        Complete payment below to lock in access for the period you selected; we verify and activate so your FIR workflow stays
+        uninterrupted.
+      </p>
+    </>
+  ) : (
+    <>
+      <p className={t.marketBody}>
+        Your total changes by how far ahead you prepay, using the same monthly list price. Prepaying longer reduces how often you
+        pay and makes cost predictable—easier for planning and fewer interruptions to your FIR process.
+      </p>
+      <ul className={`mt-3 list-disc space-y-1.5 pl-5 text-sm leading-relaxed sm:text-[0.9375rem] ${t.marketBody}`}>
+        <li>
+          <strong className="font-semibold">Month</strong> — one month at list price. Pay as you go when you want the shortest
+          commitment.
+        </li>
+        <li>
+          <strong className="font-semibold">Quarterly</strong> — three months at the list rate (3× monthly). One invoice-style
+          payment for a full quarter.
+        </li>
+        <li>
+          <strong className="font-semibold">Half yearly</strong> — six months at 6× the monthly list price.
+        </li>
+        <li>
+          <strong className="font-semibold">Yearly</strong> — twelve months of access for 11× the monthly price (one month
+          equivalent waived). Strongest discount and the least payment overhead for the year.
+        </li>
+      </ul>
+      <p className={`mt-3 ${t.marketBody}`}>
+        Pay below with the QR amount shown for your choice; we confirm payment and activate your plan quickly.
+      </p>
+    </>
+  );
 
   const whatsappHref = useMemo(() => {
     if (!info || !billingSelection) return "";
@@ -325,10 +380,8 @@ export default function UpgradePage() {
 
           {billingSelection && payAmount != null && (
             <div className={`rounded-xl border p-4 sm:p-5 ${t.marketBox}`}>
-              <p className={`text-sm font-semibold ${t.marketTitle}`}>
-                {enterprisePricing ? "Enterprise — partner-tier value" : "Why this total works for you"}
-              </p>
-              <p className={`mt-2 text-sm leading-relaxed ${t.marketBody}`}>{marketingBlurb}</p>
+              <p className={`text-sm font-semibold ${t.marketTitle}`}>What each billing option means</p>
+              <div className="mt-2">{marketingContent}</div>
             </div>
           )}
 

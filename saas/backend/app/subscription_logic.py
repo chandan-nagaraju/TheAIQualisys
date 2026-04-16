@@ -72,8 +72,16 @@ def trial_days_remaining_company(company: Company, today: date | None = None) ->
 
 
 def subscription_is_active(company: Company, today: date | None = None) -> bool:
-    """True when `today` is inside the paid subscription window (calendar only)."""
+    """
+    True when the company's paid subscription window covers `today` (calendar only).
+
+    Do not require subscription_status == "active": billing flows sometimes leave
+    status as "trial" until a job updates it, which incorrectly blocked FIR access
+    between trial_end and subscription_end.
+    """
     today = today or datetime.now(timezone.utc).date()
+    if company.subscription_status == SubscriptionStatus.expired.value:
+        return False
     if company.subscription_end is None:
         return False
     if today > company.subscription_end:
@@ -217,7 +225,8 @@ def can_access_fir_workspace(
 ) -> bool:
     """
     FIR workspace (/api/app/*) — always requires an active company trial or paid subscription window.
-    Platform admins impersonating a tenant may enter for support.
+    Company billing routes (v2 /me, /subscription/status, etc.) stay reachable via can_access_app.
+    Platform admins impersonating a tenant always get workspace access for support.
     `enable_subscription` is kept for call-site compatibility; it does not bypass this gate.
     """
     _ = enable_subscription

@@ -111,6 +111,16 @@
     color: #000 !important;
     font-weight: bold;
   }
+  .fir-col-head-num.fir-measured-inactive,
+  .data-table td.fir-measured-inactive {
+    background: #f0f0f0 !important;
+    color: #888 !important;
+  }
+  input.actual-value:disabled {
+    color: #999 !important;
+    background: transparent !important;
+    cursor: not-allowed;
+  }
   body.generating-pdf .section-title { page-break-after: avoid; border-width: 1px; }
   body.generating-pdf .data-table td, body.generating-pdf .data-table th { border: 1px solid #333; }
   body.generating-pdf .data-table tbody tr { page-break-inside: avoid; }
@@ -285,6 +295,54 @@
   const noOfParamsParam = parseInt(urlParams.get('noOfParams'));
   const totalRows = FIR_SPEC_DATA.length > 0 ? FIR_SPEC_DATA.length : (noOfParamsParam || 18);
 
+  /** How many "Actual Measured Values" columns are active (1–5). Invalid/empty → 5 for backward compatibility. */
+  function firParseSampleSizeN(raw) {
+    const s = (raw == null || raw === undefined) ? "" : String(raw).trim();
+    if (!s) return 5;
+    const n = parseInt(s, 10);
+    if (isNaN(n)) return 5;
+    if (n < 1) return 1;
+    if (n > 5) return 5;
+    return n;
+  }
+
+  function firGetMeasuredColumnCount() {
+    const el = document.getElementById("firSampleSizeInput");
+    return firParseSampleSizeN(el ? el.value : sampleSize);
+  }
+
+  function firApplyMeasuredColumnAvailability() {
+    const n = firGetMeasuredColumnCount();
+    ["dimension-table", "ccp-table", "coating-table"].forEach(function(tableId) {
+      const table = document.getElementById(tableId);
+      if (!table) return;
+      const headNums = table.querySelectorAll("thead .fir-col-head-num");
+      headNums.forEach(function(th, idx) {
+        const col = idx + 1;
+        th.classList.toggle("fir-measured-inactive", col > n);
+      });
+      table.querySelectorAll("tbody tr").forEach(function(tr) {
+        const cells = tr.querySelectorAll(":scope > td");
+        for (var ci = 5; ci <= 9; ci++) {
+          const td = cells[ci];
+          if (!td) continue;
+          const col = ci - 4;
+          const inactive = col > n;
+          td.classList.toggle("fir-measured-inactive", inactive);
+          const inp = td.querySelector("input.actual-value") || td.querySelector('input[type="text"]');
+          if (inp) {
+            if (inactive) {
+              inp.value = "";
+              inp.disabled = true;
+            } else {
+              inp.disabled = false;
+            }
+          }
+        }
+      });
+    });
+  }
+
   function esc(s) {
     if (s == null || s === undefined) return '';
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -313,7 +371,7 @@
         <td class="bold" colspan="2">LOT QTY :</td><td colspan="4"><input type="text" value="${lotQty}"></td>
         <td class="bold" colspan="2">INVOICE NO :</td><td colspan="3"><input type="text" value="${invoiceNo}"></td></tr>
         <tr><td class="bold" colspan="2">DESCRIPTION :</td><td colspan="3"><input type="text" value="${description}"></td>
-        <td class="bold" colspan="2">SAMPLE SIZE :</td><td colspan="4"><input type="text" value="${sampleSize}"></td>
+        <td class="bold" colspan="2">SAMPLE SIZE :</td><td colspan="4"><input type="text" id="firSampleSizeInput" value="${sampleSize}"></td>
         <td class="bold" colspan="2">DATE :</td><td colspan="3"><input type="text" value="${reportDate}"></td></tr>
         <tr><td class="bold" colspan="2">DRAW.REV NO :</td><td colspan="14"><input type="text" value="${drawRev}"></td></tr>
       </table>`;
@@ -351,7 +409,7 @@
     {
         const actualInput = '<input type="text" class="actual-value quali-font">';
         const remarksInput = '<input type="text" class="remarks-value quali-font">';
-        let bHtml = '<div class="section-title">B) Customer End Complaints Parameters & Check Points</div><table class="data-table" id="ccp-table"><thead><tr><th style="width:5%;">Sl No</th><th style="width:15%;">Parameter</th><th style="width:15%;">Specification</th><th style="width:5%;">Special Char.</th><th style="width:10%;">Method</th><th colspan="5" style="width:41%;">Actual Measured Values</th><th style="width:8%;">Remarks</th></tr></thead><tbody>';
+        let bHtml = '<div class="section-title">B) Customer End Complaints Parameters & Check Points</div><table class="data-table" id="ccp-table"><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         if (FIR_CCP_DATA.length > 0) {
           FIR_CCP_DATA.forEach(function(r, idx) {
             bHtml += `<tr><td style="width:5%;">${slno++}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharInput(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
@@ -368,7 +426,7 @@
           cHtml += `<tr><td style="width:5%;">${slno++}</td><td style="width:85%;">${wrapCell()}</td><td style="width:10%;">${cRemarksInput}</td></tr>`;
         }
         cHtml += '</tbody></table>';
-        let dHtml = '<div class="section-title">D) Surface Coating</div><table class="data-table" id="coating-table"><thead><tr><th style="width:5%;">Sl No</th><th style="width:15%;">Parameter</th><th style="width:15%;">Specification</th><th style="width:5%;">Special Char.</th><th style="width:10%;">Method</th><th colspan="5" style="width:41%;">Actual Measured Values</th><th style="width:8%;">Remarks</th></tr></thead><tbody>';
+        let dHtml = '<div class="section-title">D) Surface Coating</div><table class="data-table" id="coating-table"><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         if (FIR_COATING_DATA.length > 0) {
           FIR_COATING_DATA.forEach(function(r) {
             dHtml += `<tr><td>${slno++}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharInput(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
@@ -426,6 +484,12 @@
       if (globalSettings.doc_rev_no) lines.push(`Doc Rev No: ${globalSettings.doc_rev_no}`);
       if (globalSettings.rev_date) lines.push(`Rev Dt: ${globalSettings.rev_date}`);
       docInfoCell.innerHTML = lines.join('<br>');
+    }
+    firApplyMeasuredColumnAvailability();
+    var firSampleEl = document.getElementById("firSampleSizeInput");
+    if (firSampleEl) {
+      firSampleEl.addEventListener("input", firApplyMeasuredColumnAvailability);
+      firSampleEl.addEventListener("change", firApplyMeasuredColumnAvailability);
     }
   }
 
@@ -571,10 +635,14 @@
       if (!inp) return;
       actualInputs.push(inp);
     }
+    var nActive = firGetMeasuredColumnCount();
     var method = (methodEl.value || "").trim().toUpperCase();
     var spec = (specEl.value || "").trim();
     if (method === "VISUAL" || method === "VISUAL INSPECTION") {
-      actualInputs.forEach(function(inp) { inp.value = "OK"; });
+      actualInputs.forEach(function(inp, idx) {
+        if (idx < nActive) inp.value = "OK";
+        else { inp.value = ""; }
+      });
       remarksEl.value = "OK";
       return;
     }
@@ -586,9 +654,12 @@
     }
     var min = range.min, max = range.max, step = range.step;
     var values = [];
-    for (var i = 0; i < 5; i++) values.push(randomInRange(min, max, step));
+    for (var i = 0; i < nActive; i++) values.push(randomInRange(min, max, step));
     var formatted = values.map(function(v) { return formatMeasuredValue(v, range); });
-    actualInputs.forEach(function(inp, idx) { inp.value = formatted[idx]; });
+    actualInputs.forEach(function(inp, idx) {
+      if (idx < nActive) inp.value = formatted[idx];
+      else inp.value = "";
+    });
     var allOk = values.every(function(v) { return isWithinSpec(v, min, max); });
     remarksEl.value = allOk ? "OK" : "Not OK";
   }
@@ -620,6 +691,7 @@
   // --- Smart paste ---
   document.addEventListener("paste", e => {
     const active = document.activeElement;
+    if (active && active.disabled) return;
     if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
       e.preventDefault();
       const text = (e.clipboardData || window.clipboardData).getData("text");
@@ -627,7 +699,9 @@
       const rowEl = active.closest("tr");
       if (!rowEl) return;
 
-      const allInputs = Array.from(rowEl.querySelectorAll("input[type='text'], textarea"));
+      const allInputs = Array.from(rowEl.querySelectorAll("input[type='text'], textarea")).filter(
+        (el) => !el.disabled
+      );
       const currentIndex = allInputs.indexOf(active);
 
       let rIndex = 0;
