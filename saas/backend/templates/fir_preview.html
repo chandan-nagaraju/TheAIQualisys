@@ -582,6 +582,11 @@
     } else if (minusOnly) {
       const lower = parseFloat(minusOnly[1].trim());
       if (!isNaN(lower)) min = nominal - lower;
+    } else if (isRadius) {
+      // Plain R## in spec (no ± shown): default bands — < R5 → ±0.5, R5 and above → ±1
+      const tol = nominal < 5 ? 0.5 : 1;
+      min = nominal - tol;
+      max = nominal + tol;
     } else {
       const tol = 0.1 * Math.abs(nominal) || 0.1;
       min = nominal - tol; max = nominal + tol;
