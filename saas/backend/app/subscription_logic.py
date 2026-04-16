@@ -58,8 +58,9 @@ def count_combined_usage_this_month(db: Session, company_id: int, today: date | 
 
 
 def trial_is_valid(company: Company, today: date | None = None) -> bool:
+    """True when today falls in the company's trial calendar window (independent of stored status)."""
     today = today or datetime.now(timezone.utc).date()
-    return company.subscription_status == SubscriptionStatus.trial.value and today <= company.trial_end_date
+    return company.trial_start_date <= today <= company.trial_end_date
 
 
 def trial_days_remaining_company(company: Company, today: date | None = None) -> int | None:
@@ -71,16 +72,8 @@ def trial_days_remaining_company(company: Company, today: date | None = None) ->
 
 
 def subscription_is_active(company: Company, today: date | None = None) -> bool:
-    """
-    True when the company's paid subscription window covers `today`.
-
-    Do not require subscription_status == "active": billing flows sometimes leave
-    status as "trial" until a job updates it, which incorrectly blocked FIR access
-    between trial_end and subscription_end.
-    """
+    """True when `today` is inside the paid subscription window (calendar only)."""
     today = today or datetime.now(timezone.utc).date()
-    if company.subscription_status == SubscriptionStatus.expired.value:
-        return False
     if company.subscription_end is None:
         return False
     if today > company.subscription_end:
@@ -88,6 +81,27 @@ def subscription_is_active(company: Company, today: date | None = None) -> bool:
     if company.subscription_start is not None and today < company.subscription_start:
         return False
     return True
+
+
+def sync_subscription_status_from_dates(company: Company, today: date | None = None) -> bool:
+    """
+    Set subscription_status from trial and subscription dates.
+    Priority: trial window > paid window > expired.
+    Returns True if the stored status was changed (caller may commit).
+    """
+    today = today or datetime.now(timezone.utc).date()
+    if company.trial_start_date <= today <= company.trial_end_date:
+        new_status = SubscriptionStatus.trial.value
+    elif company.subscription_end is not None and today <= company.subscription_end and (
+        company.subscription_start is None or today >= company.subscription_start
+    ):
+        new_status = SubscriptionStatus.active.value
+    else:
+        new_status = SubscriptionStatus.expired.value
+    if company.subscription_status != new_status:
+        company.subscription_status = new_status
+        return True
+    return False
 
 
 def subscription_days_remaining_company(company: Company, today: date | None = None) -> int | None:

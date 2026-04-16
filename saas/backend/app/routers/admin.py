@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from app.dates import billing_today
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.deps import get_db_session, get_platform_admin
@@ -28,7 +28,7 @@ from app.security import (
     create_admin_token,
     verify_password_and_upgrade,
 )
-from app.subscription_logic import count_fir_reports_this_month, count_invoices_this_month
+from app.subscription_logic import count_fir_reports_this_month, count_invoices_this_month, sync_subscription_status_from_dates
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -58,6 +58,15 @@ def admin_dashboard(
     _: PlatformAdmin = Depends(get_platform_admin),
     db: Session = Depends(get_db_session),
 ):
+    today = billing_today()
+    companies = db.execute(select(Company)).scalars().all()
+    changed = False
+    for c in companies:
+        if sync_subscription_status_from_dates(c, today):
+            db.add(c)
+            changed = True
+    if changed:
+        db.commit()
     total = db.execute(select(func.count()).select_from(Company)).scalar_one()
     trial = db.execute(
         select(func.count()).select_from(Company).where(Company.subscription_status == SubscriptionStatus.trial.value)
@@ -92,6 +101,20 @@ def list_all_tenant_users(
         )
         .all()
     )
+    today = billing_today()
+    seen: set[int] = set()
+    changed = False
+    for _u, co in rows:
+        if co.id in seen:
+            continue
+        seen.add(co.id)
+        if sync_subscription_status_from_dates(co, today):
+            db.add(co)
+            changed = True
+    if changed:
+        db.commit()
+        for _u, co in rows:
+            db.refresh(co)
     return [
         AdminTenantUserRow(
             user_id=u.id,
@@ -206,6 +229,15 @@ def list_companies(
 ):
     companies = db.execute(select(Company).order_by(Company.id)).scalars().all()
     today = billing_today()
+    changed = False
+    for c in companies:
+        if sync_subscription_status_from_dates(c, today):
+            db.add(c)
+            changed = True
+    if changed:
+        db.commit()
+        for c in companies:
+            db.refresh(c)
     out: list[AdminCompanySummary] = []
     for c in companies:
         inv = count_invoices_this_month(db, c.id, today)
@@ -234,6 +266,10 @@ def get_company(
     c = db.get(Company, company_id)
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
+    if sync_subscription_status_from_dates(c, billing_today()):
+        db.add(c)
+        db.commit()
+        db.refresh(c)
     return _company_out(c)
 
 
@@ -283,10 +319,14 @@ def patch_company(
 
     elif body.action == "mark_expired":
         c.subscription_status = SubscriptionStatus.expired.value
+        yday = today - timedelta(days=1)
+        if c.subscription_end is None or c.subscription_end >= today:
+            c.subscription_end = yday
 
     else:
         raise HTTPException(status_code=400, detail="Unknown action")
 
+    sync_subscription_status_from_dates(c, today)
     db.commit()
     db.refresh(c)
     return _company_out(c)
@@ -315,6 +355,10 @@ def company_usage(
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
     today = billing_today()
+    if sync_subscription_status_from_dates(c, today):
+        db.add(c)
+        db.commit()
+        db.refresh(c)
     inv = count_invoices_this_month(db, company_id, today)
     fir = count_fir_reports_this_month(db, company_id, today)
     return {

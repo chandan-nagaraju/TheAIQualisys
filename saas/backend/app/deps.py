@@ -8,7 +8,8 @@ from app.config import get_settings
 from app.database import get_db
 from app.models import Company, CompanyUser, PlatformAdmin
 from app.security import decode_access_token, decode_admin_token
-from app.subscription_logic import can_access_app, can_create_invoice
+from app.dates import billing_today
+from app.subscription_logic import can_access_app, can_create_invoice, sync_subscription_status_from_dates
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -57,6 +58,10 @@ def get_company_for_user(user: CompanyUser, db: Session) -> Company:
     company = db.get(Company, user.company_id)
     if not company:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company not found")
+    if sync_subscription_status_from_dates(company, billing_today()):
+        db.add(company)
+        db.commit()
+        db.refresh(company)
     return company
 
 
