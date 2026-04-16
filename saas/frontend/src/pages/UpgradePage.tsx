@@ -10,23 +10,32 @@ type PlanInfo = { plan_type: string; name: string; price_inr: number };
 const QR_REFRESH_MS = 60_000;
 
 const BILLING_OPTIONS = [
-  { id: "1m" as const, label: "Month", displayMo: null as number | null },
-  { id: "3m" as const, label: "Quarterly", displayMo: 3 },
-  { id: "6m" as const, label: "Half yearly", displayMo: 6 },
-  { id: "12m" as const, label: "Yearly", displayMo: 11 },
+  { id: "1m" as const, label: "Month" },
+  { id: "3m" as const, label: "Quarterly" },
+  { id: "6m" as const, label: "Half yearly" },
+  { id: "12m" as const, label: "Yearly" },
 ];
 
 type BillingId = (typeof BILLING_OPTIONS)[number]["id"];
 
-/** Total INR for UPI (integers). Yearly = 11× list month; half-yearly = 6× − list/2 (rounded). */
-function billingTotalInr(monthly: number, id: BillingId): number {
+function isEnterprisePlan(planType: string, planName: string): boolean {
+  const t = planType.trim().toLowerCase();
+  const n = planName.trim().toLowerCase();
+  return t === "enterprise" || n.includes("enterprise");
+}
+
+/**
+ * Total INR for UPI. Enterprise: half-yearly = round(6m − m/2), yearly = 11×.
+ * Basic / Pro / other: half-yearly = 6×, yearly = 11×.
+ */
+function billingTotalInr(monthly: number, id: BillingId, enterprise: boolean): number {
   switch (id) {
     case "1m":
       return monthly;
     case "3m":
       return monthly * 3;
     case "6m":
-      return Math.round(monthly * 6 - monthly / 2);
+      return enterprise ? Math.round(monthly * 6 - monthly / 2) : monthly * 6;
     case "12m":
       return monthly * 11;
     default:
@@ -70,10 +79,15 @@ export default function UpgradePage() {
     };
   }, [plans]);
 
+  const enterprisePricing = useMemo(
+    () => (selected ? isEnterprisePlan(selected.planType, selected.planName) : false),
+    [selected],
+  );
+
   const payAmount = useMemo(() => {
     if (!billingSelection || selected?.price == null) return null;
-    return billingTotalInr(selected.price, billingSelection);
-  }, [selected?.price, billingSelection]);
+    return billingTotalInr(selected.price, billingSelection, enterprisePricing);
+  }, [selected?.price, billingSelection, enterprisePricing]);
 
   useEffect(() => {
     (async () => {
@@ -137,6 +151,12 @@ export default function UpgradePage() {
       theme === "dark"
         ? "border-slate-600 bg-brand-700/90 text-white hover:bg-brand-600"
         : "border-brand-600 bg-brand-600 text-white hover:bg-brand-500",
+    marketBox:
+      theme === "dark"
+        ? "border-amber-700/40 bg-gradient-to-br from-amber-950/50 to-slate-900/80"
+        : "border-amber-200 bg-gradient-to-br from-amber-50 to-white",
+    marketTitle: theme === "dark" ? "text-amber-200" : "text-amber-900",
+    marketBody: theme === "dark" ? "text-slate-300" : "text-slate-700",
   };
 
   const selectedPlanText = selected
@@ -148,10 +168,15 @@ export default function UpgradePage() {
     ? (BILLING_OPTIONS.find((o) => o.id === billingSelection)?.label ?? "")
     : "";
 
+  const marketingBlurb = enterprisePricing
+    ? "You are on Enterprise — your prepay total reflects partner-tier billing: a sharper half-yearly rate and our best yearly value (11 months billed for a full year of access). Complete payment below to lock in uninterrupted FIR workspace and priority activation."
+    : "Simple, transparent prepay: quarterly is three months at the list rate, half-yearly is six full months, and yearly is eleven months price for twelve months of access — strong value without surprise fees. Pay below and we will verify and activate your plan fast.";
+
   const whatsappHref = useMemo(() => {
     if (!info || !billingSelection) return "";
+    const tier = enterprisePricing ? "Enterprise tier pricing" : "Standard tier pricing";
     const periodLine =
-      payAmount != null ? `Billing: ${billingLabel}. Total due: ₹${payAmount}.` : "";
+      payAmount != null ? `Billing: ${billingLabel} (${tier}). Total due: ₹${payAmount}.` : "";
     if (!selected) return info.whatsapp_url;
     try {
       const u = new URL(info.whatsapp_url);
@@ -167,7 +192,7 @@ export default function UpgradePage() {
     } catch {
       return info.whatsapp_url;
     }
-  }, [info, selected, payAmount, billingLabel, listPriceLine, billingSelection]);
+  }, [info, selected, payAmount, billingLabel, listPriceLine, billingSelection, enterprisePricing]);
 
   const upiPayload = useMemo(() => {
     if (!info || !billingSelection || payAmount == null) return "";
@@ -254,6 +279,11 @@ export default function UpgradePage() {
               <p className={`text-xs uppercase tracking-wide ${t.selectedTitle}`}>Selected plan</p>
               <p className={`mt-1 text-base font-semibold sm:text-lg ${t.selectedText}`}>{selectedPlanText}</p>
               {listPriceLine && <p className={`mt-1 text-sm ${t.selectedText}`}>{listPriceLine}</p>}
+              {enterprisePricing && (
+                <p className={`mt-2 text-xs font-medium text-amber-800 dark:text-amber-200`}>
+                  Enterprise billing — special half-yearly and yearly totals apply.
+                </p>
+              )}
             </div>
           )}
 
@@ -261,25 +291,18 @@ export default function UpgradePage() {
             <div className={`rounded-xl border p-4 sm:p-5 ${t.upiBox}`}>
               <p className={`text-xs font-semibold uppercase tracking-wide ${t.upiLabel}`}>How do you want to pay?</p>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {BILLING_OPTIONS.map((opt) => {
-                  const tileTotal = billingTotalInr(selected.price, opt.id);
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setBillingSelection(opt.id)}
-                      className={`rounded-xl border-2 px-3 py-4 text-center text-sm font-semibold transition sm:py-5 sm:text-base ${
-                        billingSelection === opt.id ? t.payBtnOn : t.payBtnOff
-                      }`}
-                    >
-                      <span className="block">{opt.label}</span>
-                      <span className="mt-2 block text-xs font-normal opacity-90">
-                        ₹{tileTotal}
-                        {opt.displayMo != null ? ` · ${opt.displayMo}× mo` : ""}
-                      </span>
-                    </button>
-                  );
-                })}
+                {BILLING_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setBillingSelection(opt.id)}
+                    className={`rounded-xl border-2 px-3 py-5 text-center text-sm font-semibold transition sm:py-6 sm:text-base ${
+                      billingSelection === opt.id ? t.payBtnOn : t.payBtnOff
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
               <p className={`mt-4 text-center text-xs ${t.msg}`}>
                 Tap <strong className="font-medium">Month</strong>, <strong className="font-medium">Quarterly</strong>,{" "}
@@ -297,6 +320,15 @@ export default function UpgradePage() {
             >
               <p className={`text-xs uppercase tracking-wide ${t.upiLabel}`}>Amount to pay ({billingLabel})</p>
               <p className={`mt-1 text-2xl font-bold ${t.title}`}>₹{payAmount}</p>
+            </div>
+          )}
+
+          {billingSelection && payAmount != null && (
+            <div className={`rounded-xl border p-4 sm:p-5 ${t.marketBox}`}>
+              <p className={`text-sm font-semibold ${t.marketTitle}`}>
+                {enterprisePricing ? "Enterprise — partner-tier value" : "Why this total works for you"}
+              </p>
+              <p className={`mt-2 text-sm leading-relaxed ${t.marketBody}`}>{marketingBlurb}</p>
             </div>
           )}
 
