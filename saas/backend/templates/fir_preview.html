@@ -557,8 +557,39 @@
   function parseSpec(specStr) {
     const s = (specStr || "").trim();
     if (!s) return null;
-    const isRadius = /R\s*\d+/i.test(s);
+    const isRadius = /R\s*\d/i.test(s);
     const isAngle = /°|\bdeg(?:ree)?s?\b/i.test(s);
+
+    // "96.91/97.16" or "5/6" → allowable range [min, max] (order-independent)
+    const slashRange = s.match(/\b([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\b/);
+    if (slashRange) {
+      const a = parseFloat(slashRange[1]);
+      const b = parseFloat(slashRange[2]);
+      if (!isNaN(a) && !isNaN(b)) {
+        const lo = Math.min(a, b);
+        const hi = Math.max(a, b);
+        const nominal = (lo + hi) / 2;
+        return { min: lo, max: hi, nominal, step: isRadius ? 0.5 : null, isRadius, isAngle };
+      }
+    }
+
+    // "R3±R1", "R3±1", "R 3 ± R 1" → symmetric band around nominal R
+    const rBand = s.match(/R\s*([0-9]+(?:\.[0-9]+)?)\s*±\s*R?\s*([0-9]+(?:\.[0-9]+)?)/i);
+    if (rBand) {
+      const nominalR = parseFloat(rBand[1]);
+      const tolR = parseFloat(rBand[2]);
+      if (!isNaN(nominalR) && !isNaN(tolR)) {
+        return {
+          min: nominalR - tolR,
+          max: nominalR + tolR,
+          nominal: nominalR,
+          step: 0.5,
+          isRadius: true,
+          isAngle,
+        };
+      }
+    }
+
     const numStr = s.replace(/[^\d.\s±+-]/g, " ").trim();
     const numbers = numStr.match(/-?\d+\.?\d*/g);
     if (!numbers || numbers.length === 0) return null;
