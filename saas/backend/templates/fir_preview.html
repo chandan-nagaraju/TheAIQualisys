@@ -637,11 +637,18 @@
     if (max < min) { const t = min; min = max; max = t; }
     var v;
     if (min === max) {
-      v = step === 0.5 ? (Math.round(min * 2) / 2) : Number(min.toFixed(2));
+      if (step === 0.5) v = Math.round(min * 2) / 2;
+      else if (step === 0.1) v = Number(min.toFixed(1));
+      else v = Number(min.toFixed(2));
     } else if (step === 0.5) {
       const steps = Math.round((max - min) / 0.5) + 1;
       const idx = Math.floor(Math.random() * steps);
       v = Math.round((min + idx * 0.5) * 2) / 2;
+      v = Number(v.toFixed(1));
+    } else if (step === 0.1) {
+      const steps = Math.round((max - min) / 0.1) + 1;
+      const idx = Math.floor(Math.random() * steps);
+      v = Math.round((min + idx * 0.1) * 10) / 10;
       v = Number(v.toFixed(1));
     } else {
       v = min + Math.random() * (max - min);
@@ -649,6 +656,7 @@
     }
     if (v < min) v = min;
     if (v > max) v = max;
+    if (step === 0.1) v = Number(Number(v).toFixed(1));
     return v;
   }
 
@@ -656,6 +664,16 @@
     const n = parseFloat(String(value).replace(/[^\d.-]/g, ""));
     if (isNaN(n)) return false;
     return n >= min && n <= max;
+  }
+
+  /** DFT / thickness in microns — autofill uses one decimal (e.g. 65.1). */
+  function firIsDftStyleRow(param, spec) {
+    var p = (param || "").toUpperCase();
+    var s = (spec || "").toLowerCase();
+    if (p.indexOf("DFT") !== -1) return true;
+    if (/\bmicron|\bmicrons\b/.test(s)) return true;
+    if (/\bum\b/.test(s) || s.indexOf("µ") !== -1) return true;
+    return false;
   }
 
   function formatMeasuredValue(value, range) {
@@ -671,6 +689,9 @@
       const num = Number(value);
       const text = Number(num.toFixed(2)).toString();
       return `${text}\u00B0`;
+    }
+    if (range.oneDecimal) {
+      return Number(value).toFixed(1);
     }
     return String(value);
   }
@@ -739,12 +760,17 @@
       updateStatusButtons();
       return;
     }
+    var paramEl = cells[1].querySelector("textarea") || cells[1].querySelector("input");
+    var paramText = paramEl ? (paramEl.value || "").trim() : "";
     var range = parseSpec(spec);
     if (!range) {
       actualInputs.forEach(function(inp) { inp.value = ""; });
       remarksEl.value = "";
       updateStatusButtons();
       return;
+    }
+    if (firIsDftStyleRow(paramText, spec)) {
+      range = Object.assign({}, range, { step: 0.1, oneDecimal: true });
     }
     var min = range.min, max = range.max, step = range.step;
     var values = [];
