@@ -68,6 +68,83 @@ function mergePasteFourColumn(current: Spec[], text: string): Spec[] {
   return [...current, ...parsed];
 }
 
+function looksLikeCoatingInspectionMethod(x: string): boolean {
+  const t = x.trim();
+  if (!t) return false;
+  const u = t.toUpperCase();
+  if (u === "VISUAL" || u.startsWith("VISUAL ")) return true;
+  return /^(DVC|DHG|DHI|RG|R\.G\.?|MM|CMM|UT|MPI|DFT|DFT\s*METER)$/i.test(t);
+}
+
+/** One pasted line for Section D: tolerate 3 Excel columns (Parameter, Specification, Method) and single-cell colour+process text. */
+function parseCoatingPasteLine(line: string): Spec {
+  const cells = line.split("\t").map((c) => c.trim());
+  if (cells.length >= 4) {
+    return {
+      parameter: cells[0] ?? "",
+      specification: cells[1] ?? "",
+      special_char: cells[2] ?? "",
+      method_of_inspection: cells[3] ?? "",
+    };
+  }
+  if (cells.length === 3) {
+    return {
+      parameter: cells[0] ?? "",
+      specification: cells[1] ?? "",
+      special_char: "",
+      method_of_inspection: cells[2] ?? "",
+    };
+  }
+  if (cells.length === 2) {
+    const a = cells[0] ?? "";
+    const b = cells[1] ?? "";
+    if (looksLikeCoatingInspectionMethod(b)) {
+      return { parameter: a, specification: "", special_char: "", method_of_inspection: b };
+    }
+    return { parameter: a, specification: b, special_char: "", method_of_inspection: "" };
+  }
+  const s = cells[0] ?? "";
+  const multi = s
+    .split(/\s{2,}/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (multi.length >= 2 && looksLikeCoatingInspectionMethod(multi[multi.length - 1]!)) {
+    return {
+      parameter: multi[0]!,
+      specification: multi.slice(1, -1).join(" ").trim(),
+      special_char: "",
+      method_of_inspection: multi[multi.length - 1]!,
+    };
+  }
+  if (multi.length === 2) {
+    return { parameter: multi[0]!, specification: multi[1]!, special_char: "", method_of_inspection: "" };
+  }
+  const trimmed = s.trim();
+  const colorLeading =
+    /^(\b(?:black|white|red|blue|green|grey|gray|yellow|orange|brown|zinc|matt|matte|glossy|silver|gold|navy|beige|tan)\b)\s+(.+)$/i.exec(
+      trimmed,
+    );
+  if (colorLeading) {
+    return {
+      parameter: colorLeading[2]!.trim(),
+      specification: colorLeading[1]!.toUpperCase(),
+      special_char: "",
+      method_of_inspection: "VISUAL",
+    };
+  }
+  return { parameter: trimmed, specification: "", special_char: "", method_of_inspection: "" };
+}
+
+function mergePasteCoatingRows(current: Spec[], text: string): Spec[] {
+  const raw = text.trim();
+  if (!raw) return current;
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim());
+  const parsed: Spec[] = lines.map((line) => parseCoatingPasteLine(line));
+  const onlyEmpty = current.length === 1 && isSpecRowEmpty(current[0]!);
+  if (onlyEmpty) return parsed.length ? parsed : [emptySpec()];
+  return [...current, ...parsed];
+}
+
 /** Legacy C) material: one grade per line (first column if tab-separated). */
 function mergePasteMaterialGrades(current: string[], text: string): string[] {
   const raw = text.trim();
@@ -87,6 +164,7 @@ function SpecSectionWithPaste({
   rows,
   setRows,
   onSave,
+  mergePaste,
 }: {
   title: string;
   hint: string;
@@ -95,11 +173,14 @@ function SpecSectionWithPaste({
   rows: Spec[];
   setRows: (r: Spec[]) => void;
   onSave: () => void | Promise<void>;
+  /** Override default 4-column paste (e.g. Section D coating heuristics). */
+  mergePaste?: (current: Spec[], text: string) => Spec[];
 }) {
   const [paste, setPaste] = useState("");
 
   function fillFromPaste() {
-    setRows(mergePasteFourColumn(rows, paste));
+    const merge = mergePaste ?? mergePasteFourColumn;
+    setRows(merge(rows, paste));
     setPaste("");
   }
 
@@ -499,12 +580,13 @@ export default function PartDetailPage() {
 
       <SpecSectionWithPaste
         title="D) Surface coating"
-        hint="Paste from Excel (tab-separated) or add a row, edit and save."
-        pasteLabel="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method):"
+        hint="Paste from Excel (tab-separated) or add a row, edit and save. Three columns from Excel (Parameter, Specification, Method) map correctly; a single cell like “Black Powder Coating” splits into Specification BLACK, Method VISUAL."
+        pasteLabel="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method — or 3 columns: Parameter, Specification, Method):"
         placeholder={pastePlaceholderA}
         rows={coats}
         setRows={setCoats}
         onSave={saveCoat}
+        mergePaste={mergePasteCoatingRows}
       />
     </div>
   );
