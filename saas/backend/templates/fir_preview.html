@@ -546,9 +546,17 @@
     if (rootEl) {
       rootEl.addEventListener('input', function(e) {
         if (e.target && e.target.classList && e.target.classList.contains('remarks-value')) updateStatusButtons();
+        if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
+          var tr = e.target.closest('tr');
+          if (tr) firUpdateRowRemarksFromMeasurements(tr);
+        }
       });
       rootEl.addEventListener('change', function(e) {
         if (e.target && e.target.classList && e.target.classList.contains('remarks-value')) updateStatusButtons();
+        if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
+          var tr2 = e.target.closest('tr');
+          if (tr2) firUpdateRowRemarksFromMeasurements(tr2);
+        }
       });
     }
   } catch (err) { console.error('status/root init', err); }
@@ -627,15 +635,21 @@
 
   function randomInRange(min, max, step) {
     if (max < min) { const t = min; min = max; max = t; }
-    if (min === max) return step === 0.5 ? (Math.round(min * 2) / 2) : Number(min.toFixed(2));
-    if (step === 0.5) {
+    var v;
+    if (min === max) {
+      v = step === 0.5 ? (Math.round(min * 2) / 2) : Number(min.toFixed(2));
+    } else if (step === 0.5) {
       const steps = Math.round((max - min) / 0.5) + 1;
       const idx = Math.floor(Math.random() * steps);
-      const v = Math.round((min + idx * 0.5) * 2) / 2;
-      return Number(v.toFixed(1));
+      v = Math.round((min + idx * 0.5) * 2) / 2;
+      v = Number(v.toFixed(1));
+    } else {
+      v = min + Math.random() * (max - min);
+      v = Number(v.toFixed(2));
     }
-    const v = min + Math.random() * (max - min);
-    return Number(v.toFixed(2));
+    if (v < min) v = min;
+    if (v > max) v = max;
+    return v;
   }
 
   function isWithinSpec(value, min, max) {
@@ -661,6 +675,44 @@
     return String(value);
   }
 
+  /** Recompute Remarks from spec + filled measured cells (active sample columns only). */
+  function firUpdateRowRemarksFromMeasurements(tr) {
+    if (!tr) return;
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length < 11) return;
+    var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
+    var methodEl = cells[4].querySelector("input");
+    var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
+    if (!specEl || !methodEl || !remarksEl) return;
+    var method = (methodEl.value || "").trim().toUpperCase();
+    if (method === "VISUAL" || method === "VISUAL INSPECTION") {
+      remarksEl.value = "OK";
+      updateStatusButtons();
+      return;
+    }
+    var spec = (specEl.value || "").trim();
+    var range = parseSpec(spec);
+    if (!range) {
+      remarksEl.value = "";
+      updateStatusButtons();
+      return;
+    }
+    var nActive = firGetMeasuredColumnCount();
+    var min = range.min, max = range.max;
+    var allOk = true;
+    for (var ci = 5; ci < 5 + nActive && ci <= 9; ci++) {
+      var td = cells[ci];
+      if (!td) { allOk = false; break; }
+      var inp = td.querySelector("input.actual-value") || td.querySelector('input[type="text"]');
+      if (!inp || inp.disabled) continue;
+      var raw = (inp.value || "").trim();
+      if (raw === "") { allOk = false; break; }
+      if (!isWithinSpec(raw, min, max)) allOk = false;
+    }
+    remarksEl.value = allOk ? "OK" : "Not OK";
+    updateStatusButtons();
+  }
+
   /** Sl No | Parameter | Specification | Special char | Method | 5× actual | Remarks (11 cells) */
   function fillOneRow(tr) {
     var cells = tr.querySelectorAll(":scope > td");
@@ -684,12 +736,14 @@
         else { inp.value = ""; }
       });
       remarksEl.value = "OK";
+      updateStatusButtons();
       return;
     }
     var range = parseSpec(spec);
     if (!range) {
       actualInputs.forEach(function(inp) { inp.value = ""; });
       remarksEl.value = "";
+      updateStatusButtons();
       return;
     }
     var min = range.min, max = range.max, step = range.step;
@@ -700,8 +754,7 @@
       if (idx < nActive) inp.value = formatted[idx];
       else inp.value = "";
     });
-    var allOk = values.every(function(v) { return isWithinSpec(v, min, max); });
-    remarksEl.value = allOk ? "OK" : "Not OK";
+    firUpdateRowRemarksFromMeasurements(tr);
   }
 
   function autoFillMeasuredValues() {
@@ -757,6 +810,7 @@
       }
       const event = new Event("input", { bubbles: true });
       active.dispatchEvent(event);
+      if (rowEl) firUpdateRowRemarksFromMeasurements(rowEl);
     }
   });
 
