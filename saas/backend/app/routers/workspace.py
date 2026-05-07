@@ -11,7 +11,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
@@ -21,7 +21,16 @@ from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
+from app.config import Settings, get_settings
+from app.s3_assets import (
+    build_s3_public_url,
+    delete_s3_object,
+    is_company_scoped_storage_key,
+    is_stored_s3_key,
+    normalize_storage_key,
+    presign_settings_asset_put,
+    s3_assets_configured,
+)
 from app.dates import billing_today
 from app.deps import (
     get_company_for_user,
@@ -223,13 +232,23 @@ def _read_quali_font_upload(file: UploadFile | None) -> tuple[str, str, bytes] |
     return name, "font/ttf", raw
 
 
-def _quali_font_data_uri_from_settings(st: CompanySettings | None) -> tuple[str | None, str]:
-    """Return (data_uri, css_format) for company-uploaded Quali replacement, or (None, truetype)."""
-    if not st or not st.quali_font_blob:
+def _quali_font_src_from_settings(
+    app_settings: Settings, st: CompanySettings | None
+) -> tuple[str | None, str]:
+    """Return (font src URL or data: URI, css_format) for custom Quali replacement."""
+    if not st:
         return None, "truetype"
-    mime = (st.quali_font_mime or "font/ttf").split(";")[0].strip() or "font/ttf"
-    b64 = base64.b64encode(st.quali_font_blob).decode("ascii")
-    return f"data:{mime};base64,{b64}", "truetype"
+    qpath = (st.quali_font_path or "").strip()
+    if qpath:
+        if qpath.startswith("http://") or qpath.startswith("https://"):
+            return qpath, "truetype"
+        if s3_assets_configured(app_settings) and is_company_scoped_storage_key(st.company_id, qpath):
+            return build_s3_public_url(app_settings, qpath), "truetype"
+    if st.quali_font_blob:
+        mime = (st.quali_font_mime or "font/ttf").split(";")[0].strip() or "font/ttf"
+        b64 = base64.b64encode(st.quali_font_blob).decode("ascii")
+        return f"data:{mime};base64,{b64}", "truetype"
+    return None, "truetype"
 
 
 def _default_static_quali_font() -> tuple[str | None, str]:
@@ -253,14 +272,33 @@ def _default_static_quali_font() -> tuple[str | None, str]:
     return quali_font_data_uri, quali_font_format
 
 
-def _settings_blob_data_uri(st: CompanySettings, field_name: str) -> str | None:
-    blob = getattr(st, f"{field_name}_blob", None)
+def _resolve_settings_image_url(app_settings: Settings, st: CompanySettings, field_prefix: str) -> str | None:
+    """data: URI, https URL, or None for logo / inspector_signature / quality_signature."""
+    blob = getattr(st, f"{field_prefix}_blob", None)
     if blob is not None:
-        mime = getattr(st, f"{field_name}_mime", None) or "application/octet-stream"
+        mime = getattr(st, f"{field_prefix}_mime", None) or "application/octet-stream"
         b64 = base64.b64encode(blob).decode("ascii")
         return f"data:{mime};base64,{b64}"
-    # Backward compatibility: older rows may only have path-based assets.
-    return _file_to_data_uri(getattr(st, f"{field_name}_path", None))
+    path_val = getattr(st, f"{field_prefix}_path", None)
+    if not path_val:
+        return None
+    path_s = path_val.strip()
+    if path_s.startswith("http://") or path_s.startswith("https://"):
+        return path_s
+    local = _upload_root() / path_s
+    if local.is_file():
+        mime, _ = mimetypes.guess_type(str(local))
+        mime = mime or "application/octet-stream"
+        b64 = base64.b64encode(local.read_bytes()).decode("ascii")
+        return f"data:{mime};base64,{b64}"
+    if s3_assets_configured(app_settings) and is_company_scoped_storage_key(st.company_id, path_s):
+        return build_s3_public_url(app_settings, path_s)
+    return None
+
+
+def _settings_blob_data_uri(st: CompanySettings, field_name: str) -> str | None:
+    app_settings = get_settings()
+    return _resolve_settings_image_url(app_settings, st, field_name)
 
 
 def _file_to_data_uri(rel: str | None) -> str | None:
@@ -375,8 +413,39 @@ def create_customer(body: CustomerCreate, ws: WsContext = Depends(get_ws)):
 
 
 # --- Settings ---
+class SettingsAssetPresignBody(BaseModel):
+    kind: Literal["logo", "inspector_signature", "quality_signature", "quali_font"]
+    content_type: str = ""
+
+
+@router.post("/settings/asset-upload-url")
+def settings_asset_upload_presign(body: SettingsAssetPresignBody, ws: WsContext = Depends(get_ws)):
+    """Return a presigned PUT URL so the browser can upload directly to S3."""
+    app_settings = get_settings()
+    if not s3_assets_configured(app_settings):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="S3 asset uploads are not configured on the server",
+        )
+    ct = (body.content_type or "").strip()
+    if body.kind == "quali_font" and not ct:
+        ct = "application/octet-stream"
+    if body.kind != "quali_font" and not ct:
+        ct = "image/png"
+    try:
+        return presign_settings_asset_put(
+            app_settings,
+            company_id=ws.company.id,
+            kind=body.kind,
+            content_type=ct,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/settings")
 def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
+    app_settings = get_settings()
     st = ws.db.execute(select(CompanySettings).where(CompanySettings.company_id == ws.company.id)).scalar_one_or_none()
     if not st:
         return {
@@ -389,6 +458,7 @@ def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
             "inspector_signature_url": None,
             "quality_signature_url": None,
             "quali_font_configured": False,
+            "s3_assets_enabled": s3_assets_configured(app_settings),
         }
     return {
         "company_name": st.company_name or "",
@@ -399,7 +469,8 @@ def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
         "logo_url": _settings_blob_data_uri(st, "logo"),
         "inspector_signature_url": _settings_blob_data_uri(st, "inspector_signature"),
         "quality_signature_url": _settings_blob_data_uri(st, "quality_signature"),
-        "quali_font_configured": bool(st.quali_font_blob),
+        "quali_font_configured": bool(st.quali_font_blob or (st.quali_font_path or "").strip()),
+        "s3_assets_enabled": s3_assets_configured(app_settings),
     }
 
 
@@ -417,6 +488,10 @@ async def save_settings(
     quality_signature: UploadFile | None = File(None),
     quali_font: UploadFile | None = File(None),
     clear_quali_font: str = Form(""),
+    logo_storage_key: str = Form(""),
+    inspector_signature_storage_key: str = Form(""),
+    quality_signature_storage_key: str = Form(""),
+    quali_font_storage_key: str = Form(""),
 ):
     st = ws.db.execute(select(CompanySettings).where(CompanySettings.company_id == ws.company.id)).scalar_one_or_none()
     if not st:
@@ -424,39 +499,103 @@ async def save_settings(
         ws.db.add(st)
         ws.db.flush()
 
+    app_settings = get_settings()
+    s3_on = s3_assets_configured(app_settings)
+
     st.company_name = company_name.strip() or None
     st.format_no = format_no.strip() or None
     st.issue_date = issue_date.strip() or None
     st.doc_rev_no = doc_rev_no.strip() or None
     st.rev_date = rev_date.strip() or None
 
-    logo_payload = _read_upload_file(logo)
-    if logo_payload:
-        _name, mime, raw = logo_payload
-        st.logo_blob = raw
-        st.logo_mime = mime
-        st.logo_path = None
-    inspector_payload = _read_upload_file(inspector_signature)
-    if inspector_payload:
-        _name, mime, raw = inspector_payload
-        st.inspector_signature_blob = raw
-        st.inspector_signature_mime = mime
-        st.inspector_signature_path = None
-    quality_payload = _read_upload_file(quality_signature)
-    if quality_payload:
-        _name, mime, raw = quality_payload
-        st.quality_signature_blob = raw
-        st.quality_signature_mime = mime
-        st.quality_signature_path = None
+    def _delete_replaced_s3_key(old_path: str | None, new_key: str) -> None:
+        if not old_path or old_path == new_key:
+            return
+        if is_stored_s3_key(app_settings, ws.company.id, old_path):
+            delete_s3_object(app_settings, old_path)
 
-    quali_payload = _read_quali_font_upload(quali_font)
-    if quali_payload:
-        _name, mime, raw = quali_payload
-        st.quali_font_blob = raw
-        st.quali_font_mime = mime
-    elif (clear_quali_font or "").strip().lower() in ("1", "true", "on", "yes"):
+    if s3_on and (k := (logo_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid logo storage key")
+        _delete_replaced_s3_key(st.logo_path, key)
+        st.logo_path = key
+        st.logo_blob = None
+        st.logo_mime = None
+    else:
+        logo_payload = _read_upload_file(logo)
+        if logo_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.logo_path):
+                delete_s3_object(app_settings, st.logo_path)
+            _name, mime, raw = logo_payload
+            st.logo_blob = raw
+            st.logo_mime = mime
+            st.logo_path = None
+
+    if s3_on and (k := (inspector_signature_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid inspector signature storage key")
+        _delete_replaced_s3_key(st.inspector_signature_path, key)
+        st.inspector_signature_path = key
+        st.inspector_signature_blob = None
+        st.inspector_signature_mime = None
+    else:
+        inspector_payload = _read_upload_file(inspector_signature)
+        if inspector_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.inspector_signature_path):
+                delete_s3_object(app_settings, st.inspector_signature_path)
+            _name, mime, raw = inspector_payload
+            st.inspector_signature_blob = raw
+            st.inspector_signature_mime = mime
+            st.inspector_signature_path = None
+
+    if s3_on and (k := (quality_signature_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid quality signature storage key")
+        _delete_replaced_s3_key(st.quality_signature_path, key)
+        st.quality_signature_path = key
+        st.quality_signature_blob = None
+        st.quality_signature_mime = None
+    else:
+        quality_payload = _read_upload_file(quality_signature)
+        if quality_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.quality_signature_path):
+                delete_s3_object(app_settings, st.quality_signature_path)
+            _name, mime, raw = quality_payload
+            st.quality_signature_blob = raw
+            st.quality_signature_mime = mime
+            st.quality_signature_path = None
+
+    clear_q = (clear_quali_font or "").strip().lower() in ("1", "true", "on", "yes")
+    if clear_q:
+        if is_stored_s3_key(app_settings, ws.company.id, st.quali_font_path):
+            delete_s3_object(app_settings, st.quali_font_path)
         st.quali_font_blob = None
         st.quali_font_mime = None
+        st.quali_font_path = None
+    elif s3_on and (qk := (quali_font_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, qk)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid font storage key")
+        _delete_replaced_s3_key(st.quali_font_path, key)
+        st.quali_font_path = key
+        st.quali_font_blob = None
+        st.quali_font_mime = None
+    else:
+        quali_payload = _read_quali_font_upload(quali_font)
+        if quali_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.quali_font_path):
+                delete_s3_object(app_settings, st.quali_font_path)
+            _name, mime, raw = quali_payload
+            st.quali_font_blob = raw
+            st.quali_font_mime = mime
+            st.quali_font_path = None
 
     ws.db.commit()
     return get_settings_api(request, ws)
@@ -1436,7 +1575,7 @@ def fir_preview(
             ]
 
     st = db.execute(select(CompanySettings).where(CompanySettings.company_id == company.id)).scalar_one_or_none()
-    quali_font_data_uri, quali_font_format = _quali_font_data_uri_from_settings(st)
+    quali_font_data_uri, quali_font_format = _quali_font_src_from_settings(settings, st)
     if not quali_font_data_uri:
         quali_font_data_uri, quali_font_format = _default_static_quali_font()
 
