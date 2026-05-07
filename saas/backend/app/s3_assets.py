@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from typing import Any, Literal
 
 from botocore.config import Config
@@ -10,13 +9,6 @@ from botocore.config import Config
 from app.config import Settings
 
 SettingsAssetKind = Literal["logo", "inspector_signature", "quality_signature", "quali_font"]
-
-_KIND_PREFIX = {
-    "logo": "logo",
-    "inspector_signature": "inspector-signature",
-    "quality_signature": "quality-signature",
-    "quali_font": "quali-font",
-}
 
 _IMAGE_CT = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
 _FONT_CT = frozenset(
@@ -78,6 +70,40 @@ def delete_s3_object(app_settings: Settings, key: str | None) -> None:
     client.delete_object(Bucket=app_settings.s3_bucket_name, Key=key)
 
 
+def company_asset_object_key(
+    company_id: int,
+    kind: SettingsAssetKind,
+    content_type: str,
+) -> tuple[str, str]:
+    """
+    Stable S3 object key per company (like tenants/{id}/... but uses company/).
+
+    company/{id}/logo/logo.{ext}
+    company/{id}/signatures/inspector.{ext}
+    company/{id}/signatures/quality.{ext}
+    company/{id}/fonts/Quali_1.ttf
+    """
+    raw_ct = (content_type or "").split(";")[0].strip()
+    ct_lower = raw_ct.lower()
+    if kind == "quali_font":
+        if ct_lower not in _FONT_CT:
+            raise ValueError("Unsupported Content-Type for font upload")
+        ct_for_sign = raw_ct or "font/ttf"
+        return f"company/{company_id}/fonts/Quali_1.ttf", ct_for_sign
+    if ct_lower not in _IMAGE_CT:
+        raise ValueError("Unsupported Content-Type for image upload")
+    ext = _CT_EXT.get(ct_lower, ".png")
+    ct_for_sign = raw_ct or "application/octet-stream"
+    base = f"company/{company_id}"
+    if kind == "logo":
+        return f"{base}/logo/logo{ext}", ct_for_sign
+    if kind == "inspector_signature":
+        return f"{base}/signatures/inspector{ext}", ct_for_sign
+    if kind == "quality_signature":
+        return f"{base}/signatures/quality{ext}", ct_for_sign
+    raise ValueError("Unknown asset kind")
+
+
 def presign_settings_asset_put(
     app_settings: Settings,
     *,
@@ -85,24 +111,12 @@ def presign_settings_asset_put(
     kind: SettingsAssetKind,
     content_type: str,
 ) -> dict[str, Any]:
-    raw_ct = (content_type or "").split(";")[0].strip()
-    ct_lower = raw_ct.lower()
-    if kind == "quali_font":
-        if ct_lower not in _FONT_CT:
-            raise ValueError("Unsupported Content-Type for font upload")
-        ext = _CT_EXT.get(ct_lower, ".ttf")
-    else:
-        if ct_lower not in _IMAGE_CT:
-            raise ValueError("Unsupported Content-Type for image upload")
-        ext = _CT_EXT.get(ct_lower, ".bin")
-
-    key = f"company/{company_id}/{_KIND_PREFIX[kind]}-{uuid.uuid4().hex}{ext}"
+    key, ct_for_sign = company_asset_object_key(company_id, kind, content_type)
     client = _s3_client(app_settings)
     bucket = app_settings.s3_bucket_name
     if not bucket:
         raise RuntimeError("S3 bucket not configured")
 
-    ct_for_sign = raw_ct or "application/octet-stream"
     url = client.generate_presigned_url(
         ClientMethod="put_object",
         Params={"Bucket": bucket, "Key": key, "ContentType": ct_for_sign},
