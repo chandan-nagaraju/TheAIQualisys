@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from sqlalchemy import delete, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.config import Settings, get_settings
 from app.s3_assets import (
@@ -232,19 +232,36 @@ def _read_quali_font_upload(file: UploadFile | None) -> tuple[str, str, bytes] |
     return name, "font/ttf", raw
 
 
+def _company_settings_select(company_id: int, *, load_asset_blobs: bool):
+    """
+    When S3 is configured, omit BYTEA columns so Postgres never transfers logo/signatures/font bytes
+    (saves Supabase/Railway DB egress on read paths).
+    """
+    q = select(CompanySettings).where(CompanySettings.company_id == company_id)
+    if not load_asset_blobs:
+        q = q.options(
+            defer(CompanySettings.logo_blob),
+            defer(CompanySettings.inspector_signature_blob),
+            defer(CompanySettings.quality_signature_blob),
+            defer(CompanySettings.quali_font_blob),
+        )
+    return q
+
+
 def _quali_font_src_from_settings(
     app_settings: Settings, st: CompanySettings | None
 ) -> tuple[str | None, str]:
     """Return (font src URL or data: URI, css_format) for custom Quali replacement."""
     if not st:
         return None, "truetype"
+    s3_on = s3_assets_configured(app_settings)
     qpath = (st.quali_font_path or "").strip()
     if qpath:
         if qpath.startswith("http://") or qpath.startswith("https://"):
             return qpath, "truetype"
-        if s3_assets_configured(app_settings) and is_company_scoped_storage_key(st.company_id, qpath):
+        if s3_on and is_company_scoped_storage_key(st.company_id, qpath):
             return build_s3_public_url(app_settings, qpath), "truetype"
-    if st.quali_font_blob:
+    if not s3_on and st.quali_font_blob:
         mime = (st.quali_font_mime or "font/ttf").split(";")[0].strip() or "font/ttf"
         b64 = base64.b64encode(st.quali_font_blob).decode("ascii")
         return f"data:{mime};base64,{b64}", "truetype"
@@ -274,11 +291,13 @@ def _default_static_quali_font() -> tuple[str | None, str]:
 
 def _resolve_settings_image_url(app_settings: Settings, st: CompanySettings, field_prefix: str) -> str | None:
     """data: URI, https URL, or None for logo / inspector_signature / quality_signature."""
-    blob = getattr(st, f"{field_prefix}_blob", None)
-    if blob is not None:
-        mime = getattr(st, f"{field_prefix}_mime", None) or "application/octet-stream"
-        b64 = base64.b64encode(blob).decode("ascii")
-        return f"data:{mime};base64,{b64}"
+    s3_on = s3_assets_configured(app_settings)
+    if not s3_on:
+        blob = getattr(st, f"{field_prefix}_blob", None)
+        if blob is not None:
+            mime = getattr(st, f"{field_prefix}_mime", None) or "application/octet-stream"
+            b64 = base64.b64encode(blob).decode("ascii")
+            return f"data:{mime};base64,{b64}"
     path_val = getattr(st, f"{field_prefix}_path", None)
     if not path_val:
         return None
@@ -291,14 +310,9 @@ def _resolve_settings_image_url(app_settings: Settings, st: CompanySettings, fie
         mime = mime or "application/octet-stream"
         b64 = base64.b64encode(local.read_bytes()).decode("ascii")
         return f"data:{mime};base64,{b64}"
-    if s3_assets_configured(app_settings) and is_company_scoped_storage_key(st.company_id, path_s):
+    if s3_on and is_company_scoped_storage_key(st.company_id, path_s):
         return build_s3_public_url(app_settings, path_s)
     return None
-
-
-def _settings_blob_data_uri(st: CompanySettings, field_name: str) -> str | None:
-    app_settings = get_settings()
-    return _resolve_settings_image_url(app_settings, st, field_name)
 
 
 def _file_to_data_uri(rel: str | None) -> str | None:
@@ -314,7 +328,10 @@ def _file_to_data_uri(rel: str | None) -> str | None:
 
 
 def _settings_dict_for_fir(db: Session, company_id: int) -> dict[str, Any]:
-    st = db.execute(select(CompanySettings).where(CompanySettings.company_id == company_id)).scalar_one_or_none()
+    app_settings = get_settings()
+    st = db.execute(
+        _company_settings_select(company_id, load_asset_blobs=not s3_assets_configured(app_settings))
+    ).scalar_one_or_none()
     if not st:
         return {
             "company_name": "",
@@ -328,10 +345,10 @@ def _settings_dict_for_fir(db: Session, company_id: int) -> dict[str, Any]:
         }
     return {
         "company_name": st.company_name or "",
-        # Use DB-backed blobs first so logo/signatures are shared across machines/instances.
-        "logo_path": _settings_blob_data_uri(st, "logo"),
-        "inspector_signature_path": _settings_blob_data_uri(st, "inspector_signature"),
-        "quality_signature_path": _settings_blob_data_uri(st, "quality_signature"),
+        # With S3: paths/URLs only (blobs not loaded). Without S3: blobs or disk paths.
+        "logo_path": _resolve_settings_image_url(app_settings, st, "logo"),
+        "inspector_signature_path": _resolve_settings_image_url(app_settings, st, "inspector_signature"),
+        "quality_signature_path": _resolve_settings_image_url(app_settings, st, "quality_signature"),
         "format_no": st.format_no or "",
         "issue_date": st.issue_date or "",
         "doc_rev_no": st.doc_rev_no or "",
@@ -446,7 +463,9 @@ def settings_asset_upload_presign(body: SettingsAssetPresignBody, ws: WsContext 
 @router.get("/settings")
 def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
     app_settings = get_settings()
-    st = ws.db.execute(select(CompanySettings).where(CompanySettings.company_id == ws.company.id)).scalar_one_or_none()
+    st = ws.db.execute(
+        _company_settings_select(ws.company.id, load_asset_blobs=not s3_assets_configured(app_settings))
+    ).scalar_one_or_none()
     if not st:
         return {
             "company_name": "",
@@ -466,10 +485,14 @@ def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
         "issue_date": st.issue_date or "",
         "doc_rev_no": st.doc_rev_no or "",
         "rev_date": st.rev_date or "",
-        "logo_url": _settings_blob_data_uri(st, "logo"),
-        "inspector_signature_url": _settings_blob_data_uri(st, "inspector_signature"),
-        "quality_signature_url": _settings_blob_data_uri(st, "quality_signature"),
-        "quali_font_configured": bool(st.quali_font_blob or (st.quali_font_path or "").strip()),
+        "logo_url": _resolve_settings_image_url(app_settings, st, "logo"),
+        "inspector_signature_url": _resolve_settings_image_url(app_settings, st, "inspector_signature"),
+        "quality_signature_url": _resolve_settings_image_url(app_settings, st, "quality_signature"),
+        "quali_font_configured": (
+            bool((st.quali_font_path or "").strip())
+            if s3_assets_configured(app_settings)
+            else bool(st.quali_font_blob or (st.quali_font_path or "").strip())
+        ),
         "s3_assets_enabled": s3_assets_configured(app_settings),
     }
 
@@ -493,14 +516,15 @@ async def save_settings(
     quality_signature_storage_key: str = Form(""),
     quali_font_storage_key: str = Form(""),
 ):
-    st = ws.db.execute(select(CompanySettings).where(CompanySettings.company_id == ws.company.id)).scalar_one_or_none()
+    app_settings = get_settings()
+    s3_on = s3_assets_configured(app_settings)
+    st = ws.db.execute(
+        _company_settings_select(ws.company.id, load_asset_blobs=not s3_on)
+    ).scalar_one_or_none()
     if not st:
         st = CompanySettings(company_id=ws.company.id)
         ws.db.add(st)
         ws.db.flush()
-
-    app_settings = get_settings()
-    s3_on = s3_assets_configured(app_settings)
 
     st.company_name = company_name.strip() or None
     st.format_no = format_no.strip() or None
@@ -1574,7 +1598,9 @@ def fir_preview(
                 .all()
             ]
 
-    st = db.execute(select(CompanySettings).where(CompanySettings.company_id == company.id)).scalar_one_or_none()
+    st = db.execute(
+        _company_settings_select(company.id, load_asset_blobs=not s3_assets_configured(settings))
+    ).scalar_one_or_none()
     quali_font_data_uri, quali_font_format = _quali_font_src_from_settings(settings, st)
     if not quali_font_data_uri:
         quali_font_data_uri, quali_font_format = _default_static_quali_font()
