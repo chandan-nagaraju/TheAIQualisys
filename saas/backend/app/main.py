@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine
+from app.s3_assets import s3_assets_configured
 from app.migration_runner import apply_sql_migrations
 from app.models import PlatformAdmin
 from app.pricing_seed import ensure_module_pricing_seeded
@@ -86,7 +87,14 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "enable_subscription": settings.enable_subscription}
+        cfg = get_settings()
+        return {
+            "status": "ok",
+            "enable_subscription": cfg.enable_subscription,
+            # True when all S3 env vars are set (AWS keys, region, bucket, PUBLIC_S3_BASE_URL).
+            # Use this after deploy to confirm Railway/hosting picked up secrets without opening settings.
+            "s3_assets_configured": s3_assets_configured(cfg),
+        }
 
     return app
 
