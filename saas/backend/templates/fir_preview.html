@@ -1082,6 +1082,88 @@
     },
     generatePdfBlob: firGeneratePdfBlob
   };
+
+  /* Parent page (Amplify) is cross-origin from this document (Railway): use postMessage for batch tools. */
+  (function setupParentBridge() {
+    var frameIndexMatch = /[?&]previewFrameIndex=(\d+)/.exec(window.location.search);
+    var frameIndex = frameIndexMatch ? parseInt(frameIndexMatch[1], 10) : -1;
+    if (frameIndex < 0 || window.parent === window) return;
+
+    var readySent = false;
+    var readyIv = setInterval(function () {
+      if (readySent) {
+        clearInterval(readyIv);
+        return;
+      }
+      try {
+        if (window.FIR_PREVIEW_API && window.FIR_PREVIEW_API.ready) {
+          readySent = true;
+          clearInterval(readyIv);
+          window.parent.postMessage(
+            { source: "fir-saas-fir-preview", type: "ready", frameIndex: frameIndex },
+            "*"
+          );
+        }
+      } catch (e) {}
+    }, 200);
+    setTimeout(function () {
+      clearInterval(readyIv);
+    }, 45000);
+
+    window.addEventListener("message", function (ev) {
+      var d = ev.data;
+      if (!d || d.source !== "fir-saas-fir-preview-parent") return;
+      if (d.type === "autoFill" && window.FIR_PREVIEW_API) {
+        window.FIR_PREVIEW_API.autoFillMeasuredValues();
+        return;
+      }
+      if (d.type === "generatePdf" && window.FIR_PREVIEW_API && window.FIR_PREVIEW_API.generatePdfBlob) {
+        var reqId = d.requestId;
+        var reply = ev.source;
+        var finishErr = function (err) {
+          if (reply)
+            reply.postMessage(
+              {
+                source: "fir-saas-fir-preview",
+                type: "pdfBlobResult",
+                frameIndex: frameIndex,
+                requestId: reqId,
+                ok: false,
+                error: String((err && err.message) || err),
+              },
+              "*"
+            );
+        };
+        var run = function () {
+          window.FIR_PREVIEW_API
+            .generatePdfBlob()
+            .then(function (result) {
+              if (reply)
+                reply.postMessage(
+                  {
+                    source: "fir-saas-fir-preview",
+                    type: "pdfBlobResult",
+                    frameIndex: frameIndex,
+                    requestId: reqId,
+                    ok: true,
+                    filename: result.filename,
+                    byteSize: result.byteSize,
+                    sizeWarning: result.sizeWarning,
+                    blob: result.blob,
+                  },
+                  "*"
+                );
+            })
+            .catch(finishErr);
+        };
+        if (window.FIR_PREVIEW_API.waitForAssets) {
+          window.FIR_PREVIEW_API.waitForAssets().then(run).catch(finishErr);
+        } else {
+          run();
+        }
+      }
+    });
+  })();
   </script>
 </body>
 </html>

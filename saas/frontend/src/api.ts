@@ -273,12 +273,13 @@ export async function workspacePostFile<T>(path: string, file: File, fieldName =
 
 /**
  * FIR preview URL:
- * - local dev: relative /api/... so Vite proxy forwards to FastAPI
- * - hosted split frontend/backend: absolute backend origin + /api/...
+ * - local dev: relative /api/... when VITE_API_URL empty (Vite proxy)
+ * - hosted split (Amplify + Railway): absolute backend URL so iframe loads HTML from API
  */
 export function firPreviewUrl(params: Record<string, string>): string {
   const token = localStorage.getItem("fir_token") || "";
   const q = new URLSearchParams(params);
   if (token) q.set("token", token);
-  return `/api/app/fir-preview?${q.toString()}`;
+  const path = `/api/app/fir-preview?${q.toString()}`;
+  return apiUrl(path);
 }

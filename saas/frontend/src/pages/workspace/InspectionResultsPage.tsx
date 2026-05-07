@@ -40,6 +40,15 @@ type FirPreviewApi = {
 
 const PDF_CONCURRENCY = 3;
 
+function firIframeTargetOrigin(iframe: HTMLIFrameElement | null): string {
+  if (!iframe?.src) return "*";
+  try {
+    return new URL(iframe.src, window.location.href).origin;
+  } catch {
+    return "*";
+  }
+}
+
 /** FIR header DATE: use invoice row date from upload when present, else server fallback (ISO → dd.mm.yyyy). */
 function reportDateForFIR(r: Row, fallbackIso: string): string {
   const raw = String(r["Date"] ?? "").trim();
@@ -140,7 +149,12 @@ export default function InspectionResultsPage() {
 
   const previewUrls = useMemo(() => {
     if (!data?.rows.length) return [];
-    return data.rows.map((r) => firPreviewUrl(previewParamsForRow(r, data.customer, data.current_date)));
+    return data.rows.map((r, i) =>
+      firPreviewUrl({
+        ...previewParamsForRow(r, data.customer, data.current_date),
+        previewFrameIndex: String(i),
+      }),
+    );
   }, [data]);
 
   useEffect(() => {
@@ -150,35 +164,52 @@ export default function InspectionResultsPage() {
     setAutofillApplied(false);
     setBatchMsg(null);
     setBatchErr(null);
+    const n = data.rows.length;
+    const ready: boolean[] = new Array(n).fill(false);
+
+    const tryPoll = () => {
+      for (let i = 0; i < n; i++) {
+        if (ready[i]) continue;
+        try {
+          const f = iframeRefs.current[i];
+          const api = f?.contentWindow?.FIR_PREVIEW_API as FirPreviewApi | undefined;
+          if (api?.ready) ready[i] = true;
+        } catch {
+          /* cross-origin: rely on postMessage from fir_preview */
+        }
+      }
+      if (ready.every(Boolean)) {
+        setEmbedsReady(true);
+      }
+      return ready.every(Boolean);
+    };
+
+    const onMsg = (ev: MessageEvent) => {
+      const d = ev.data;
+      if (!d || d.source !== "fir-saas-fir-preview" || d.type !== "ready") return;
+      if (typeof d.frameIndex === "number" && d.frameIndex >= 0 && d.frameIndex < n) {
+        ready[d.frameIndex] = true;
+        if (ready.every(Boolean)) setEmbedsReady(true);
+      }
+    };
+    window.addEventListener("message", onMsg);
+
     let attempts = 0;
     const maxAttempts = 200;
     const id = window.setInterval(() => {
       attempts++;
-      const n = data.rows.length;
-      const frames = iframeRefs.current.slice(0, n);
-      if (frames.length < n || frames.some((f) => !f)) return;
-      let all = true;
-      for (const f of frames) {
-        try {
-          const api = f?.contentWindow?.FIR_PREVIEW_API as FirPreviewApi | undefined;
-          if (!api?.ready) {
-            all = false;
-            break;
-          }
-        } catch {
-          all = false;
-          break;
-        }
-      }
-      if (all) {
-        setEmbedsReady(true);
+      const allReady = tryPoll();
+      if (allReady) {
         window.clearInterval(id);
       } else if (attempts >= maxAttempts) {
         setEmbedWaitTimedOut(true);
         window.clearInterval(id);
       }
     }, 200);
-    return () => window.clearInterval(id);
+    return () => {
+      window.removeEventListener("message", onMsg);
+      window.clearInterval(id);
+    };
   }, [data, previewUrls.length]);
 
   useEffect(() => {
@@ -194,23 +225,23 @@ export default function InspectionResultsPage() {
     const failures: string[] = [];
     for (let i = 0; i < n; i++) {
       const f = iframeRefs.current[i];
+      if (!f?.contentWindow) {
+        failures.push(`#${i + 1}: preview frame missing`);
+        continue;
+      }
       try {
-        const w = f?.contentWindow as (Window & { FIR_PREVIEW_API?: { autoFillMeasuredValues?: () => void } }) | null;
-        if (!w?.FIR_PREVIEW_API?.autoFillMeasuredValues) {
-          failures.push(`#${i + 1}: preview API not available (reload page; avoid opening FIR on a different port than this app)`);
+        const w = f.contentWindow as (Window & { FIR_PREVIEW_API?: { autoFillMeasuredValues?: () => void } }) | null;
+        if (w?.FIR_PREVIEW_API?.autoFillMeasuredValues) {
+          w.FIR_PREVIEW_API.autoFillMeasuredValues();
           continue;
         }
-        w.FIR_PREVIEW_API.autoFillMeasuredValues();
-      } catch (e) {
-        failures.push(`#${i + 1}: ${e instanceof Error ? e.message : "blocked"}`);
+      } catch {
+        /* cross-origin (e.g. Amplify UI + Railway iframe): use postMessage */
       }
-    }
-    if (failures.length === n) {
-      setBatchErr(
-        failures[0] +
-          " — FIR previews must load from the same host as this UI (e.g. /api/… via Vite proxy). Do not use VITE_API_URL for preview URLs.",
+      f.contentWindow.postMessage(
+        { source: "fir-saas-fir-preview-parent", type: "autoFill" },
+        firIframeTargetOrigin(f),
       );
-      return;
     }
     if (failures.length) {
       setBatchErr(`Some rows skipped: ${failures.join(" · ")}`);
@@ -286,16 +317,81 @@ export default function InspectionResultsPage() {
 
       async function runOne(i: number) {
         const f = iframeRefs.current[i];
-        const w = f?.contentWindow as (Window & { FIR_PREVIEW_API?: FirPreviewApi }) | null;
-        const api = w?.FIR_PREVIEW_API;
-        const gen = api?.generatePdfBlob;
-        if (!gen) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
-        if (api?.waitForAssets) {
-          await api.waitForAssets();
+        if (!f?.contentWindow) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
+        let api: FirPreviewApi | null = null;
+        try {
+          api = (f.contentWindow as Window & { FIR_PREVIEW_API?: FirPreviewApi }).FIR_PREVIEW_API ?? null;
+        } catch {
+          api = null;
         }
-        const t0 = performance.now();
-        const result = await gen();
-        const dt = performance.now() - t0;
+
+        const runDirect = async () => {
+          const gen = api!.generatePdfBlob!;
+          if (api!.waitForAssets) await api!.waitForAssets();
+          const t0 = performance.now();
+          const result = await gen();
+          const dt = performance.now() - t0;
+          return { result, dt };
+        };
+
+        const runViaPostMessage = async () => {
+          const requestId = crypto.randomUUID();
+          const origin = firIframeTargetOrigin(f);
+          const t0 = performance.now();
+          const result = await new Promise<{
+            blob: Blob;
+            filename: string;
+            byteSize?: number;
+            sizeWarning?: string;
+          }>((resolve, reject) => {
+            const handler = (ev: MessageEvent) => {
+              const d = ev.data;
+              if (!d || d.source !== "fir-saas-fir-preview" || d.type !== "pdfBlobResult" || d.requestId !== requestId) {
+                return;
+              }
+              window.removeEventListener("message", handler);
+              if (!d.ok) reject(new Error(d.error || "PDF generation failed"));
+              else if (!d.blob) reject(new Error("No PDF blob returned"));
+              else
+                resolve({
+                  blob: d.blob as Blob,
+                  filename: String(d.filename || `FIR_${i + 1}.pdf`),
+                  byteSize: d.byteSize,
+                  sizeWarning: d.sizeWarning,
+                });
+            };
+            window.addEventListener("message", handler);
+            f!.contentWindow!.postMessage(
+              { source: "fir-saas-fir-preview-parent", type: "generatePdf", requestId },
+              origin,
+            );
+          });
+          const dt = performance.now() - t0;
+          return { result, dt };
+        };
+
+        let result: {
+          blob: Blob;
+          filename: string;
+          byteSize?: number;
+          sizeWarning?: string;
+        };
+        let dt: number;
+        if (api?.generatePdfBlob) {
+          try {
+            const out = await runDirect();
+            result = out.result;
+            dt = out.dt;
+          } catch {
+            const out = await runViaPostMessage();
+            result = out.result;
+            dt = out.dt;
+          }
+        } else {
+          const out = await runViaPostMessage();
+          result = out.result;
+          dt = out.dt;
+        }
         results[i] = result;
         updateProgress(dt);
       }
