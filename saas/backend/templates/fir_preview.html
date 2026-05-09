@@ -278,12 +278,12 @@
 
   const urlParams = new URLSearchParams(window.location.search);
   var FIR_BATCH_PDF_FAST = urlParams.get("batchPdf") === "1";
-  /** Normal: ~100–200 KB PDFs. batchPdf=1: faster multi-report ZIP (inspection page embeds only). */
-  var FIR_PDF_JPEG_QUALITY = FIR_BATCH_PDF_FAST ? 0.62 : 0.72;
-  var FIR_PDF_CANVAS_SCALE = FIR_BATCH_PDF_FAST ? 0.84 : 1.12;
-  var FIR_PDF_IMG_JPEG = FIR_BATCH_PDF_FAST ? 0.60 : 0.72;
-  /** Max longest edge when rasterizing images for PDF (batch mode shrinks work for html2canvas). */
-  var FIR_PDF_IMG_MAX_EDGE = FIR_BATCH_PDF_FAST ? 960 : 100000;
+  /** Normal: ~100–200 KB PDFs. batchPdf=1: faster ZIP (embeds only); lower scale = fewer pixels for html2canvas. */
+  var FIR_PDF_JPEG_QUALITY = FIR_BATCH_PDF_FAST ? 0.54 : 0.72;
+  var FIR_PDF_CANVAS_SCALE = FIR_BATCH_PDF_FAST ? 0.70 : 1.12;
+  var FIR_PDF_IMG_JPEG = FIR_BATCH_PDF_FAST ? 0.52 : 0.72;
+  /** Max longest edge when rasterizing logos/signatures before PDF (batch shrinks CPU for getImageData + canvas). */
+  var FIR_PDF_IMG_MAX_EDGE = FIR_BATCH_PDF_FAST ? 640 : 100000;
 
   const partName = urlParams.get('partName');
   const description = urlParams.get('description');
@@ -948,6 +948,10 @@
       );
     }).then(function() {
       return new Promise(function(res) {
+        if (typeof FIR_BATCH_PDF_FAST !== "undefined" && FIR_BATCH_PDF_FAST) {
+          requestAnimationFrame(res);
+          return;
+        }
         requestAnimationFrame(function() {
           requestAnimationFrame(res);
         });

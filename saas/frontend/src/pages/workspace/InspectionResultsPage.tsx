@@ -38,8 +38,11 @@ type FirPreviewApi = {
   }>;
 };
 
-/** Parallel PDFs (html2canvas). 5 is a good desktop default; each FIR is heavy. */
-const PDF_CONCURRENCY = 5;
+/** Parallel PDFs — scale with CPU; cap 8 to avoid thrashing (html2canvas is heavy). */
+const PDF_CONCURRENCY = (() => {
+  if (typeof navigator === "undefined" || !navigator.hardwareConcurrency) return 6;
+  return Math.min(8, Math.max(5, Math.round(navigator.hardwareConcurrency * 0.72)));
+})();
 /** Cross-origin PDF waits (html2pdf); large pages can be slow */
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
