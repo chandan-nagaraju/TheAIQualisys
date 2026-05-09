@@ -292,6 +292,7 @@ export default function InspectionResultsPage() {
     pdfDurationsRef.current = [];
     setZipping(true);
     const n = data.rows.length;
+    let zipScrollAssistId: ReturnType<typeof window.setInterval> | null = null;
     setZipProgress({
       current: 0,
       total: n,
@@ -347,6 +348,21 @@ export default function InspectionResultsPage() {
         etaSec: null,
         pct: 0,
       });
+
+      /* Browsers throttle timers/RAF in iframes that stay far off-screen — ZIP can look “stuck” until the user scrolls.
+         Rotate previews into the viewport while PDFs generate so html2canvas keeps making progress automatically. */
+      previewsSectionRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
+      const reduceMotion =
+        typeof window !== "undefined" &&
+        window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const rotMs = reduceMotion ? 700 : 130;
+      let scrollRot = 0;
+      zipScrollAssistId = window.setInterval(() => {
+        const f = iframeRefs.current[scrollRot % n];
+        if (f) f.scrollIntoView({ block: "center", behavior: "auto" });
+        scrollRot += 1;
+      }, rotMs);
 
       async function runOne(i: number) {
         const f = iframeRefs.current[i];
@@ -454,6 +470,10 @@ export default function InspectionResultsPage() {
         );
       }
       await Promise.all(workers);
+      if (zipScrollAssistId != null) {
+        window.clearInterval(zipScrollAssistId);
+        zipScrollAssistId = null;
+      }
 
       const zip = new JSZip();
       let largePdfCount = 0;
@@ -512,6 +532,9 @@ export default function InspectionResultsPage() {
       lastZipOfferRef.current = null;
       setBatchErr(e instanceof Error ? e.message : "ZIP build failed");
     } finally {
+      if (zipScrollAssistId != null) {
+        window.clearInterval(zipScrollAssistId);
+      }
       setZipping(false);
       setZipProgress(null);
     }
@@ -579,11 +602,11 @@ export default function InspectionResultsPage() {
           </p>
         )}
         <p className="mt-1 text-xs text-slate-600">
-          Each row has a <strong>live FIR preview</strong> below (same page as this table).{" "}
-          <strong>Auto-fill all</strong> fills those previews in place — scroll down to see measured values. The ZIP is built
-          from those same previews (up to {PDF_CONCURRENCY} PDFs at a time for speed). <strong>Preview FIR</strong> in the
-          table opens a <em>new</em> browser tab with a fresh copy (it will not show batch auto-fill unless you click
-          auto-fill there too).
+          Each row has a <strong>live FIR preview</strong> below. <strong>Auto-fill all</strong> fills measured values in those
+          embeds — review if you like. The ZIP is built from the same previews (up to {PDF_CONCURRENCY} PDFs at a time).{" "}
+          <strong>While the ZIP builds, the page may scroll through previews on its own</strong> so the browser does not pause
+          off-screen PDF work — no need to scroll manually. <strong>Preview FIR</strong> in the table opens a{" "}
+          <em>new</em> tab (batch auto-fill does not apply there unless you click auto-fill in that tab).
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
@@ -717,6 +740,7 @@ export default function InspectionResultsPage() {
                 <iframe
                   title={`FIR preview ${partNo || i + 1}`}
                   src={previewUrls[i]}
+                  loading="eager"
                   className="block h-[min(85vh,920px)] w-full max-w-[1200px] rounded border border-slate-300 bg-white shadow-inner"
                   ref={(el) => {
                     iframeRefs.current[i] = el;
