@@ -38,7 +38,8 @@ type FirPreviewApi = {
   }>;
 };
 
-const PDF_CONCURRENCY = 3;
+/** Parallel PDFs (html2canvas). 5 is a good desktop default; each FIR is heavy. */
+const PDF_CONCURRENCY = 5;
 /** Cross-origin PDF waits (html2pdf); large pages can be slow */
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
@@ -177,6 +178,7 @@ export default function InspectionResultsPage() {
       firPreviewUrl({
         ...previewParamsForRow(r, data.customer, data.current_date),
         previewFrameIndex: String(i),
+        batchPdf: "1",
       }),
     );
   }, [data]);
@@ -460,7 +462,11 @@ export default function InspectionResultsPage() {
         zip.file(name, result.blob);
       }
 
-      const blob = await zip.generateAsync({ type: "blob" });
+      const blob = await zip.generateAsync({
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: { level: 1 },
+      });
       const stamp = (data.current_date || "batch").replace(/\W+/g, "_");
       const zipName = `FIR_reports_${stamp}.zip`;
       lastZipOfferRef.current = { blob, filename: zipName };

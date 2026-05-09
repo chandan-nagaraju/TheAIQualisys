@@ -276,12 +276,15 @@
   const FIR_MATERIAL_DATA = {{ material_data | tojson | safe }} || [];
   const FIR_COATING_DATA = {{ coating_data | tojson | safe }} || [];
 
-  /** Tuned toward ~100–200 KB per PDF (raster); adjust if quality/size tradeoff shifts */
-  var FIR_PDF_JPEG_QUALITY = 0.72;
-  var FIR_PDF_CANVAS_SCALE = 1.12;
-  var FIR_PDF_IMG_JPEG = 0.72;
-
   const urlParams = new URLSearchParams(window.location.search);
+  var FIR_BATCH_PDF_FAST = urlParams.get("batchPdf") === "1";
+  /** Normal: ~100–200 KB PDFs. batchPdf=1: faster multi-report ZIP (inspection page embeds only). */
+  var FIR_PDF_JPEG_QUALITY = FIR_BATCH_PDF_FAST ? 0.62 : 0.72;
+  var FIR_PDF_CANVAS_SCALE = FIR_BATCH_PDF_FAST ? 0.84 : 1.12;
+  var FIR_PDF_IMG_JPEG = FIR_BATCH_PDF_FAST ? 0.60 : 0.72;
+  /** Max longest edge when rasterizing images for PDF (batch mode shrinks work for html2canvas). */
+  var FIR_PDF_IMG_MAX_EDGE = FIR_BATCH_PDF_FAST ? 960 : 100000;
+
   const partName = urlParams.get('partName');
   const description = urlParams.get('description');
   const drawRev = urlParams.get('drawRev') || "";
@@ -862,11 +865,17 @@
             finish();
             return;
           }
+          var maxEdge = typeof FIR_PDF_IMG_MAX_EDGE !== "undefined" ? FIR_PDF_IMG_MAX_EDGE : 100000;
+          if (maxEdge > 0 && maxEdge < 100000 && (w > maxEdge || h > maxEdge)) {
+            var shrink = Math.min(maxEdge / w, maxEdge / h);
+            w = Math.max(1, Math.round(w * shrink));
+            h = Math.max(1, Math.round(h * shrink));
+          }
           var c = document.createElement("canvas");
           c.width = w;
           c.height = h;
           var ctx = c.getContext("2d");
-          ctx.drawImage(img, 0, 0);
+          ctx.drawImage(img, 0, 0, w, h);
           var idata = ctx.getImageData(0, 0, w, h);
           var d = idata.data;
           for (var i = 0; i < d.length; i += 4) {
@@ -975,7 +984,14 @@
         margin: 0,
         filename: fileName,
         image: { type: 'jpeg', quality: FIR_PDF_JPEG_QUALITY },
-        html2canvas: { scale: FIR_PDF_CANVAS_SCALE, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
+        html2canvas: {
+          scale: FIR_PDF_CANVAS_SCALE,
+          useCORS: true,
+          logging: false,
+          scrollY: 0,
+          scrollX: 0,
+          windowHeight: el.scrollHeight,
+        },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
         pagebreak: { mode: ['css'] }
       }).from(el).save();
@@ -1023,7 +1039,14 @@
           margin: 0,
           filename: fileName,
           image: { type: 'jpeg', quality: FIR_PDF_JPEG_QUALITY },
-          html2canvas: { scale: FIR_PDF_CANVAS_SCALE, useCORS: true, scrollY: 0, scrollX: 0, windowHeight: el.scrollHeight },
+          html2canvas: {
+            scale: FIR_PDF_CANVAS_SCALE,
+            useCORS: true,
+            logging: false,
+            scrollY: 0,
+            scrollX: 0,
+            windowHeight: el.scrollHeight,
+          },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
           pagebreak: { mode: ['css'] }
         }).from(el);
