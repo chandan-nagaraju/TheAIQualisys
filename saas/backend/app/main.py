@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
 from app.config import get_settings
+from app.cors_origins import expand_cors_origins
 from app.database import Base, SessionLocal, engine
 from app.s3_assets import s3_assets_configured
 from app.migration_runner import apply_sql_migrations
@@ -51,14 +52,17 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="FIR Automation SaaS API", lifespan=lifespan)
 
-    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-    # Hosted setups often set PUBLIC_APP_URL for reset links but forget CORS_ORIGINS; allow the SPA either way.
+    raw_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     pub = (settings.public_app_url or "").strip().rstrip("/")
-    if pub and pub not in origins:
-        origins.append(pub)
+    if pub:
+        raw_origins.append(pub)
+    # Add apex ⟷ www variants so users on either URL pass CORS (common production footgun).
+    origins = expand_cors_origins(raw_origins)
+    if not origins:
+        origins = ["http://localhost:5173"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins or ["http://localhost:5173"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

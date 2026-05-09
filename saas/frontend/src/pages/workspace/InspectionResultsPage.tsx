@@ -446,12 +446,20 @@ export default function InspectionResultsPage() {
         );
         return;
       }
-      const q2 = await workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`);
-      setFirQuota(q2);
       const sizeNote =
         largePdfCount > 0
           ? ` ${largePdfCount} PDF(s) exceeded the ~200 KB size target (still included).`
           : "";
+      try {
+        const q2 = await workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`);
+        setFirQuota(q2);
+      } catch {
+        setFirQuota(null);
+        setBatchMsg(
+          `ZIP download started. Check your downloads folder.${sizeNote} Usage counter could not refresh (often a brief network hiccup after a large batch); reload the page to see updated limits.`,
+        );
+        return;
+      }
       setBatchMsg(`ZIP download started. Check your downloads folder.${sizeNote}`);
     } catch (e) {
       setBatchErr(e instanceof Error ? e.message : "ZIP build failed");

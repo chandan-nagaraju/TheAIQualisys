@@ -39,12 +39,20 @@ export function apiUrl(path: string): string {
   return `${base}${path}`;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isFetchFailedError(err: unknown): boolean {
+  return err instanceof TypeError && String((err as Error).message).toLowerCase().includes("fetch");
+}
+
 function asNetworkError(path: string, err: unknown): Error {
-  if (err instanceof TypeError && String(err.message).toLowerCase().includes("fetch")) {
+  if (isFetchFailedError(err)) {
     const url = apiUrl(path);
     const origin = typeof window !== "undefined" ? window.location.origin : "your Vercel origin";
     return new Error(
-      `Cannot reach the API (${url}). In production, set Railway CORS (CORS_ORIGINS or PUBLIC_APP_URL) to ${origin}, confirm VITE_API_URL and redeploy, or ensure Vercel rewrites proxy /auth and /api to the API.`,
+      `Cannot reach the API (${url}). This is often a temporary network glitch (try again), CORS if the browser console shows a CORS error (ensure Railway CORS_ORIGINS or PUBLIC_APP_URL includes ${origin} — we also add the apex/www pair when possible), a wrong VITE_API_URL in the frontend build, or the API being unreachable. For large ZIP jobs, keep this tab in the foreground until the download starts.`,
     );
   }
   return err instanceof Error ? err : new Error(String(err));
@@ -209,29 +217,47 @@ export async function workspaceFetch<T>(path: string, opts: RequestInit = {}): P
   if (cid != null) base["X-Customer-Id"] = String(cid);
   const isForm = opts.body instanceof FormData;
   if (!isForm) base["Content-Type"] = "application/json";
-  let res: Response;
-  try {
-    res = await fetch(apiUrl(path), {
-      ...opts,
-      headers: { ...base, ...(opts.headers as Record<string, string>) },
-    });
-  } catch (e) {
-    throw asNetworkError(path, e);
-  }
-  if (!res.ok) {
-    let detail = res.statusText;
+
+  const maxAttempts = 4;
+  const baseDelayMs = 500;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let res: Response;
     try {
-      const j = await res.json();
-      if (j?.detail != null) detail = formatApiErrorDetail(j.detail);
-    } catch {
-      /* ignore */
+      res = await fetch(apiUrl(path), {
+        ...opts,
+        headers: { ...base, ...(opts.headers as Record<string, string>) },
+      });
+    } catch (e) {
+      if (attempt < maxAttempts - 1 && isFetchFailedError(e)) {
+        await delay(baseDelayMs * (attempt + 1));
+        continue;
+      }
+      throw asNetworkError(path, e);
     }
-    throw new Error(detail);
+
+    if ([502, 503, 504].includes(res.status) && attempt < maxAttempts - 1) {
+      await delay(baseDelayMs * (attempt + 1));
+      continue;
+    }
+
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const j = await res.json();
+        if (j?.detail != null) detail = formatApiErrorDetail(j.detail);
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    if (res.status === 204) return undefined as T;
+    const ct = res.headers.get("content-type");
+    if (ct && !ct.includes("application/json")) return (await res.text()) as T;
+    return res.json() as Promise<T>;
   }
-  if (res.status === 204) return undefined as T;
-  const ct = res.headers.get("content-type");
-  if (ct && !ct.includes("application/json")) return (await res.text()) as T;
-  return res.json() as Promise<T>;
+
+  throw new Error("Request failed after retries");
 }
 
 export async function workspaceUploadInvoice(file: File) {
