@@ -12,6 +12,8 @@ from app.part_field_validation import sanitize_part_master_alnum_upper
 
 def _norm_header(s: Any) -> str:
     text = str(s or "").strip().lower()
+    # Excel sometimes uses Unicode slashes in headers.
+    text = text.replace("⁄", "/").replace("／", "/").replace("∕", "/")
     # Normalize punctuation and separators so variants like
     # "Invoice/DC No.", "Invoice DC No", "invoice-dc no" all match.
     text = re.sub(r"[^a-z0-9]+", " ", text)
@@ -33,6 +35,18 @@ COLUMN_MAPPING = {
     "quantity": "Quantity",
     "advised qty": "Quantity",
     "advised quantity": "Quantity",
+    # "Advised Qty/Qty" (slash or Unicode slash) → advised qty qty after _norm_header
+    "advised qty qty": "Quantity",
+    "advised quantity quantity": "Quantity",
+    "bill qty": "Quantity",
+    "order qty": "Quantity",
+    "po qty": "Quantity",
+    "ship qty": "Quantity",
+    "invoice qty": "Quantity",
+    "actual qty": "Quantity",
+    "rec qty": "Quantity",
+    "received qty": "Quantity",
+    "total qty": "Quantity",
     "invoice no": "Invoice Number",
     "invoice number": "Invoice Number",
     "invoice": "Invoice Number",
@@ -52,6 +66,33 @@ DISPLAY_COLS = [
     "Invoice Number",
     "Date",
 ]
+
+# If Quantity matched no column, map headers that clearly mean qty (but not "Advised City" alone).
+_QTY_HEADER_FALLBACK_RE = re.compile(
+    r"^("
+    r"advised\s+qty(\s+qty)*"
+    r"|advised\s+quantity(\s+quantity)*"
+    r"|advised\s+.+\b(qty|quantity)\b"
+    r"|qty(\s+qty)+"
+    r"|quantity(\s+quantity)+"
+    r"|bill\s+qty|order\s+qty|ship\s+qty|invoice\s+qty|po\s+qty"
+    r"|received\s+qty|rec\s+qty|actual\s+qty|total\s+qty"
+    r")$"
+)
+
+
+def _add_fallback_quantity_columns(df: Any, matched_sources: dict[str, list[Any]]) -> None:
+    if matched_sources["Quantity"]:
+        return
+    for col in df.columns:
+        key = _norm_header(col)
+        if not key:
+            continue
+        # Never treat a pure location column as quantity.
+        if re.search(r"\bcity\b", key) and not re.search(r"\b(qty|quantity)\b", key):
+            continue
+        if _QTY_HEADER_FALLBACK_RE.match(key):
+            matched_sources["Quantity"].append(col)
 
 # Excel 97–2003 .xls (OLE compound document)
 _OLE2_MAGIC = bytes.fromhex("d0cf11e0a1b11ae1")
@@ -221,6 +262,8 @@ def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple
         canon = COLUMN_MAPPING.get(key)
         if canon:
             matched_sources[canon].append(col)
+
+    _add_fallback_quantity_columns(df, matched_sources)
 
     extracted = pd.DataFrame(index=df.index)
     for canon in DISPLAY_COLS:
