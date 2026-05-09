@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import JSZip from "jszip";
-import { firPreviewUrl, workspaceFetch } from "../../api";
+import { apiFetch, firPreviewUrl, workspaceFetch } from "../../api";
+
+type FirSubscriptionGate = {
+  trial_active: boolean;
+  subscription_active: boolean;
+};
 
 type Row = Record<string, unknown> & {
   draw_rev?: string;
@@ -33,7 +38,67 @@ type FirPreviewApi = {
   }>;
 };
 
-const PDF_CONCURRENCY = 3;
+/** Team guideline: smaller uploads / fewer rows per ZIP (shown in UI; not a hard server cap). */
+const ZIP_BATCH_RECOMMENDED_MAX_ROWS = 100;
+/** Cross-origin PDF waits (html2pdf); large pages can be slow */
+const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
+
+/**
+ * Browsers throttle html2canvas / timers in iframes that are far outside the viewport, which makes batch ZIP look
+ * "stuck" until the user scrolls. We align each preview into view automatically (no user scrolling) and process
+ * PDFs one-at-a-time so the active iframe is always the one in view.
+ */
+async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<void> {
+  if (!f) return;
+  try {
+    f.scrollIntoView({ block: "center", behavior: "auto" });
+  } catch {
+    /* ignore */
+  }
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+/**
+ * Programmatic file save from a Blob. Defers revokeObjectURL so the browser can start the read.
+ * After long async work, some browsers block auto-download — pair with a manual "Save again" control.
+ */
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const safeName = filename.replace(/[/\\]/g, "_");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = safeName;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  window.setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 2500);
+}
+
+function firIframeTargetOrigin(iframe: HTMLIFrameElement | null): string {
+  if (!iframe?.src) return "*";
+  try {
+    return new URL(iframe.src, window.location.href).origin;
+  } catch {
+    return "*";
+  }
+}
+
+/** FIR header DATE: use invoice row date from upload when present, else server fallback (ISO → dd.mm.yyyy). */
+function reportDateForFIR(r: Row, fallbackIso: string): string {
+  const raw = String(r["Date"] ?? "").trim();
+  if (raw) return raw;
+  const m = fallbackIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+  return fallbackIso;
+}
 
 function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: string): Record<string, string> {
   const partName = String(r["Part Number"] ?? "").trim();
@@ -56,7 +121,7 @@ function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: s
     vendorCode,
     customer: customerName,
     reportNo: "1",
-    reportDate: currentDate,
+    reportDate: reportDateForFIR(r, currentDate),
   };
 }
 
@@ -69,6 +134,7 @@ export default function InspectionResultsPage() {
   const iframeRefs = useRef<(HTMLIFrameElement | null)[]>([]);
   const previewsSectionRef = useRef<HTMLDivElement | null>(null);
   const pdfDurationsRef = useRef<number[]>([]);
+  const lastZipOfferRef = useRef<{ blob: Blob; filename: string } | null>(null);
 
   const [embedsReady, setEmbedsReady] = useState(false);
   const [embedWaitTimedOut, setEmbedWaitTimedOut] = useState(false);
@@ -84,6 +150,25 @@ export default function InspectionResultsPage() {
     etaSec: number | null;
     pct: number;
   } | null>(null);
+  const [zipSaveHint, setZipSaveHint] = useState(false);
+  const [firEntitled, setFirEntitled] = useState<"loading" | "yes" | "no">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<FirSubscriptionGate>("/subscription/status")
+      .then((s) => {
+        if (cancelled) return;
+        const entitled = s.trial_active || s.subscription_active;
+        if (entitled) setFirEntitled("yes");
+        else setFirEntitled("no");
+      })
+      .catch(() => {
+        if (!cancelled) setFirEntitled("no");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!st?.rows?.length) return;
@@ -108,7 +193,12 @@ export default function InspectionResultsPage() {
 
   const previewUrls = useMemo(() => {
     if (!data?.rows.length) return [];
-    return data.rows.map((r) => firPreviewUrl(previewParamsForRow(r, data.customer, data.current_date)));
+    return data.rows.map((r, i) =>
+      firPreviewUrl({
+        ...previewParamsForRow(r, data.customer, data.current_date),
+        previewFrameIndex: String(i),
+      }),
+    );
   }, [data]);
 
   useEffect(() => {
@@ -118,41 +208,55 @@ export default function InspectionResultsPage() {
     setAutofillApplied(false);
     setBatchMsg(null);
     setBatchErr(null);
+    setZipSaveHint(false);
+    lastZipOfferRef.current = null;
+    const n = data.rows.length;
+    const ready: boolean[] = new Array(n).fill(false);
+
+    const tryPoll = () => {
+      for (let i = 0; i < n; i++) {
+        if (ready[i]) continue;
+        try {
+          const f = iframeRefs.current[i];
+          const api = f?.contentWindow?.FIR_PREVIEW_API as FirPreviewApi | undefined;
+          if (api?.ready) ready[i] = true;
+        } catch {
+          /* cross-origin: rely on postMessage from fir_preview */
+        }
+      }
+      if (ready.every(Boolean)) {
+        setEmbedsReady(true);
+      }
+      return ready.every(Boolean);
+    };
+
+    const onMsg = (ev: MessageEvent) => {
+      const d = ev.data;
+      if (!d || d.source !== "fir-saas-fir-preview" || d.type !== "ready") return;
+      if (typeof d.frameIndex === "number" && d.frameIndex >= 0 && d.frameIndex < n) {
+        ready[d.frameIndex] = true;
+        if (ready.every(Boolean)) setEmbedsReady(true);
+      }
+    };
+    window.addEventListener("message", onMsg);
+
     let attempts = 0;
     const maxAttempts = 200;
     const id = window.setInterval(() => {
       attempts++;
-      const n = data.rows.length;
-      const frames = iframeRefs.current.slice(0, n);
-      if (frames.length < n || frames.some((f) => !f)) return;
-      let all = true;
-      for (const f of frames) {
-        try {
-          const api = f?.contentWindow?.FIR_PREVIEW_API as FirPreviewApi | undefined;
-          if (!api?.ready) {
-            all = false;
-            break;
-          }
-        } catch {
-          all = false;
-          break;
-        }
-      }
-      if (all) {
-        setEmbedsReady(true);
+      const allReady = tryPoll();
+      if (allReady) {
         window.clearInterval(id);
       } else if (attempts >= maxAttempts) {
         setEmbedWaitTimedOut(true);
         window.clearInterval(id);
       }
     }, 200);
-    return () => window.clearInterval(id);
+    return () => {
+      window.removeEventListener("message", onMsg);
+      window.clearInterval(id);
+    };
   }, [data, previewUrls.length]);
-
-  useEffect(() => {
-    if (!autofillApplied) return;
-    previewsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [autofillApplied]);
 
   const runAutofillAll = useCallback(() => {
     if (!data?.rows.length) return;
@@ -162,30 +266,30 @@ export default function InspectionResultsPage() {
     const failures: string[] = [];
     for (let i = 0; i < n; i++) {
       const f = iframeRefs.current[i];
+      if (!f?.contentWindow) {
+        failures.push(`#${i + 1}: preview frame missing`);
+        continue;
+      }
       try {
-        const w = f?.contentWindow as (Window & { FIR_PREVIEW_API?: { autoFillMeasuredValues?: () => void } }) | null;
-        if (!w?.FIR_PREVIEW_API?.autoFillMeasuredValues) {
-          failures.push(`#${i + 1}: preview API not available (reload page; avoid opening FIR on a different port than this app)`);
+        const w = f.contentWindow as (Window & { FIR_PREVIEW_API?: { autoFillMeasuredValues?: () => void } }) | null;
+        if (w?.FIR_PREVIEW_API?.autoFillMeasuredValues) {
+          w.FIR_PREVIEW_API.autoFillMeasuredValues();
           continue;
         }
-        w.FIR_PREVIEW_API.autoFillMeasuredValues();
-      } catch (e) {
-        failures.push(`#${i + 1}: ${e instanceof Error ? e.message : "blocked"}`);
+      } catch {
+        /* cross-origin (e.g. Amplify UI + Railway iframe): use postMessage */
       }
-    }
-    if (failures.length === n) {
-      setBatchErr(
-        failures[0] +
-          " — FIR previews must load from the same host as this UI (e.g. /api/… via Vite proxy). Do not use VITE_API_URL for preview URLs.",
+      f.contentWindow.postMessage(
+        { source: "fir-saas-fir-preview-parent", type: "autoFill" },
+        firIframeTargetOrigin(f),
       );
-      return;
     }
     if (failures.length) {
       setBatchErr(`Some rows skipped: ${failures.join(" · ")}`);
     }
     setAutofillApplied(true);
     setBatchMsg(
-      "Measured values are filled in the live previews below (scroll down). Check them here first, then use Download all as ZIP.",
+      "Measured values are filled in the live previews below. Use Download all reports as ZIP when ready — each report is aligned into view automatically and the ZIP downloads by itself when finished.",
     );
   }, [data]);
 
@@ -193,6 +297,8 @@ export default function InspectionResultsPage() {
     if (!data?.rows.length) return;
     setBatchErr(null);
     setBatchMsg(null);
+    setZipSaveHint(false);
+    lastZipOfferRef.current = null;
     pdfDurationsRef.current = [];
     setZipping(true);
     const n = data.rows.length;
@@ -217,7 +323,6 @@ export default function InspectionResultsPage() {
       }> = new Array(n);
 
       let completed = 0;
-      let nextIndex = 0;
 
       const updateProgress = (justFinishedMs: number | null) => {
         completed += 1;
@@ -254,35 +359,99 @@ export default function InspectionResultsPage() {
 
       async function runOne(i: number) {
         const f = iframeRefs.current[i];
-        const w = f?.contentWindow as (Window & { FIR_PREVIEW_API?: FirPreviewApi }) | null;
-        const api = w?.FIR_PREVIEW_API;
-        const gen = api?.generatePdfBlob;
-        if (!gen) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
-        if (api?.waitForAssets) {
-          await api.waitForAssets();
+        if (!f?.contentWindow) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
+        await prepareIframeForPdfCapture(f);
+        let api: FirPreviewApi | null = null;
+        try {
+          api = (f.contentWindow as Window & { FIR_PREVIEW_API?: FirPreviewApi }).FIR_PREVIEW_API ?? null;
+        } catch {
+          api = null;
         }
-        const t0 = performance.now();
-        const result = await gen();
-        const dt = performance.now() - t0;
+
+        const runDirect = async () => {
+          const gen = api!.generatePdfBlob!;
+          /* generatePdfBlob already runs firWaitForAssets — do not wait here (main branch also did both = 2× wait). */
+          const t0 = performance.now();
+          const result = await gen();
+          const dt = performance.now() - t0;
+          return { result, dt };
+        };
+
+        const runViaPostMessage = async () => {
+          const requestId = crypto.randomUUID();
+          const origin = firIframeTargetOrigin(f);
+          const t0 = performance.now();
+          let timeoutId: ReturnType<typeof window.setTimeout> | undefined;
+          const result = await new Promise<{
+            blob: Blob;
+            filename: string;
+            byteSize?: number;
+            sizeWarning?: string;
+          }>((resolve, reject) => {
+            const handler = (ev: MessageEvent) => {
+              const d = ev.data;
+              if (!d || d.source !== "fir-saas-fir-preview" || d.type !== "pdfBlobResult" || d.requestId !== requestId) {
+                return;
+              }
+              if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+              window.removeEventListener("message", handler);
+              if (!d.ok) reject(new Error(d.error || "PDF generation failed"));
+              else if (!d.blob) reject(new Error("No PDF blob returned"));
+              else
+                resolve({
+                  blob: d.blob as Blob,
+                  filename: String(d.filename || `FIR_${i + 1}.pdf`),
+                  byteSize: d.byteSize,
+                  sizeWarning: d.sizeWarning,
+                });
+            };
+            window.addEventListener("message", handler);
+            timeoutId = window.setTimeout(() => {
+              window.removeEventListener("message", handler);
+              reject(
+                new Error(
+                  `Timed out waiting for PDF ${i + 1} (${Math.round(FIR_PDF_POSTMESSAGE_TIMEOUT_MS / 1000)}s). Try reloading or fewer rows.`,
+                ),
+              );
+            }, FIR_PDF_POSTMESSAGE_TIMEOUT_MS);
+            f!.contentWindow!.postMessage(
+              { source: "fir-saas-fir-preview-parent", type: "generatePdf", requestId },
+              origin,
+            );
+          });
+          const dt = performance.now() - t0;
+          return { result, dt };
+        };
+
+        let result: {
+          blob: Blob;
+          filename: string;
+          byteSize?: number;
+          sizeWarning?: string;
+        };
+        let dt: number;
+        if (api?.generatePdfBlob) {
+          try {
+            const out = await runDirect();
+            result = out.result;
+            dt = out.dt;
+          } catch {
+            const out = await runViaPostMessage();
+            result = out.result;
+            dt = out.dt;
+          }
+        } else {
+          const out = await runViaPostMessage();
+          result = out.result;
+          dt = out.dt;
+        }
         results[i] = result;
         updateProgress(dt);
       }
 
-      const workers: Promise<void>[] = [];
-      const workerCount = Math.min(PDF_CONCURRENCY, n);
-      for (let w = 0; w < workerCount; w++) {
-        workers.push(
-          (async () => {
-            while (true) {
-              const i = nextIndex;
-              nextIndex += 1;
-              if (i >= n) break;
-              await runOne(i);
-            }
-          })(),
-        );
+      for (let i = 0; i < n; i++) {
+        await runOne(i);
       }
-      await Promise.all(workers);
 
       const zip = new JSZip();
       let largePdfCount = 0;
@@ -294,13 +463,16 @@ export default function InspectionResultsPage() {
         zip.file(name, result.blob);
       }
 
-      const blob = await zip.generateAsync({ type: "blob" });
+      const blob = await zip.generateAsync({
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: { level: 1 },
+      });
       const stamp = (data.current_date || "batch").replace(/\W+/g, "_");
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `FIR_reports_${stamp}.zip`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      const zipName = `FIR_reports_${stamp}.zip`;
+      lastZipOfferRef.current = { blob, filename: zipName };
+      setZipSaveHint(true);
+      triggerBlobDownload(blob, zipName);
 
       try {
         await workspaceFetch<{
@@ -318,14 +490,24 @@ export default function InspectionResultsPage() {
         );
         return;
       }
-      const q2 = await workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`);
-      setFirQuota(q2);
       const sizeNote =
         largePdfCount > 0
           ? ` ${largePdfCount} PDF(s) exceeded the ~200 KB size target (still included).`
           : "";
+      try {
+        const q2 = await workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`);
+        setFirQuota(q2);
+      } catch {
+        setFirQuota(null);
+        setBatchMsg(
+          `ZIP download started. Check your downloads folder.${sizeNote} Usage counter could not refresh (often a brief network hiccup after a large batch); reload the page to see updated limits.`,
+        );
+        return;
+      }
       setBatchMsg(`ZIP download started. Check your downloads folder.${sizeNote}`);
     } catch (e) {
+      setZipSaveHint(false);
+      lastZipOfferRef.current = null;
       setBatchErr(e instanceof Error ? e.message : "ZIP build failed");
     } finally {
       setZipping(false);
@@ -348,6 +530,13 @@ export default function InspectionResultsPage() {
         </button>
       </div>
     );
+  }
+
+  if (firEntitled === "loading") {
+    return <p className="text-slate-600">Checking access…</p>;
+  }
+  if (firEntitled === "no") {
+    return <Navigate to="/workspace/pricing" replace state={{ workspaceBlocked: true }} />;
   }
 
   if (err) {
@@ -388,12 +577,19 @@ export default function InspectionResultsPage() {
           </p>
         )}
         <p className="mt-1 text-xs text-slate-600">
-          Each row has a <strong>live FIR preview</strong> below (same page as this table).{" "}
-          <strong>Auto-fill all</strong> fills those previews in place — scroll down to see measured values. The ZIP is built
-          from those same previews (up to {PDF_CONCURRENCY} PDFs at a time for speed). <strong>Preview FIR</strong> in the
-          table opens a <em>new</em> browser tab with a fresh copy (it will not show batch auto-fill unless you click
-          auto-fill there too).
+          Each row has a <strong>live FIR preview</strong> below. <strong>Auto-fill all</strong> fills measured values in those
+          embeds. <strong>Download all reports as ZIP</strong> processes <strong>one PDF at a time</strong>: each preview is
+          moved into view automatically (you do not need to scroll), then the ZIP file downloads when all PDFs are ready.
+          For speed and reliability, use about <strong>{ZIP_BATCH_RECOMMENDED_MAX_ROWS} or fewer</strong> rows per batch
+          (team guideline). <strong>Keep this tab visible</strong> while the ZIP builds. <strong>Preview FIR</strong> opens a{" "}
+          <em>new</em> tab.
         </p>
+        {data.rows.length > ZIP_BATCH_RECOMMENDED_MAX_ROWS && (
+          <p className="mt-2 text-xs font-medium text-amber-800">
+            This batch has {data.rows.length} rows — consider splitting into multiple runs of ≤{ZIP_BATCH_RECOMMENDED_MAX_ROWS}{" "}
+            rows for faster, more reliable downloads.
+          </p>
+        )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -440,10 +636,29 @@ export default function InspectionResultsPage() {
           </p>
         )}
         {embedsReady && !autofillApplied && (
-          <p className="mt-2 text-xs text-slate-600">When ready, click auto-fill — then review the previews below before ZIP.</p>
+          <p className="mt-2 text-xs text-slate-600">
+            When ready, click <strong>Auto-fill all</strong>, then <strong>Download all reports as ZIP</strong> — the ZIP file
+            downloads automatically (no scrolling required).
+          </p>
         )}
         {batchMsg && <p className="mt-2 text-sm text-green-700">{batchMsg}</p>}
         {batchErr && <p className="mt-2 text-sm text-red-600">{batchErr}</p>}
+        {zipSaveHint && (
+          <p className="mt-2 text-xs text-slate-700">
+            If the ZIP did not start downloading (some browsers block automatic downloads after a long run),{" "}
+            <button
+              type="button"
+              className="font-medium text-blue-700 underline"
+              onClick={() => {
+                const o = lastZipOfferRef.current;
+                if (o) triggerBlobDownload(o.blob, o.filename);
+              }}
+            >
+              click here to save the ZIP
+            </button>
+            .
+          </p>
+        )}
       </div>
 
       <div className="mt-4 overflow-x-auto">
@@ -510,6 +725,7 @@ export default function InspectionResultsPage() {
                 <iframe
                   title={`FIR preview ${partNo || i + 1}`}
                   src={previewUrls[i]}
+                  loading="eager"
                   className="block h-[min(85vh,920px)] w-full max-w-[1200px] rounded border border-slate-300 bg-white shadow-inner"
                   ref={(el) => {
                     iframeRefs.current[i] = el;

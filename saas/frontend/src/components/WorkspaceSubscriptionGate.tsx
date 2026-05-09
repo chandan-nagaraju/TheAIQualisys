@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
-import { apiFetch } from "../api";
+import { apiUrl } from "../api";
 
 type SubStatus = {
-  enable_subscription: boolean;
-  can_access_fir_workspace: boolean;
+  trial_active: boolean;
+  subscription_active: boolean;
 };
+
+function authHeader(): HeadersInit {
+  const t = localStorage.getItem("fir_token");
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
 
 export default function WorkspaceSubscriptionGate() {
   const [state, setState] = useState<"loading" | "ok" | "blocked">("loading");
@@ -14,12 +19,24 @@ export default function WorkspaceSubscriptionGate() {
     let cancelled = false;
     (async () => {
       try {
-        const s = await apiFetch<SubStatus>("/subscription/status");
+        const res = await fetch(apiUrl("/subscription/status"), {
+          headers: { "Content-Type": "application/json", ...authHeader() },
+        });
         if (cancelled) return;
-        if (!s.enable_subscription || s.can_access_fir_workspace) setState("ok");
+        if (res.status === 401) {
+          setState("blocked");
+          return;
+        }
+        if (!res.ok) {
+          setState("blocked");
+          return;
+        }
+        const s = (await res.json()) as SubStatus;
+        if (cancelled) return;
+        if (s.trial_active || s.subscription_active) setState("ok");
         else setState("blocked");
       } catch {
-        if (!cancelled) setState("ok");
+        if (!cancelled) setState("blocked");
       }
     })();
     return () => {
@@ -35,7 +52,7 @@ export default function WorkspaceSubscriptionGate() {
     );
   }
   if (state === "blocked") {
-    return <Navigate to="/dashboard" replace state={{ workspaceBlocked: true }} />;
+    return <Navigate to="/workspace/pricing" replace state={{ workspaceBlocked: true }} />;
   }
   return <Outlet />;
 }

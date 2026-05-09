@@ -25,6 +25,8 @@ from typing import Any
 
 import pandas as pd
 
+from app.part_field_validation import sanitize_part_master_alnum_upper
+
 BUNDLE_FORMAT = "fir_part_master_bundle_v1"
 
 
@@ -36,6 +38,11 @@ def _cell(v: Any) -> str:
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return ""
     return str(v).strip()
+
+
+def _sanitize_part_no(v: Any) -> str:
+    """Canonical part number for grouping and bundle output (A–Z, 0–9 only)."""
+    return sanitize_part_master_alnum_upper(_cell(v))
 
 
 _SEPARATOR_TOKENS = {":", "-", "--", "---", ":", "："}
@@ -244,7 +251,7 @@ def _guess_part_no_from_sheet_name(name: str, all_sheet_names: list[str]) -> str
     if len(all_sheet_names) > 1 and n in ("sheet1", "sheet 1"):
         return None
     if re.match(r"^[A-Za-z0-9][A-Za-z0-9\-._]{2,50}$", raw) and not raw.lower().startswith("sheet"):
-        return raw.strip()
+        return sanitize_part_master_alnum_upper(raw.strip())
     return None
 
 
@@ -297,7 +304,7 @@ def _scan_fir_key_values(df: pd.DataFrame) -> dict[str, str]:
                 v_inline = inline.group(2).strip()
                 if v_inline and not _is_separator_token(v_inline):
                     if "part" in k and "no" in k:
-                        out.setdefault("part_no", v_inline)
+                        out.setdefault("part_no", _sanitize_part_no(v_inline))
                     elif "draw" in k or "rev" in k:
                         out.setdefault("drawing_rev", v_inline)
                     elif k in ("description", "part name", "desc"):
@@ -310,7 +317,7 @@ def _scan_fir_key_values(df: pd.DataFrame) -> dict[str, str]:
             if not val:
                 continue
             if re.match(r"^part\s*no(\.|umber)?$", lab) or lab in ("fir part no", "part number"):
-                out.setdefault("part_no", val)
+                out.setdefault("part_no", _sanitize_part_no(val))
             elif re.match(r"^draw(?:ing)?\.?\s*rev(?:ision)?\.?\s*no\.?$", lab) or lab in (
                 "draw rev no",
                 "drawing rev",
@@ -677,14 +684,14 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
             continue
         kv0 = _scan_fir_key_values(df)
         if kv0.get("part_no"):
-            global_pn = kv0["part_no"]
+            global_pn = _sanitize_part_no(kv0["part_no"])
             break
 
     filename_pn: str | None = None
     if source_filename:
         stem = Path(source_filename).stem.strip()
         if stem and _guess_part_no_from_sheet_name(stem, [stem]):
-            filename_pn = stem
+            filename_pn = _sanitize_part_no(stem)
 
     def _split_spec_coating(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         spec: list[dict[str, Any]] = []
@@ -720,6 +727,8 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
         pn = pn_kv or global_pn or pn_sheet
         if not pn and filename_pn and (ad_rows or mats or d_rows or kv):
             pn = filename_pn
+        if pn:
+            pn = _sanitize_part_no(pn)
         if not pn:
             continue
         if not ad_rows and not mats and not d_rows and not kv:
@@ -792,7 +801,7 @@ def _group_by_part(df: pd.DataFrame, part_col: str, builder):
     if part_col not in df.columns:
         return {}
     out: dict[str, list[dict[str, Any]]] = {}
-    for pn, sub in df.groupby(df[part_col].map(lambda x: _cell(x)), dropna=False):
+    for pn, sub in df.groupby(df[part_col].map(lambda x: _sanitize_part_no(x)), dropna=False):
         if not pn:
             continue
         out[pn] = builder(sub.reset_index(drop=True))
@@ -835,7 +844,7 @@ def parse_parts_excel_to_bundle_dict(
                 f'Sheet "{parts_name}" needs a part column (e.g. Part Number). Found: {list(pdf.columns)}'
             )
         for _, r in pdf.iterrows():
-            pn = _cell(r.get("part_no"))
+            pn = _sanitize_part_no(r.get("part_no"))
             if not pn:
                 continue
             meta[pn] = {

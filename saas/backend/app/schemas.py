@@ -1,6 +1,8 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from app.part_field_validation import sanitize_part_master_alnum_upper
 
 
 class SignupRequest(BaseModel):
@@ -60,6 +62,8 @@ class MeResponse(BaseModel):
     invoice_limit: int | None
     can_create_invoice: bool
     can_record_fir_report: bool
+    trial_active: bool
+    subscription_active: bool
     can_access_fir_workspace: bool
     subscription_message: str | None = None
 
@@ -112,6 +116,26 @@ class PartCreateV2(BaseModel):
     part_no: str
     drawing_rev: str | None = None
     description: str | None = None
+
+    @field_validator("part_no", mode="before")
+    @classmethod
+    def _part_no_alnum_upper(cls, v: object) -> str:
+        return sanitize_part_master_alnum_upper(v if isinstance(v, str) else (str(v) if v is not None else None))
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _description_alnum_upper(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        s = sanitize_part_master_alnum_upper(v if isinstance(v, str) else str(v))
+        return s if s else None
+
+    @field_validator("part_no")
+    @classmethod
+    def _part_no_required(cls, v: str) -> str:
+        if not v:
+            raise ValueError("part_no must contain at least one letter or digit (A–Z, 0–9)")
+        return v
 
 
 class PartOutV2(BaseModel):
@@ -251,6 +275,7 @@ class ModulePricingPublicOut(BaseModel):
     invoice_max: int | None = None
     highlight: str | None = None
     sort_order: int
+    listing_active: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -265,6 +290,7 @@ class ModulePricingPatch(BaseModel):
     invoice_max: int | None = None
     highlight: str | None = Field(default=None, max_length=255)
     sort_order: int | None = Field(default=None, ge=0)
+    listing_active: bool | None = None
 
 
 class BillingModuleRow(BaseModel):
@@ -284,6 +310,7 @@ class BillingOverviewResponse(BaseModel):
     company_name: str
     vendor_code: str
     plan_name: str
+    enable_subscription: bool = True
     company_status: str
     trial_end_date: date | None = None
     subscription_start: date | None = None

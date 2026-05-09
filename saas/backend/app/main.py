@@ -6,7 +6,9 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
 from app.config import get_settings
+from app.cors_origins import expand_cors_origins
 from app.database import Base, SessionLocal, engine
+from app.s3_assets import s3_assets_configured
 from app.migration_runner import apply_sql_migrations
 from app.models import PlatformAdmin
 from app.pricing_seed import ensure_module_pricing_seeded
@@ -50,10 +52,17 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="FIR Automation SaaS API", lifespan=lifespan)
 
-    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    raw_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    pub = (settings.public_app_url or "").strip().rstrip("/")
+    if pub:
+        raw_origins.append(pub)
+    # Add apex ⟷ www variants so users on either URL pass CORS (common production footgun).
+    origins = expand_cors_origins(raw_origins)
+    if not origins:
+        origins = ["http://localhost:5173"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins or ["http://localhost:5173"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -82,7 +91,14 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "enable_subscription": settings.enable_subscription}
+        cfg = get_settings()
+        return {
+            "status": "ok",
+            "enable_subscription": cfg.enable_subscription,
+            # True when all S3 env vars are set (AWS keys, region, bucket, PUBLIC_S3_BASE_URL).
+            # Use this after deploy to confirm Railway/hosting picked up secrets without opening settings.
+            "s3_assets_configured": s3_assets_configured(cfg),
+        }
 
     return app
 

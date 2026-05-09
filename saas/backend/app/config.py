@@ -36,10 +36,10 @@ class Settings(BaseSettings):
     admin_jwt_secret: str = "change-me-admin-jwt-separate"
     admin_access_token_expire_minutes: int = 60 * 8
 
-    # When False, v2 APIs skip subscription/trial/limit enforcement (rollout flag).
+    # When False, FIR workspace and limits are not enforced (local/dev only). Production should use True.
     # When True, expired trial / inactive subscription blocks the FIR workspace (/api/app) but not billing pages.
     enable_subscription: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("ENABLE_SUBSCRIPTION", "enable_subscription"),
     )
 
@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     smtp_user: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_USER", "smtp_user"))
     smtp_password: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_PASSWORD", "smtp_password"))
     email_from: str | None = Field(default=None, validation_alias=AliasChoices("EMAIL_FROM", "email_from"))
+
+    # S3 direct uploads for workspace company assets (optional — when unset, settings use DB blobs / local files).
+    aws_access_key_id: str | None = Field(default=None, validation_alias=AliasChoices("AWS_ACCESS_KEY_ID"))
+    aws_secret_access_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("AWS_SECRET_ACCESS_KEY")
+    )
+    aws_region: str | None = Field(default=None, validation_alias=AliasChoices("AWS_REGION"))
+    s3_bucket_name: str | None = Field(default=None, validation_alias=AliasChoices("S3_BUCKET_NAME"))
+    public_s3_base_url: str | None = Field(default=None, validation_alias=AliasChoices("PUBLIC_S3_BASE_URL"))
 
 
 @lru_cache

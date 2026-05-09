@@ -28,7 +28,7 @@ function authHeader(kind: TokenKind): HeadersInit {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-function apiUrl(path: string): string {
+export function apiUrl(path: string): string {
   const base = API_BASE.trim().replace(/\/+$/, "");
   if (!base) return path;
   // If deploy config uses VITE_API_URL ending with /api and caller already passes /api/*,
@@ -39,20 +39,44 @@ function apiUrl(path: string): string {
   return `${base}${path}`;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isFetchFailedError(err: unknown): boolean {
+  return err instanceof TypeError && String((err as Error).message).toLowerCase().includes("fetch");
+}
+
+function asNetworkError(path: string, err: unknown): Error {
+  if (isFetchFailedError(err)) {
+    const url = apiUrl(path);
+    const origin = typeof window !== "undefined" ? window.location.origin : "your Vercel origin";
+    return new Error(
+      `Cannot reach the API (${url}). This is often a temporary network glitch (try again), CORS if the browser console shows a CORS error (ensure Railway CORS_ORIGINS or PUBLIC_APP_URL includes ${origin} — we also add the apex/www pair when possible), a wrong VITE_API_URL in the frontend build, or the API being unreachable. For large ZIP jobs, keep this tab in the foreground until the download starts.`,
+    );
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
+
 export async function apiFetch<T>(
   path: string,
   opts: RequestInit & { token?: TokenKind } = {},
 ): Promise<T> {
   const tokenKind = opts.token ?? "company";
   const { token: _t, ...rest } = opts;
-  const res = await fetch(apiUrl(path), {
-    ...rest,
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeader(tokenKind),
-      ...(rest.headers || {}),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), {
+      ...rest,
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeader(tokenKind),
+        ...(rest.headers || {}),
+      },
+    });
+  } catch (e) {
+    throw asNetworkError(path, e);
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -72,11 +96,16 @@ export async function apiUpload(path: string, file: File, tokenKind: TokenKind =
   const t = localStorage.getItem(key);
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch(apiUrl(path), {
-    method: "POST",
-    headers: t ? { Authorization: `Bearer ${t}` } : {},
-    body: fd,
-  });
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), {
+      method: "POST",
+      headers: t ? { Authorization: `Bearer ${t}` } : {},
+      body: fd,
+    });
+  } catch (e) {
+    throw asNetworkError(path, e);
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text || res.statusText);
@@ -86,9 +115,14 @@ export async function apiUpload(path: string, file: File, tokenKind: TokenKind =
 
 export async function apiDownloadBlob(path: string): Promise<Blob> {
   const t = localStorage.getItem("fir_token");
-  const res = await fetch(apiUrl(path), {
-    headers: t ? { Authorization: `Bearer ${t}` } : {},
-  });
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), {
+      headers: t ? { Authorization: `Bearer ${t}` } : {},
+    });
+  } catch (e) {
+    throw asNetworkError(path, e);
+  }
   if (!res.ok) throw new Error(await res.text());
   return res.blob();
 }
@@ -115,7 +149,12 @@ export async function workspaceDownloadBlob(path: string): Promise<Blob> {
   const headers: Record<string, string> = {};
   if (t) headers.Authorization = `Bearer ${t}`;
   if (cid != null) headers["X-Customer-Id"] = String(cid);
-  const res = await fetch(apiUrl(path), { headers });
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), { headers });
+  } catch (e) {
+    throw asNetworkError(path, e);
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -178,24 +217,52 @@ export async function workspaceFetch<T>(path: string, opts: RequestInit = {}): P
   if (cid != null) base["X-Customer-Id"] = String(cid);
   const isForm = opts.body instanceof FormData;
   if (!isForm) base["Content-Type"] = "application/json";
-  const res = await fetch(apiUrl(path), {
-    ...opts,
-    headers: { ...base, ...(opts.headers as Record<string, string>) },
-  });
-  if (!res.ok) {
-    let detail = res.statusText;
+
+  const maxAttempts = 4;
+  const baseDelayMs = 500;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let res: Response;
     try {
-      const j = await res.json();
-      if (j?.detail != null) detail = formatApiErrorDetail(j.detail);
-    } catch {
-      /* ignore */
+      res = await fetch(apiUrl(path), {
+        ...opts,
+        headers: { ...base, ...(opts.headers as Record<string, string>) },
+      });
+    } catch (e) {
+      if (attempt < maxAttempts - 1 && isFetchFailedError(e)) {
+        await delay(baseDelayMs * (attempt + 1));
+        continue;
+      }
+      throw asNetworkError(path, e);
     }
-    throw new Error(detail);
+
+    if ([502, 503, 504].includes(res.status) && attempt < maxAttempts - 1) {
+      try {
+        await res.arrayBuffer();
+      } catch {
+        /* ignore */
+      }
+      await delay(baseDelayMs * (attempt + 1));
+      continue;
+    }
+
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const j = await res.json();
+        if (j?.detail != null) detail = formatApiErrorDetail(j.detail);
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    if (res.status === 204) return undefined as T;
+    const ct = res.headers.get("content-type");
+    if (ct && !ct.includes("application/json")) return (await res.text()) as T;
+    return res.json() as Promise<T>;
   }
-  if (res.status === 204) return undefined as T;
-  const ct = res.headers.get("content-type");
-  if (ct && !ct.includes("application/json")) return (await res.text()) as T;
-  return res.json() as Promise<T>;
+
+  throw new Error("Request failed after retries");
 }
 
 export async function workspaceUploadInvoice(file: File) {
@@ -216,7 +283,12 @@ export async function workspacePostFile<T>(path: string, file: File, fieldName =
   if (cid != null) headers["X-Customer-Id"] = String(cid);
   const fd = new FormData();
   fd.append(fieldName, file);
-  const res = await fetch(apiUrl(path), { method: "POST", headers, body: fd });
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), { method: "POST", headers, body: fd });
+  } catch (e) {
+    throw asNetworkError(path, e);
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -232,12 +304,13 @@ export async function workspacePostFile<T>(path: string, file: File, fieldName =
 
 /**
  * FIR preview URL:
- * - local dev: relative /api/... so Vite proxy forwards to FastAPI
- * - hosted split frontend/backend: absolute backend origin + /api/...
+ * - local dev: relative /api/... when VITE_API_URL empty (Vite proxy)
+ * - hosted split (Amplify + Railway): absolute backend URL so iframe loads HTML from API
  */
 export function firPreviewUrl(params: Record<string, string>): string {
   const token = localStorage.getItem("fir_token") || "";
   const q = new URLSearchParams(params);
   if (token) q.set("token", token);
-  return `/api/app/fir-preview?${q.toString()}`;
+  const path = `/api/app/fir-preview?${q.toString()}`;
+  return apiUrl(path);
 }

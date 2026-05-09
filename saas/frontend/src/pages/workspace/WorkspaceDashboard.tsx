@@ -5,8 +5,8 @@ export default function WorkspaceDashboard() {
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-2xl font-semibold text-slate-800">Dashboard</h1>
       <p className="mt-2 text-slate-600">
-        Same workflow as the legacy app: upload Excel invoices, run inspection, open FIR preview — data lives in PostgreSQL for
-        your SaaS company.
+        FIR Automation helps you produce Final Inspection Reports from your invoice data: import or enter line items, complete
+        inspection, then preview and download FIRs. Manage customers, parts, and company-wide FIR branding from this workspace.
       </p>
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <Link

@@ -8,9 +8,23 @@ from app.config import get_settings
 from app.database import get_db
 from app.models import Company, CompanyUser, PlatformAdmin
 from app.security import decode_access_token, decode_admin_token
-from app.subscription_logic import can_access_app, can_create_invoice
+from app.dates import billing_today
+from app.subscription_logic import can_access_app, can_create_invoice, sync_subscription_status_from_dates
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def impersonated_by_admin_from_token(token: str) -> bool:
+    p = decode_access_token(token)
+    return bool(p and p.get("typ") == "company" and p.get("impersonated_by_admin"))
+
+
+def company_impersonated_by_admin(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> bool:
+    if not creds or creds.scheme.lower() != "bearer":
+        return False
+    return impersonated_by_admin_from_token(creds.credentials)
 
 
 def get_db_session() -> Generator[Session, None, None]:
@@ -44,6 +58,10 @@ def get_company_for_user(user: CompanyUser, db: Session) -> Company:
     company = db.get(Company, user.company_id)
     if not company:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company not found")
+    if sync_subscription_status_from_dates(company, billing_today()):
+        db.add(company)
+        db.commit()
+        db.refresh(company)
     return company
 
 
@@ -101,6 +119,12 @@ def get_bearer_token_or_query(
     if token:
         return token
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+
+def impersonated_by_admin_from_request(
+    token: str = Depends(get_bearer_token_or_query),
+) -> bool:
+    return impersonated_by_admin_from_token(token)
 
 
 def get_company_user_from_token_str(
