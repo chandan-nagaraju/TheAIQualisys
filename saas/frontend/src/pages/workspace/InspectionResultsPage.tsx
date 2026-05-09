@@ -38,12 +38,29 @@ type FirPreviewApi = {
   }>;
 };
 
-/** Parallel PDF workers — 4 concurrent html2canvas jobs is a good balance for batch ZIP. */
-const PDF_CONCURRENCY = 4;
 /** Team guideline: smaller uploads / fewer rows per ZIP (shown in UI; not a hard server cap). */
 const ZIP_BATCH_RECOMMENDED_MAX_ROWS = 100;
 /** Cross-origin PDF waits (html2pdf); large pages can be slow */
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
+
+/**
+ * Browsers throttle html2canvas / timers in iframes that are far outside the viewport, which makes batch ZIP look
+ * "stuck" until the user scrolls. We align each preview into view automatically (no user scrolling) and process
+ * PDFs one-at-a-time so the active iframe is always the one in view.
+ */
+async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<void> {
+  if (!f) return;
+  try {
+    f.scrollIntoView({ block: "center", behavior: "auto" });
+  } catch {
+    /* ignore */
+  }
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
 
 /**
  * Programmatic file save from a Blob. Defers revokeObjectURL so the browser can start the read.
@@ -272,7 +289,7 @@ export default function InspectionResultsPage() {
     }
     setAutofillApplied(true);
     setBatchMsg(
-      "Measured values are filled in the live previews below. When satisfied, use Download all reports as ZIP — no need to scroll the page; the ZIP downloads automatically after PDFs finish.",
+      "Measured values are filled in the live previews below. Use Download all reports as ZIP when ready — each report is aligned into view automatically and the ZIP downloads by itself when finished.",
     );
   }, [data]);
 
@@ -306,7 +323,6 @@ export default function InspectionResultsPage() {
       }> = new Array(n);
 
       let completed = 0;
-      let nextIndex = 0;
 
       const updateProgress = (justFinishedMs: number | null) => {
         completed += 1;
@@ -344,6 +360,7 @@ export default function InspectionResultsPage() {
       async function runOne(i: number) {
         const f = iframeRefs.current[i];
         if (!f?.contentWindow) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
+        await prepareIframeForPdfCapture(f);
         let api: FirPreviewApi | null = null;
         try {
           api = (f.contentWindow as Window & { FIR_PREVIEW_API?: FirPreviewApi }).FIR_PREVIEW_API ?? null;
@@ -432,21 +449,9 @@ export default function InspectionResultsPage() {
         updateProgress(dt);
       }
 
-      const workers: Promise<void>[] = [];
-      const workerCount = Math.min(PDF_CONCURRENCY, n);
-      for (let w = 0; w < workerCount; w++) {
-        workers.push(
-          (async () => {
-            while (true) {
-              const i = nextIndex;
-              nextIndex += 1;
-              if (i >= n) break;
-              await runOne(i);
-            }
-          })(),
-        );
+      for (let i = 0; i < n; i++) {
+        await runOne(i);
       }
-      await Promise.all(workers);
 
       const zip = new JSZip();
       let largePdfCount = 0;
@@ -573,10 +578,10 @@ export default function InspectionResultsPage() {
         )}
         <p className="mt-1 text-xs text-slate-600">
           Each row has a <strong>live FIR preview</strong> below. <strong>Auto-fill all</strong> fills measured values in those
-          embeds. <strong>Download all reports as ZIP</strong> builds PDFs in the background (up to {PDF_CONCURRENCY} at a
-          time) and starts the file download automatically when ready — the page does not auto-scroll during ZIP. For speed
-          and reliability, use about <strong>{ZIP_BATCH_RECOMMENDED_MAX_ROWS} or fewer</strong> rows per batch (team
-          guideline). <strong>Keep this tab visible</strong> while the ZIP builds. <strong>Preview FIR</strong> opens a{" "}
+          embeds. <strong>Download all reports as ZIP</strong> processes <strong>one PDF at a time</strong>: each preview is
+          moved into view automatically (you do not need to scroll), then the ZIP file downloads when all PDFs are ready.
+          For speed and reliability, use about <strong>{ZIP_BATCH_RECOMMENDED_MAX_ROWS} or fewer</strong> rows per batch
+          (team guideline). <strong>Keep this tab visible</strong> while the ZIP builds. <strong>Preview FIR</strong> opens a{" "}
           <em>new</em> tab.
         </p>
         {data.rows.length > ZIP_BATCH_RECOMMENDED_MAX_ROWS && (
