@@ -1179,11 +1179,7 @@
             })
             .catch(finishErr);
         };
-        if (window.FIR_PREVIEW_API.waitForAssets) {
-          window.FIR_PREVIEW_API.waitForAssets().then(run).catch(finishErr);
-        } else {
-          run();
-        }
+        run();
       }
     });
   })();

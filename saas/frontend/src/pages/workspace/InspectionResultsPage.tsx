@@ -357,7 +357,7 @@ export default function InspectionResultsPage() {
 
         const runDirect = async () => {
           const gen = api!.generatePdfBlob!;
-          if (api!.waitForAssets) await api!.waitForAssets();
+          /* generatePdfBlob already runs firWaitForAssets — do not wait here (main branch also did both = 2× wait). */
           const t0 = performance.now();
           const result = await gen();
           const dt = performance.now() - t0;
