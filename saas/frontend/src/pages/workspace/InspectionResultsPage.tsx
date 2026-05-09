@@ -38,8 +38,10 @@ type FirPreviewApi = {
   }>;
 };
 
-/** Parallel PDF workers (html2canvas). Moderate count limits off-screen iframe work without auto-scrolling the page. */
+/** Parallel PDF workers — 4 concurrent html2canvas jobs is a good balance for batch ZIP. */
 const PDF_CONCURRENCY = 4;
+/** Team guideline: smaller uploads / fewer rows per ZIP (shown in UI; not a hard server cap). */
+const ZIP_BATCH_RECOMMENDED_MAX_ROWS = 100;
 /** Cross-origin PDF waits (html2pdf); large pages can be slow */
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
@@ -239,11 +241,6 @@ export default function InspectionResultsPage() {
     };
   }, [data, previewUrls.length]);
 
-  useEffect(() => {
-    if (!autofillApplied) return;
-    previewsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [autofillApplied]);
-
   const runAutofillAll = useCallback(() => {
     if (!data?.rows.length) return;
     setBatchErr(null);
@@ -275,7 +272,7 @@ export default function InspectionResultsPage() {
     }
     setAutofillApplied(true);
     setBatchMsg(
-      "Measured values are filled in the live previews below (scroll down). Check them here first, then use Download all as ZIP.",
+      "Measured values are filled in the live previews below. When satisfied, use Download all reports as ZIP — no need to scroll the page; the ZIP downloads automatically after PDFs finish.",
     );
   }, [data]);
 
@@ -576,10 +573,18 @@ export default function InspectionResultsPage() {
         )}
         <p className="mt-1 text-xs text-slate-600">
           Each row has a <strong>live FIR preview</strong> below. <strong>Auto-fill all</strong> fills measured values in those
-          embeds. The ZIP uses full-quality PDFs from those previews (up to {PDF_CONCURRENCY} at a time).{" "}
-          <strong>Keep this browser tab visible</strong> while the ZIP builds so PDFs are not slowed in the background.{" "}
-          <strong>Preview FIR</strong> opens a <em>new</em> tab (batch auto-fill does not apply there unless you use auto-fill in that tab).
+          embeds. <strong>Download all reports as ZIP</strong> builds PDFs in the background (up to {PDF_CONCURRENCY} at a
+          time) and starts the file download automatically when ready — the page does not auto-scroll during ZIP. For speed
+          and reliability, use about <strong>{ZIP_BATCH_RECOMMENDED_MAX_ROWS} or fewer</strong> rows per batch (team
+          guideline). <strong>Keep this tab visible</strong> while the ZIP builds. <strong>Preview FIR</strong> opens a{" "}
+          <em>new</em> tab.
         </p>
+        {data.rows.length > ZIP_BATCH_RECOMMENDED_MAX_ROWS && (
+          <p className="mt-2 text-xs font-medium text-amber-800">
+            This batch has {data.rows.length} rows — consider splitting into multiple runs of ≤{ZIP_BATCH_RECOMMENDED_MAX_ROWS}{" "}
+            rows for faster, more reliable downloads.
+          </p>
+        )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -626,7 +631,10 @@ export default function InspectionResultsPage() {
           </p>
         )}
         {embedsReady && !autofillApplied && (
-          <p className="mt-2 text-xs text-slate-600">When ready, click auto-fill — then review the previews below before ZIP.</p>
+          <p className="mt-2 text-xs text-slate-600">
+            When ready, click <strong>Auto-fill all</strong>, then <strong>Download all reports as ZIP</strong> — the ZIP file
+            downloads automatically (no scrolling required).
+          </p>
         )}
         {batchMsg && <p className="mt-2 text-sm text-green-700">{batchMsg}</p>}
         {batchErr && <p className="mt-2 text-sm text-red-600">{batchErr}</p>}
