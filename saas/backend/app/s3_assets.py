@@ -63,6 +63,15 @@ def _s3_client(app_settings: Settings):
     )
 
 
+def fetch_s3_object_bytes(app_settings: Settings, key: str) -> tuple[bytes, str]:
+    """Download object body + content-type for server-side streaming (e.g. FIR PDF same-origin img)."""
+    client = _s3_client(app_settings)
+    obj = client.get_object(Bucket=app_settings.s3_bucket_name, Key=key)
+    data: bytes = obj["Body"].read()
+    ct = (obj.get("ContentType") or "application/octet-stream").split(";")[0].strip() or "application/octet-stream"
+    return data, ct
+
+
 def delete_s3_object(app_settings: Settings, key: str | None) -> None:
     if not key or not s3_assets_configured(app_settings):
         return

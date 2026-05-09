@@ -12,7 +12,9 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
@@ -25,6 +27,7 @@ from app.config import Settings, get_settings
 from app.s3_assets import (
     build_s3_public_url,
     delete_s3_object,
+    fetch_s3_object_bytes,
     is_company_scoped_storage_key,
     is_stored_s3_key,
     normalize_storage_key,
@@ -1518,6 +1521,86 @@ def inspection_record_reports(body: EnrichBody, ws: WsContext = Depends(get_ws))
     }
 
 
+FirAssetWhich = Literal["logo", "inspector_signature", "quality_signature"]
+
+
+@router.get("/fir-asset")
+def fir_workspace_asset(
+    which: FirAssetWhich = Query(..., description="Which company settings image to stream"),
+    user: CompanyUser = Depends(get_company_user_from_token_str),
+    db: Session = Depends(get_db_session),
+    admin_impersonation: bool = Depends(impersonated_by_admin_from_request),
+):
+    """Same-origin image bytes for FIR HTML (logos/signatures) so html2canvas/PDF capture works with S3."""
+    app_settings = get_settings()
+    company = get_company_for_user(user, db)
+    if not can_access_fir_workspace(
+        company,
+        enable_subscription=app_settings.enable_subscription,
+        today=billing_today(),
+        impersonated_by_admin=admin_impersonation,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": FIR_WORKSPACE_FORBIDDEN_CODE,
+                "message": FIR_WORKSPACE_FORBIDDEN_MESSAGE,
+            },
+        )
+    st = db.get(CompanySettings, company.id)
+    if not st:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No company settings")
+
+    blob_attr, mime_attr, path_attr = {
+        "logo": ("logo_blob", "logo_mime", "logo_path"),
+        "inspector_signature": ("inspector_signature_blob", "inspector_signature_mime", "inspector_signature_path"),
+        "quality_signature": ("quality_signature_blob", "quality_signature_mime", "quality_signature_path"),
+    }[which]
+    blob_v = getattr(st, blob_attr)
+    mime_v = getattr(st, mime_attr)
+    path_v = getattr(st, path_attr)
+    media_default = "image/png"
+    media = ((mime_v or media_default).split(";")[0].strip() or media_default) if mime_v else media_default
+
+    if blob_v:
+        return Response(content=bytes(blob_v), media_type=media)
+
+    path_s = (path_v or "").strip()
+    if not path_s:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not configured")
+
+    if path_s.startswith("http://") or path_s.startswith("https://"):
+        try:
+            req = Request(path_s, headers={"User-Agent": "TheAIQualisys-FIR/1.0"})
+            with urlopen(req, timeout=45) as resp:
+                data = resp.read()
+            ct = (resp.headers.get("Content-Type") or media_default).split(";")[0].strip()
+            return Response(content=data, media_type=ct or media_default)
+        except (HTTPError, URLError, TimeoutError, OSError):
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to fetch asset URL")
+
+    if s3_assets_configured(app_settings) and is_company_scoped_storage_key(company.id, path_s):
+        try:
+            data, ct = fetch_s3_object_bytes(app_settings, path_s)
+            return Response(content=data, media_type=(ct.split(";")[0].strip() if ct else media) or media)
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to load asset from storage")
+
+    upload_root = _upload_root().resolve()
+    prefix = str(company.id) + "/"
+    if path_s.startswith(prefix):
+        local = (upload_root / path_s).resolve()
+        try:
+            local.relative_to(upload_root)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset file not found")
+        if local.is_file():
+            mt, _ = mimetypes.guess_type(str(local))
+            return FileResponse(local, media_type=mt or media or "application/octet-stream")
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset file not found")
+
+
 # --- FIR preview (HTML) — Bearer or ?token= for new tab ---
 @router.get("/fir-preview", response_class=HTMLResponse)
 def fir_preview(
@@ -1605,14 +1688,26 @@ def fir_preview(
     if not quali_font_data_uri:
         quali_font_data_uri, quali_font_format = _default_static_quali_font()
 
-    settings = _settings_dict_for_fir(db, company.id)
-    api_static_base = str(request.base_url).rstrip("/") + "/api/app/static/"
+    fir_ctx_settings = _settings_dict_for_fir(db, company.id)
+    token = request.query_params.get("token") or ""
+    api_origin = str(request.base_url).rstrip("/")
+    for which_key, settings_key in (
+        ("logo", "logo_path"),
+        ("inspector_signature", "inspector_signature_path"),
+        ("quality_signature", "quality_signature_path"),
+    ):
+        v = fir_ctx_settings.get(settings_key)
+        if v and token:
+            q = f"which={which_key}&token={quote(token, safe='')}"
+            fir_ctx_settings[settings_key] = f"{api_origin}/api/app/fir-asset?{q}"
+
+    api_static_base = api_origin + "/api/app/static/"
 
     return templates.TemplateResponse(
         request=request,
         name="fir_preview.html",
         context={
-            "settings": settings,
+            "settings": fir_ctx_settings,
             "spec_data": spec_data,
             "ccp_data": ccp_data,
             "material_data": material_data,

@@ -352,54 +352,6 @@
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  /** Remote http(s) assets: fetch→blob URL before canvas/PDF only (avoids crossOrigin on <img> breaking display). */
-  function firHydrateRemoteImagesForPdf(root) {
-    var imgs = Array.prototype.slice.call(root.querySelectorAll("img"));
-    return Promise.all(
-      imgs.map(function (img) {
-        var u = img.getAttribute("src");
-        if (!u || !/^https?:\/\//i.test(u)) return Promise.resolve();
-        if (img.dataset.firRemoteHydrateOrig) return Promise.resolve();
-        return fetch(u, { mode: "cors", credentials: "omit", cache: "force-cache" })
-          .then(function (r) {
-            if (!r.ok) throw new Error("fetch " + r.status);
-            return r.blob();
-          })
-          .then(function (blob) {
-            var objUrl = URL.createObjectURL(blob);
-            img.dataset.firRemoteHydrateOrig = u;
-            img.removeAttribute("crossorigin");
-            img.src = objUrl;
-            return new Promise(function (res, rej) {
-              img.onload = function () {
-                res();
-              };
-              img.onerror = function () {
-                rej(new Error("hydrate img"));
-              };
-            });
-          })
-          .catch(function () {
-            /* Keep https URL — UI still shows if browser can display it */
-          });
-      })
-    );
-  }
-
-  function firRestoreRemoteHydration(root) {
-    Array.prototype.forEach.call(root.querySelectorAll("img[data-fir-remote-hydrate-orig]"), function (img) {
-      var orig = img.dataset.firRemoteHydrateOrig;
-      var cur = img.src;
-      if (cur && cur.indexOf("blob:") === 0) {
-        try {
-          URL.revokeObjectURL(cur);
-        } catch (e) {}
-      }
-      if (orig) img.src = orig;
-      img.removeAttribute("data-fir-remote-hydrate-orig");
-    });
-  }
-
   if (!partName || !description) {
     document.body.innerHTML = `<h2 style='text-align:center;color:red;'>Missing part data. Please go back and fill the form.</h2>
     <div style='text-align:center;'><button onclick='history.back()'>Go Back</button></div>`;
@@ -952,7 +904,6 @@
       img.src = img.dataset.firPdfOrigSrc;
       img.removeAttribute("data-fir-pdf-orig-src");
     });
-    firRestoreRemoteHydration(root);
   }
 
   /** Wait for Quali/custom fonts + logo/signature images before html2canvas capture */
@@ -1018,8 +969,6 @@
     }
 
     firWaitForAssets(el).then(function() {
-      return firHydrateRemoteImagesForPdf(el);
-    }).then(function() {
       return firPrepareImagesForPdf(el);
     }).then(function() {
       return html2pdf().set({
@@ -1068,8 +1017,6 @@
       }
 
       firWaitForAssets(el).then(function() {
-        return firHydrateRemoteImagesForPdf(el);
-      }).then(function() {
         return firPrepareImagesForPdf(el);
       }).then(function() {
         var worker = html2pdf().set({
