@@ -38,11 +38,8 @@ type FirPreviewApi = {
   }>;
 };
 
-/** Parallel PDFs — scale with CPU; cap 8 to avoid thrashing (html2canvas is heavy). */
-const PDF_CONCURRENCY = (() => {
-  if (typeof navigator === "undefined" || !navigator.hardwareConcurrency) return 6;
-  return Math.min(8, Math.max(5, Math.round(navigator.hardwareConcurrency * 0.72)));
-})();
+/** Parallel PDF workers (html2canvas). Moderate count limits off-screen iframe work without auto-scrolling the page. */
+const PDF_CONCURRENCY = 4;
 /** Cross-origin PDF waits (html2pdf); large pages can be slow */
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
@@ -181,7 +178,6 @@ export default function InspectionResultsPage() {
       firPreviewUrl({
         ...previewParamsForRow(r, data.customer, data.current_date),
         previewFrameIndex: String(i),
-        batchPdf: "1",
       }),
     );
   }, [data]);
@@ -292,7 +288,6 @@ export default function InspectionResultsPage() {
     pdfDurationsRef.current = [];
     setZipping(true);
     const n = data.rows.length;
-    let zipScrollAssistId: ReturnType<typeof window.setInterval> | null = null;
     setZipProgress({
       current: 0,
       total: n,
@@ -348,21 +343,6 @@ export default function InspectionResultsPage() {
         etaSec: null,
         pct: 0,
       });
-
-      /* Browsers throttle timers/RAF in iframes that stay far off-screen — ZIP can look “stuck” until the user scrolls.
-         Rotate previews into the viewport while PDFs generate so html2canvas keeps making progress automatically. */
-      previewsSectionRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
-      const reduceMotion =
-        typeof window !== "undefined" &&
-        window.matchMedia &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const rotMs = reduceMotion ? 700 : 130;
-      let scrollRot = 0;
-      zipScrollAssistId = window.setInterval(() => {
-        const f = iframeRefs.current[scrollRot % n];
-        if (f) f.scrollIntoView({ block: "center", behavior: "auto" });
-        scrollRot += 1;
-      }, rotMs);
 
       async function runOne(i: number) {
         const f = iframeRefs.current[i];
@@ -470,10 +450,6 @@ export default function InspectionResultsPage() {
         );
       }
       await Promise.all(workers);
-      if (zipScrollAssistId != null) {
-        window.clearInterval(zipScrollAssistId);
-        zipScrollAssistId = null;
-      }
 
       const zip = new JSZip();
       let largePdfCount = 0;
@@ -532,9 +508,6 @@ export default function InspectionResultsPage() {
       lastZipOfferRef.current = null;
       setBatchErr(e instanceof Error ? e.message : "ZIP build failed");
     } finally {
-      if (zipScrollAssistId != null) {
-        window.clearInterval(zipScrollAssistId);
-      }
       setZipping(false);
       setZipProgress(null);
     }
@@ -603,10 +576,9 @@ export default function InspectionResultsPage() {
         )}
         <p className="mt-1 text-xs text-slate-600">
           Each row has a <strong>live FIR preview</strong> below. <strong>Auto-fill all</strong> fills measured values in those
-          embeds — review if you like. The ZIP is built from the same previews (up to {PDF_CONCURRENCY} PDFs at a time).{" "}
-          <strong>While the ZIP builds, the page may scroll through previews on its own</strong> so the browser does not pause
-          off-screen PDF work — no need to scroll manually. <strong>Preview FIR</strong> in the table opens a{" "}
-          <em>new</em> tab (batch auto-fill does not apply there unless you click auto-fill in that tab).
+          embeds. The ZIP uses full-quality PDFs from those previews (up to {PDF_CONCURRENCY} at a time).{" "}
+          <strong>Keep this browser tab visible</strong> while the ZIP builds so PDFs are not slowed in the background.{" "}
+          <strong>Preview FIR</strong> opens a <em>new</em> tab (batch auto-fill does not apply there unless you use auto-fill in that tab).
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
