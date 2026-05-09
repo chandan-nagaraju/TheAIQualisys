@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import io
 import re
+import unicodedata
 from typing import Any
 
 import pandas as pd
 
 from app.part_field_validation import sanitize_part_master_alnum_upper
 
+
 def _norm_header(s: Any) -> str:
     text = str(s or "").strip().lower()
+    # Fold accents so e.g. "Descripción" / "MATÉRIEL DESC" match base aliases.
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
     # Excel sometimes uses Unicode slashes in headers.
     text = text.replace("⁄", "/").replace("／", "/").replace("∕", "/")
     # Normalize punctuation and separators so variants like
@@ -29,8 +34,29 @@ COLUMN_MAPPING = {
     "material code": "Part Number",
     "materialcode": "Part Number",
     "description": "Description",
+    "descripcion": "Description",
+    "beschreibung": "Description",
+    "desc": "Description",
+    "descr": "Description",
     "material desc": "Description",
     "material description": "Description",
+    "mat desc": "Description",
+    "mat description": "Description",
+    "item description": "Description",
+    "item desc": "Description",
+    "line description": "Description",
+    "part description": "Description",
+    "part desc": "Description",
+    "product description": "Description",
+    "short description": "Description",
+    "long description": "Description",
+    "nomenclature": "Description",
+    "item name": "Description",
+    "product name": "Description",
+    "part name": "Description",
+    "material name": "Description",
+    "details": "Description",
+    "line details": "Description",
     "qty": "Quantity",
     "quantity": "Quantity",
     "advised qty": "Quantity",
@@ -79,6 +105,73 @@ _QTY_HEADER_FALLBACK_RE = re.compile(
     r"|received\s+qty|rec\s+qty|actual\s+qty|total\s+qty"
     r")$"
 )
+
+# Word-boundary safe: avoid matching "descending" via a \bprefix on "desc".
+_DESC_WORD_FALLBACK_RE = re.compile(r"\b(description|nomenclature)\b|\bdesc\b")
+
+_EXTRA_DESC_HEADER_RE = re.compile(
+    r"^(article|articles|line\s+item|item\s+text|goods|remarks|remark|detail)$|"
+    r"\b(article\s+description|goods\s+description|line\s+text)\b"
+)
+
+
+def _all_mapped_source_columns(matched_sources: dict[str, list[Any]], *, skip: str | None = None) -> set[Any]:
+    out: set[Any] = set()
+    for canon, cols in matched_sources.items():
+        if skip is not None and canon == skip:
+            continue
+        out.update(cols)
+    return out
+
+
+def _column_series_has_nonblank(df: Any, col: Any) -> bool:
+    return bool(df[col].fillna("").map(lambda x: str(x).strip()).ne("").any())
+
+
+def _add_fallback_description_columns(df: Any, matched_sources: dict[str, list[Any]]) -> None:
+    """Map description-like headers when no COLUMN_MAPPING entry matched."""
+    if matched_sources["Description"]:
+        return
+    used = _all_mapped_source_columns(matched_sources)
+    for col in df.columns:
+        if col in used:
+            continue
+        key = _norm_header(col)
+        if not key:
+            continue
+        if re.search(r"\b(qty|quantity)\b", key) and not _DESC_WORD_FALLBACK_RE.search(key):
+            continue
+        if _DESC_WORD_FALLBACK_RE.search(key):
+            matched_sources["Description"].append(col)
+
+
+def _remap_description_if_only_blank(
+    df: Any, matched_sources: dict[str, list[Any]]
+) -> None:
+    """
+    Some vendor sheets use a visible \"Description\" header on an empty column while the real text
+    lives under another name (Article, Line item, …). Drop all-blank sources and discover extras.
+    """
+    desc_cols = list(matched_sources.get("Description") or [])
+    nonblank = [c for c in desc_cols if _column_series_has_nonblank(df, c)]
+    if nonblank:
+        matched_sources["Description"] = nonblank
+        return
+    matched_sources["Description"] = []
+    used = _all_mapped_source_columns(matched_sources, skip="Description")
+    for col in df.columns:
+        if col in used:
+            continue
+        if not _column_series_has_nonblank(df, col):
+            continue
+        key = _norm_header(col)
+        if _DESC_WORD_FALLBACK_RE.search(key) and not (
+            re.search(r"\b(qty|quantity)\b", key) and not _DESC_WORD_FALLBACK_RE.search(key)
+        ):
+            matched_sources["Description"].append(col)
+            continue
+        if _EXTRA_DESC_HEADER_RE.search(key):
+            matched_sources["Description"].append(col)
 
 
 def _add_fallback_quantity_columns(df: Any, matched_sources: dict[str, list[Any]]) -> None:
@@ -276,6 +369,8 @@ def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple
 
     _add_fallback_quantity_columns(df, matched_sources)
     _map_mislabeled_advised_city_as_quantity(df, matched_sources)
+    _add_fallback_description_columns(df, matched_sources)
+    _remap_description_if_only_blank(df, matched_sources)
 
     extracted = pd.DataFrame(index=df.index)
     for canon in DISPLAY_COLS:
