@@ -1523,6 +1523,9 @@ def inspection_record_reports(body: EnrichBody, ws: WsContext = Depends(get_ws))
 
 FirAssetWhich = Literal["logo", "inspector_signature", "quality_signature"]
 
+# Browsers reuse GETs across many FIR iframes (same URL per asset); cuts repeat S3 GetObject per page load.
+_FIR_ASSET_CACHE_CONTROL = {"Cache-Control": "private, max-age=120"}
+
 
 @router.get("/fir-asset")
 def fir_workspace_asset(
@@ -1563,7 +1566,7 @@ def fir_workspace_asset(
     media = ((mime_v or media_default).split(";")[0].strip() or media_default) if mime_v else media_default
 
     if blob_v:
-        return Response(content=bytes(blob_v), media_type=media)
+        return Response(content=bytes(blob_v), media_type=media, headers=_FIR_ASSET_CACHE_CONTROL)
 
     path_s = (path_v or "").strip()
     if not path_s:
@@ -1575,14 +1578,14 @@ def fir_workspace_asset(
             with urlopen(req, timeout=45) as resp:
                 data = resp.read()
             ct = (resp.headers.get("Content-Type") or media_default).split(";")[0].strip()
-            return Response(content=data, media_type=ct or media_default)
+            return Response(content=data, media_type=ct or media_default, headers=_FIR_ASSET_CACHE_CONTROL)
         except (HTTPError, URLError, TimeoutError, OSError):
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to fetch asset URL")
 
     if s3_assets_configured(app_settings) and is_company_scoped_storage_key(company.id, path_s):
         try:
             data, ct = fetch_s3_object_bytes(app_settings, path_s)
-            return Response(content=data, media_type=(ct.split(";")[0].strip() if ct else media) or media)
+            return Response(content=data, media_type=(ct.split(";")[0].strip() if ct else media) or media, headers=_FIR_ASSET_CACHE_CONTROL)
         except Exception:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to load asset from storage")
 
@@ -1596,7 +1599,7 @@ def fir_workspace_asset(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset file not found")
         if local.is_file():
             mt, _ = mimetypes.guess_type(str(local))
-            return FileResponse(local, media_type=mt or media or "application/octet-stream")
+            return FileResponse(local, media_type=mt or media or "application/octet-stream", headers=_FIR_ASSET_CACHE_CONTROL)
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset file not found")
 
