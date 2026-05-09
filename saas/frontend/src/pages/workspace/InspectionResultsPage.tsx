@@ -39,6 +39,28 @@ type FirPreviewApi = {
 };
 
 const PDF_CONCURRENCY = 3;
+/** Cross-origin PDF waits (html2pdf); large pages can be slow */
+const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
+
+/**
+ * Programmatic file save from a Blob. Defers revokeObjectURL so the browser can start the read.
+ * After long async work, some browsers block auto-download — pair with a manual "Save again" control.
+ */
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const safeName = filename.replace(/[/\\]/g, "_");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = safeName;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  window.setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 2500);
+}
 
 function firIframeTargetOrigin(iframe: HTMLIFrameElement | null): string {
   if (!iframe?.src) return "*";
@@ -92,6 +114,7 @@ export default function InspectionResultsPage() {
   const iframeRefs = useRef<(HTMLIFrameElement | null)[]>([]);
   const previewsSectionRef = useRef<HTMLDivElement | null>(null);
   const pdfDurationsRef = useRef<number[]>([]);
+  const lastZipOfferRef = useRef<{ blob: Blob; filename: string } | null>(null);
 
   const [embedsReady, setEmbedsReady] = useState(false);
   const [embedWaitTimedOut, setEmbedWaitTimedOut] = useState(false);
@@ -107,6 +130,7 @@ export default function InspectionResultsPage() {
     etaSec: number | null;
     pct: number;
   } | null>(null);
+  const [zipSaveHint, setZipSaveHint] = useState(false);
   const [firEntitled, setFirEntitled] = useState<"loading" | "yes" | "no">("loading");
 
   useEffect(() => {
@@ -164,6 +188,8 @@ export default function InspectionResultsPage() {
     setAutofillApplied(false);
     setBatchMsg(null);
     setBatchErr(null);
+    setZipSaveHint(false);
+    lastZipOfferRef.current = null;
     const n = data.rows.length;
     const ready: boolean[] = new Array(n).fill(false);
 
@@ -256,6 +282,8 @@ export default function InspectionResultsPage() {
     if (!data?.rows.length) return;
     setBatchErr(null);
     setBatchMsg(null);
+    setZipSaveHint(false);
+    lastZipOfferRef.current = null;
     pdfDurationsRef.current = [];
     setZipping(true);
     const n = data.rows.length;
@@ -338,6 +366,7 @@ export default function InspectionResultsPage() {
           const requestId = crypto.randomUUID();
           const origin = firIframeTargetOrigin(f);
           const t0 = performance.now();
+          let timeoutId: ReturnType<typeof window.setTimeout> | undefined;
           const result = await new Promise<{
             blob: Blob;
             filename: string;
@@ -349,6 +378,7 @@ export default function InspectionResultsPage() {
               if (!d || d.source !== "fir-saas-fir-preview" || d.type !== "pdfBlobResult" || d.requestId !== requestId) {
                 return;
               }
+              if (timeoutId !== undefined) window.clearTimeout(timeoutId);
               window.removeEventListener("message", handler);
               if (!d.ok) reject(new Error(d.error || "PDF generation failed"));
               else if (!d.blob) reject(new Error("No PDF blob returned"));
@@ -361,6 +391,14 @@ export default function InspectionResultsPage() {
                 });
             };
             window.addEventListener("message", handler);
+            timeoutId = window.setTimeout(() => {
+              window.removeEventListener("message", handler);
+              reject(
+                new Error(
+                  `Timed out waiting for PDF ${i + 1} (${Math.round(FIR_PDF_POSTMESSAGE_TIMEOUT_MS / 1000)}s). Try reloading or fewer rows.`,
+                ),
+              );
+            }, FIR_PDF_POSTMESSAGE_TIMEOUT_MS);
             f!.contentWindow!.postMessage(
               { source: "fir-saas-fir-preview-parent", type: "generatePdf", requestId },
               origin,
@@ -424,11 +462,10 @@ export default function InspectionResultsPage() {
 
       const blob = await zip.generateAsync({ type: "blob" });
       const stamp = (data.current_date || "batch").replace(/\W+/g, "_");
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `FIR_reports_${stamp}.zip`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      const zipName = `FIR_reports_${stamp}.zip`;
+      lastZipOfferRef.current = { blob, filename: zipName };
+      setZipSaveHint(true);
+      triggerBlobDownload(blob, zipName);
 
       try {
         await workspaceFetch<{
@@ -462,6 +499,8 @@ export default function InspectionResultsPage() {
       }
       setBatchMsg(`ZIP download started. Check your downloads folder.${sizeNote}`);
     } catch (e) {
+      setZipSaveHint(false);
+      lastZipOfferRef.current = null;
       setBatchErr(e instanceof Error ? e.message : "ZIP build failed");
     } finally {
       setZipping(false);
@@ -587,6 +626,22 @@ export default function InspectionResultsPage() {
         )}
         {batchMsg && <p className="mt-2 text-sm text-green-700">{batchMsg}</p>}
         {batchErr && <p className="mt-2 text-sm text-red-600">{batchErr}</p>}
+        {zipSaveHint && (
+          <p className="mt-2 text-xs text-slate-700">
+            If the ZIP did not start downloading (some browsers block automatic downloads after a long run),{" "}
+            <button
+              type="button"
+              className="font-medium text-blue-700 underline"
+              onClick={() => {
+                const o = lastZipOfferRef.current;
+                if (o) triggerBlobDownload(o.blob, o.filename);
+              }}
+            >
+              click here to save the ZIP
+            </button>
+            .
+          </p>
+        )}
       </div>
 
       <div className="mt-4 overflow-x-auto">

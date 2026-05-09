@@ -237,6 +237,11 @@ export async function workspaceFetch<T>(path: string, opts: RequestInit = {}): P
     }
 
     if ([502, 503, 504].includes(res.status) && attempt < maxAttempts - 1) {
+      try {
+        await res.arrayBuffer();
+      } catch {
+        /* ignore */
+      }
       await delay(baseDelayMs * (attempt + 1));
       continue;
     }
