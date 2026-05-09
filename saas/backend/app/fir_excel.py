@@ -439,39 +439,50 @@ def enrich_rows_with_parts(
     rows: list[dict],
     *,
     parts_by_no: dict[str, tuple[str | None, int | None]] | None = None,
-    part_rows: list[tuple[str, str | None, int, int]] | None = None,
+    part_rows: list[tuple[str, str | None, int, int, str | None]] | None = None,
     workspace_customer_id: int | None = None,
     param_count_by_part_id: dict[int, int] | None = None,
     default_num_params: int = 17,
 ) -> list[dict]:
-    """Resolve part master row per invoice line using customer-scoped parts when ``part_rows`` is set."""
+    """Resolve part master row per invoice line using customer-scoped parts when ``part_rows`` is set.
+
+    When a parts-master row is resolved (same rules as ``draw_rev``), ``Description`` is taken from
+    that master row, not from the uploaded invoice file. If the part is not resolved, any
+    ``Description`` parsed from Excel is kept.
+    """
     from collections import defaultdict
 
     param_count_by_part_id = param_count_by_part_id or {}
-    by_pn: dict[str, list[tuple[str | None, int, int]]] = defaultdict(list)
+    by_pn: dict[str, list[tuple[str | None, int, int, str | None]]] = defaultdict(list)
     if part_rows is not None:
-        for pno, dr, pid, cid in part_rows:
-            by_pn[str(pno).strip()].append((dr, pid, cid))
+        for pno, dr, pid, cid, pdesc in part_rows:
+            by_pn[str(pno).strip()].append((dr, pid, cid, pdesc))
     elif parts_by_no is not None:
         for pno, (dr, pid) in parts_by_no.items():
-            by_pn[str(pno).strip()].append((dr, pid if pid is not None else -1, -1))
+            by_pn[str(pno).strip()].append((dr, pid if pid is not None else -1, -1, None))
     out = []
     for r in rows:
         row = dict(r)
         part_no = str(row.get("Part Number", "")).strip()
         draw_rev: str | None = None
         part_id: int | None = None
+        master_description: str | None = None
+        resolved_from_master = False
         cands = by_pn.get(part_no, [])
         if not cands:
             pass
         elif len(cands) == 1:
-            dr, pid, _cid = cands[0]
+            dr, pid, _cid, pdesc = cands[0]
             draw_rev = dr
             part_id = None if pid == -1 else pid
+            master_description = pdesc
+            resolved_from_master = True
         elif workspace_customer_id is not None:
-            for dr, pid, cid in cands:
+            for dr, pid, cid, pdesc in cands:
                 if cid == workspace_customer_id:
                     draw_rev, part_id = dr, pid
+                    master_description = pdesc
+                    resolved_from_master = True
                     break
         try:
             qty_val = float(row.get("Quantity") or 0)
@@ -483,5 +494,7 @@ def enrich_rows_with_parts(
             row["num_params"] = param_count_by_part_id.get(part_id, default_num_params)
         else:
             row["num_params"] = default_num_params
+        if resolved_from_master:
+            row["Description"] = (master_description or "").strip()
         out.append(row)
     return out

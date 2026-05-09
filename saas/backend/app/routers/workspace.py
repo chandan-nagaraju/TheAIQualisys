@@ -1415,9 +1415,11 @@ class EnrichBody(BaseModel):
 def inspection_enrich(body: EnrichBody, ws: WsContext = Depends(get_ws)):
     cust_id = _resolve_default_customer_id(ws)
     parts = ws.db.execute(
-        select(PartV2.id, PartV2.part_no, PartV2.drawing_rev, PartV2.customer_id).where(PartV2.company_id == ws.company.id)
+        select(PartV2.id, PartV2.part_no, PartV2.drawing_rev, PartV2.customer_id, PartV2.description).where(
+            PartV2.company_id == ws.company.id
+        )
     ).all()
-    part_rows = [(str(pno).strip(), dr, pid, cid) for pid, pno, dr, cid in parts]
+    part_rows = [(str(pno).strip(), dr, pid, cid, desc) for pid, pno, dr, cid, desc in parts]
     counts = {
         r[0]: r[1]
         for r in ws.db.execute(
