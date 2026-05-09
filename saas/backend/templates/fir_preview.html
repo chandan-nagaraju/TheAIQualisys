@@ -352,16 +352,52 @@
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  /** Remote http(s) assets must use crossOrigin=anonymous so html2canvas + grayscale canvas can read pixels (S3, CDN). */
-  function firSetRemoteImageCors(img, url) {
-    if (!img || url == null || url === '') return;
-    var u = String(url);
-    if (/^https?:\/\//i.test(u)) {
-      img.crossOrigin = 'anonymous';
-    } else {
-      img.removeAttribute('crossOrigin');
-    }
-    img.src = u;
+  /** Remote http(s) assets: fetch→blob URL before canvas/PDF only (avoids crossOrigin on <img> breaking display). */
+  function firHydrateRemoteImagesForPdf(root) {
+    var imgs = Array.prototype.slice.call(root.querySelectorAll("img"));
+    return Promise.all(
+      imgs.map(function (img) {
+        var u = img.getAttribute("src");
+        if (!u || !/^https?:\/\//i.test(u)) return Promise.resolve();
+        if (img.dataset.firRemoteHydrateOrig) return Promise.resolve();
+        return fetch(u, { mode: "cors", credentials: "omit", cache: "force-cache" })
+          .then(function (r) {
+            if (!r.ok) throw new Error("fetch " + r.status);
+            return r.blob();
+          })
+          .then(function (blob) {
+            var objUrl = URL.createObjectURL(blob);
+            img.dataset.firRemoteHydrateOrig = u;
+            img.removeAttribute("crossorigin");
+            img.src = objUrl;
+            return new Promise(function (res, rej) {
+              img.onload = function () {
+                res();
+              };
+              img.onerror = function () {
+                rej(new Error("hydrate img"));
+              };
+            });
+          })
+          .catch(function () {
+            /* Keep https URL — UI still shows if browser can display it */
+          });
+      })
+    );
+  }
+
+  function firRestoreRemoteHydration(root) {
+    Array.prototype.forEach.call(root.querySelectorAll("img[data-fir-remote-hydrate-orig]"), function (img) {
+      var orig = img.dataset.firRemoteHydrateOrig;
+      var cur = img.src;
+      if (cur && cur.indexOf("blob:") === 0) {
+        try {
+          URL.revokeObjectURL(cur);
+        } catch (e) {}
+      }
+      if (orig) img.src = orig;
+      img.removeAttribute("data-fir-remote-hydrate-orig");
+    });
   }
 
   if (!partName || !description) {
@@ -484,17 +520,13 @@
     if (companyCell && globalSettings) {
       let inner = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;">';
       if (globalSettings.logo_path) {
-        inner += '<div style="width:90px;height:90px;border:1px solid #000;overflow:hidden;margin-bottom:4px;display:flex;align-items:center;justify-content:center;background:#fff;"><img class="fir-logo-img" alt="" style="width:100%;height:100%;object-fit:cover;"></div>';
+        inner += `<div style="width:90px;height:90px;border:1px solid #000;overflow:hidden;margin-bottom:4px;display:flex;align-items:center;justify-content:center;background:#fff;"><img class="fir-logo-img" src="${globalSettings.logo_path}" style="width:100%;height:100%;object-fit:cover;" alt=""></div>`;
       }
       if (globalSettings.company_name) {
         inner += `<div style="font-weight:bold;font-style:italic;text-align:center;">${globalSettings.company_name}</div>`;
       }
       inner += '</div>';
       companyCell.innerHTML = inner;
-      if (globalSettings.logo_path) {
-        const logoImg = companyCell.querySelector('img.fir-logo-img');
-        if (logoImg) firSetRemoteImageCors(logoImg, globalSettings.logo_path);
-      }
     }
     const docInfoCell = root.querySelector('#docInfo');
     if (docInfoCell && globalSettings) {
@@ -517,12 +549,12 @@
   if (globalSettings) {
     const insp = document.getElementById('signaturePreview');
     if (insp && globalSettings.inspector_signature_path) {
-      firSetRemoteImageCors(insp, globalSettings.inspector_signature_path);
+      insp.src = globalSettings.inspector_signature_path;
       insp.style.display = 'block';
     }
     const qual = document.getElementById('qSignaturePreview');
     if (qual && globalSettings.quality_signature_path) {
-      firSetRemoteImageCors(qual, globalSettings.quality_signature_path);
+      qual.src = globalSettings.quality_signature_path;
       qual.style.display = 'block';
     }
   }
@@ -920,6 +952,7 @@
       img.src = img.dataset.firPdfOrigSrc;
       img.removeAttribute("data-fir-pdf-orig-src");
     });
+    firRestoreRemoteHydration(root);
   }
 
   /** Wait for Quali/custom fonts + logo/signature images before html2canvas capture */
@@ -985,6 +1018,8 @@
     }
 
     firWaitForAssets(el).then(function() {
+      return firHydrateRemoteImagesForPdf(el);
+    }).then(function() {
       return firPrepareImagesForPdf(el);
     }).then(function() {
       return html2pdf().set({
@@ -1033,6 +1068,8 @@
       }
 
       firWaitForAssets(el).then(function() {
+        return firHydrateRemoteImagesForPdf(el);
+      }).then(function() {
         return firPrepareImagesForPdf(el);
       }).then(function() {
         var worker = html2pdf().set({
