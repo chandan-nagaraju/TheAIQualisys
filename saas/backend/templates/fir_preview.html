@@ -352,6 +352,18 @@
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  /** Remote http(s) assets must use crossOrigin=anonymous so html2canvas + grayscale canvas can read pixels (S3, CDN). */
+  function firSetRemoteImageCors(img, url) {
+    if (!img || url == null || url === '') return;
+    var u = String(url);
+    if (/^https?:\/\//i.test(u)) {
+      img.crossOrigin = 'anonymous';
+    } else {
+      img.removeAttribute('crossOrigin');
+    }
+    img.src = u;
+  }
+
   if (!partName || !description) {
     document.body.innerHTML = `<h2 style='text-align:center;color:red;'>Missing part data. Please go back and fill the form.</h2>
     <div style='text-align:center;'><button onclick='history.back()'>Go Back</button></div>`;
@@ -472,13 +484,17 @@
     if (companyCell && globalSettings) {
       let inner = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;">';
       if (globalSettings.logo_path) {
-        inner += `<div style="width:90px;height:90px;border:1px solid #000;overflow:hidden;margin-bottom:4px;display:flex;align-items:center;justify-content:center;background:#fff;"><img class="fir-logo-img" src="${globalSettings.logo_path}" style="width:100%;height:100%;object-fit:cover;"></div>`;
+        inner += '<div style="width:90px;height:90px;border:1px solid #000;overflow:hidden;margin-bottom:4px;display:flex;align-items:center;justify-content:center;background:#fff;"><img class="fir-logo-img" alt="" style="width:100%;height:100%;object-fit:cover;"></div>';
       }
       if (globalSettings.company_name) {
         inner += `<div style="font-weight:bold;font-style:italic;text-align:center;">${globalSettings.company_name}</div>`;
       }
       inner += '</div>';
       companyCell.innerHTML = inner;
+      if (globalSettings.logo_path) {
+        const logoImg = companyCell.querySelector('img.fir-logo-img');
+        if (logoImg) firSetRemoteImageCors(logoImg, globalSettings.logo_path);
+      }
     }
     const docInfoCell = root.querySelector('#docInfo');
     if (docInfoCell && globalSettings) {
@@ -501,12 +517,12 @@
   if (globalSettings) {
     const insp = document.getElementById('signaturePreview');
     if (insp && globalSettings.inspector_signature_path) {
-      insp.src = globalSettings.inspector_signature_path;
+      firSetRemoteImageCors(insp, globalSettings.inspector_signature_path);
       insp.style.display = 'block';
     }
     const qual = document.getElementById('qSignaturePreview');
     if (qual && globalSettings.quality_signature_path) {
-      qual.src = globalSettings.quality_signature_path;
+      firSetRemoteImageCors(qual, globalSettings.quality_signature_path);
       qual.style.display = 'block';
     }
   }
