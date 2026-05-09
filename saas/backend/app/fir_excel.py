@@ -67,7 +67,7 @@ DISPLAY_COLS = [
     "Date",
 ]
 
-# If Quantity matched no column, map headers that clearly mean qty (but not "Advised City" alone).
+# If Quantity matched no column, map headers that clearly mean qty.
 _QTY_HEADER_FALLBACK_RE = re.compile(
     r"^("
     r"advised\s+qty(\s+qty)*"
@@ -94,7 +94,18 @@ def _add_fallback_quantity_columns(df: Any, matched_sources: dict[str, list[Any]
         if _QTY_HEADER_FALLBACK_RE.match(key):
             matched_sources["Quantity"].append(col)
 
-# Excel 97–2003 .xls (OLE compound document)
+
+def _map_mislabeled_advised_city_as_quantity(df: Any, matched_sources: dict[str, list[Any]]) -> None:
+    """
+    Some vendor exports label quantity as 'Advised City' (numeric values under a wrong header).
+    Only applies when no column mapped to Quantity yet, so real Qty / Advised Qty columns win.
+    """
+    if matched_sources["Quantity"]:
+        return
+    for col in df.columns:
+        if _norm_header(col) == "advised city":
+            matched_sources["Quantity"].append(col)
+            return
 _OLE2_MAGIC = bytes.fromhex("d0cf11e0a1b11ae1")
 
 
@@ -264,6 +275,7 @@ def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple
             matched_sources[canon].append(col)
 
     _add_fallback_quantity_columns(df, matched_sources)
+    _map_mislabeled_advised_city_as_quantity(df, matched_sources)
 
     extracted = pd.DataFrame(index=df.index)
     for canon in DISPLAY_COLS:

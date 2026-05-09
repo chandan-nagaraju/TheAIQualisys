@@ -84,9 +84,10 @@ export default function UploadPage() {
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold">Upload invoice details</h1>
       <p className="mt-2 text-sm text-slate-600">
-        Excel .xlsx or .xls. Extra columns are ignored; we map Part Number, Description, Quantity (including headers like{" "}
-        <span className="font-mono text-xs">Advised Qty/Qty</span>, <span className="font-mono text-xs">Bill Qty</span>), Invoice
-        Number, and Date. <span className="font-mono text-xs">Advised City</span> stays separate and is not used as quantity.
+        Excel .xlsx or .xls. We map Part Number (e.g. Material Code), Description, Quantity (including{" "}
+        <span className="font-mono text-xs">Advised Qty/Qty</span> and, if there is no other qty column, mislabeled{" "}
+        <span className="font-mono text-xs">Advised City</span> with numeric quantities), Invoice Number (e.g.{" "}
+        Invoice/DC No), and Date. Extra columns are ignored. Parts master is resolved for the customer you select below.
       </p>
 
       {customers.length > 1 && (
