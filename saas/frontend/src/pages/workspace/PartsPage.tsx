@@ -24,6 +24,12 @@ type Row = {
 
 type CustomerOpt = { id: number; vendor_code: string; name: string };
 
+function customerIdFromSelectValue(v: string): number | null {
+  if (v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export default function PartsPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [part_no, setPartNo] = useState("");
@@ -378,7 +384,7 @@ export default function PartsPage() {
               value={filterCustomerId ?? ""}
               onChange={(e) => {
                 const v = e.target.value;
-                setFilterCustomerId(v === "" ? null : Number(v));
+                setFilterCustomerId(customerIdFromSelectValue(v));
               }}
             >
               <option value="">All customers</option>
@@ -394,7 +400,10 @@ export default function PartsPage() {
             <select
               className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
               value={formCustomerId ?? ""}
-              onChange={(e) => setFormCustomerId(Number(e.target.value))}
+              onChange={(e) => {
+                const id = customerIdFromSelectValue(e.target.value);
+                if (id != null) setFormCustomerId(id);
+              }}
             >
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>

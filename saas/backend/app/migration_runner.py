@@ -51,9 +51,9 @@ def apply_sql_migrations(engine: Engine, backend_root: Path) -> None:
                 """
             )
         )
-        # Avoid .scalars().all() + set(): some SQLAlchemy/psycopg combinations raise
-        # "immutabledict is not a sequence" when mixing Result APIs.
-        applied = {row[0] for row in conn.execute(text("SELECT filename FROM schema_migrations")).fetchall()}
+        # Use DBAPI fetchall + driver-native INSERT to avoid SQLAlchemy bound-parameter
+        # edge cases that raised immutabledict TypeError on some Railway/psycopg2 builds.
+        applied = {row[0] for row in conn.exec_driver_sql("SELECT filename FROM schema_migrations").fetchall()}
 
     for migration in files:
         name = migration.name
@@ -67,8 +67,4 @@ def apply_sql_migrations(engine: Engine, backend_root: Path) -> None:
         with engine.begin() as conn:
             conn.exec_driver_sql(f"SET LOCAL statement_timeout = {timeout_ms}")
             conn.exec_driver_sql(body)
-            # Bound INSERT: Core insert().values() triggered immutabledict errors on some deployments.
-            conn.execute(
-                text("INSERT INTO schema_migrations (filename) VALUES (:filename)"),
-                {"filename": name},
-            )
+            conn.exec_driver_sql("INSERT INTO schema_migrations (filename) VALUES (%s)", (name,))

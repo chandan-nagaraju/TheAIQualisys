@@ -102,11 +102,12 @@ def _parse_optional_int_header(raw: str | None, *, label: str) -> int | None:
         ) from e
 
 
-def optional_customer_id_query(
-    customer_id: Annotated[str | None, Query()] = None,
-) -> int | None:
-    """Query param can be absent, or present but empty (e.g. ?customer_id=); both mean no filter."""
-    return _parse_optional_int_header(customer_id, label="customer_id")
+def optional_customer_id_from_request(request: Request) -> int | None:
+    """Parse optional customer_id query without FastAPI Query() coercions (avoids Pydantic int errors)."""
+    raw_vals = request.query_params.getlist("customer_id")
+    if not raw_vals:
+        return None
+    return _parse_optional_int_header(raw_vals[0], label="customer_id")
 
 
 def get_ws(
@@ -659,7 +660,7 @@ async def save_settings(
 # --- Parts ---
 @router.get("/parts")
 def list_parts(
-    customer_id: int | None = Depends(optional_customer_id_query),
+    customer_id: int | None = Depends(optional_customer_id_from_request),
     ws: WsContext = Depends(get_ws),
 ):
     q = select(PartV2).where(PartV2.company_id == ws.company.id)
@@ -1326,7 +1327,7 @@ async def import_part_master_excel(
 
 @router.get("/parts/export-all")
 def export_all_parts_master(
-    customer_id: int | None = Depends(optional_customer_id_query),
+    customer_id: int | None = Depends(optional_customer_id_from_request),
     ws: WsContext = Depends(get_ws),
 ):
     q = select(PartV2).where(PartV2.company_id == ws.company.id)

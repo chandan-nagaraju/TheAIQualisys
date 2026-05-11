@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ModulePricing
@@ -133,8 +132,12 @@ def ensure_module_pricing_seeded(db: Session) -> None:
     backfill_listing_active_column(db)
     # Backfill missing defaults even if some rows already exist.
     # Older deployments can have partial data after incremental releases.
-    # Prefer scalars(): ResultRow indexing + set() hit immutabledict errors on some SQLAlchemy/psycopg2 combos.
-    existing = set(db.scalars(select(ModulePricing.module_name)).all())
+    # Raw SQL + fetchall avoids ScalarResult/set edge cases on some SQLAlchemy/psycopg2 builds.
+    from sqlalchemy import text as sql_text
+
+    existing: set[str] = set()
+    for row in db.execute(sql_text("SELECT module_name FROM module_pricing")).fetchall():
+        existing.add(str(row[0]))
     missing = [kwargs for kwargs in _DEFAULT_ROWS if kwargs["module_name"] not in existing]
     if not missing:
         return
