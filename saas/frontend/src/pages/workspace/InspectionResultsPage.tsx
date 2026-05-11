@@ -44,9 +44,7 @@ const ZIP_BATCH_RECOMMENDED_MAX_ROWS = 100;
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
 /**
- * Browsers throttle html2canvas / timers in iframes that are far outside the viewport, which makes batch ZIP look
- * "stuck" until the user scrolls. We align each preview into view automatically (no user scrolling) and process
- * PDFs one-at-a-time so the active iframe is always the one in view.
+ * Browsers throttle work in off-screen iframes. Align each preview before capture without requiring user interaction.
  */
 async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<void> {
   if (!f) return;
@@ -288,9 +286,7 @@ export default function InspectionResultsPage() {
       setBatchErr(`Some rows skipped: ${failures.join(" · ")}`);
     }
     setAutofillApplied(true);
-    setBatchMsg(
-      "Measured values are filled in the live previews below. Use Download all reports as ZIP when ready — each report is aligned into view automatically and the ZIP downloads by itself when finished.",
-    );
+    setBatchMsg("Measured values are filled in the live previews below.");
   }, [data]);
 
   const downloadAllZip = useCallback(async () => {
@@ -577,12 +573,10 @@ export default function InspectionResultsPage() {
           </p>
         )}
         <p className="mt-1 text-xs text-slate-600">
-          Each row has a <strong>live FIR preview</strong> below. <strong>Auto-fill all</strong> fills measured values in those
-          embeds. <strong>Download all reports as ZIP</strong> processes <strong>one PDF at a time</strong>: each preview is
-          moved into view automatically (you do not need to scroll), then the ZIP file downloads when all PDFs are ready.
-          For speed and reliability, use about <strong>{ZIP_BATCH_RECOMMENDED_MAX_ROWS} or fewer</strong> rows per batch
-          (team guideline). <strong>Keep this tab visible</strong> while the ZIP builds. <strong>Preview FIR</strong> opens a{" "}
-          <em>new</em> tab.
+          Each row has a <strong>live FIR preview</strong> below. Run <strong>Auto-fill all</strong>, then{" "}
+          <strong>Download all reports as ZIP</strong>. For reliability, use about{" "}
+          <strong>{ZIP_BATCH_RECOMMENDED_MAX_ROWS} or fewer</strong> rows per batch (team guideline).{" "}
+          <strong>Preview FIR</strong> opens a <em>new</em> tab.
         </p>
         {data.rows.length > ZIP_BATCH_RECOMMENDED_MAX_ROWS && (
           <p className="mt-2 text-xs font-medium text-amber-800">
@@ -637,8 +631,7 @@ export default function InspectionResultsPage() {
         )}
         {embedsReady && !autofillApplied && (
           <p className="mt-2 text-xs text-slate-600">
-            When ready, click <strong>Auto-fill all</strong>, then <strong>Download all reports as ZIP</strong> — the ZIP file
-            downloads automatically (no scrolling required).
+            When ready, click <strong>Auto-fill all measured values</strong>, then <strong>Download all reports as ZIP</strong>.
           </p>
         )}
         {batchMsg && <p className="mt-2 text-sm text-green-700">{batchMsg}</p>}
