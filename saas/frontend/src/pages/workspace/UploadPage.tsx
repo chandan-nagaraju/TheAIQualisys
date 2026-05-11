@@ -88,13 +88,9 @@ export default function UploadPage() {
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold">Upload invoice details</h1>
       <p className="mt-2 text-sm text-slate-600">
-        Excel .xlsx or .xls. We map Part Number (e.g. Material Code), Quantity (including{" "}
-        <span className="font-mono text-xs">Advised Qty/Qty</span> and, if there is no other qty column, mislabeled{" "}
-        <span className="font-mono text-xs">Advised City</span> with numeric quantities), Invoice Number (e.g.{" "}
-        Invoice/DC No), and Date. After upload, <strong>Description</strong> is taken from{" "}
-        <strong>Parts master</strong> when the part number matches your selected customer; if the part is not in
-        master, any description text from the file is used. Extra columns are ignored. Parts master is resolved for
-        the customer you select below.
+        Upload an Excel invoice (<span className="font-mono text-xs">.xlsx</span> or{" "}
+        <span className="font-mono text-xs">.xls</span>). If you have more than one customer, choose who this
+        invoice is for below.
       </p>
 
       {customers.length > 1 && (
@@ -116,9 +112,7 @@ export default function UploadPage() {
               ))}
             </select>
           </label>
-          <p className="mt-2 text-xs text-slate-500">
-            This sets which vendor appears on the FIR and which Parts master rows are used during inspection.
-          </p>
+          <p className="mt-2 text-xs text-slate-500">This customer appears on your FIR and matches parts in your library.</p>
         </div>
       )}
 
@@ -157,8 +151,7 @@ export default function UploadPage() {
             onClick={() => nav("/workspace/manual-entry")}
           >
             Enter rows manually
-          </button>{" "}
-          (useful for 1–3 new parts).
+          </button>
         </p>
       </div>
     </div>

@@ -70,8 +70,6 @@ type FirPreviewApi = {
   }>;
 };
 
-/** Team guideline: smaller uploads / fewer rows per ZIP (shown in UI; not a hard server cap). */
-const ZIP_BATCH_RECOMMENDED_MAX_ROWS = 100;
 /** Cross-origin PDF waits (html2pdf); large pages can be slow */
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
@@ -559,11 +557,9 @@ export default function InspectionResultsPage() {
       }
 
       const zip = new JSZip();
-      let largePdfCount = 0;
       for (let i = 0; i < n; i++) {
         const result = results[i];
         if (!result?.blob) throw new Error(`Report ${i + 1} produced no PDF data.`);
-        if (result.sizeWarning === "over_200kb") largePdfCount += 1;
         const name = (result.filename || `FIR_${i + 1}.pdf`).replace(/[/\\]/g, "_");
         zip.file(name, result.blob);
       }
@@ -579,9 +575,8 @@ export default function InspectionResultsPage() {
       setZipSaveHint(true);
       triggerBlobDownload(blob, zipName);
 
-      let intelSummary: RecordReportsRes;
       try {
-        intelSummary = await workspaceFetch<RecordReportsRes>("/api/app/inspection/record-reports", {
+        await workspaceFetch<RecordReportsRes>("/api/app/inspection/record-reports", {
           method: "POST",
           body: JSON.stringify({ rows: data.rows, source_file: st?.filename ?? null }),
         });
@@ -591,22 +586,13 @@ export default function InspectionResultsPage() {
         );
         return;
       }
-      const sizeNote =
-        largePdfCount > 0
-          ? ` ${largePdfCount} PDF(s) exceeded the ~200 KB size target (still included).`
-          : "";
       try {
         const q2 = await fetchFirQuotaUsingIntelPreview(data.rows, st?.filename);
         setFirQuota(q2);
       } catch {
         setFirQuota(null);
-        setBatchMsg(
-          `ZIP download started. Check your downloads folder.${sizeNote} Usage counter could not refresh (often a brief network hiccup after a large batch); reload the page to see updated limits.`,
-        );
-        return;
       }
-      const intelLine = `${intelSummary.rows_processed} rows processed · ${intelSummary.new_intelligence_records} new intelligence records · ${intelSummary.duplicate_intelligence_records} duplicates skipped · ${intelSummary.fir_reports_generated} FIR reports logged for usage.`;
-      setBatchMsg(`${intelLine}${sizeNote}`);
+      setBatchMsg("ZIP ready — check your downloads folder.");
     } catch (e) {
       setZipSaveHint(false);
       lastZipOfferRef.current = null;
@@ -664,35 +650,19 @@ export default function InspectionResultsPage() {
 
         <section className="rounded-xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-800">Batch FIR tools</h2>
-          {firQuota && (
-            <p className="mt-3 text-xs leading-relaxed text-slate-700">
-              <strong>Usage (billing)</strong>: {firQuota.usage_this_month}
-              {firQuota.usage_limit != null ? ` / ${firQuota.usage_limit}` : " (unlimited)"} this month — v2 invoices{" "}
-              {firQuota.invoices_this_month} + FIR reports {firQuota.fir_reports_this_month} (same monthly cap).{" "}
-              {firQuota.usage_limit != null &&
-                firQuota.would_remain_after_n != null &&
-                firQuota.allowed_for_n && (
-                  <span>
-                    After this ZIP: <strong>{firQuota.would_remain_after_n}</strong> slot(s) left.
-                  </span>
-                )}
-              {!firQuota.allowed_for_n && firQuota.message && (
-                <span className="mt-1 block text-amber-800">{firQuota.message}</span>
-              )}
+          {firQuota && !firQuota.allowed_for_n && firQuota.message && (
+            <p className="mt-3 text-sm text-amber-800">{firQuota.message}</p>
+          )}
+          {firQuota && firQuota.allowed_for_n && firQuota.usage_limit != null && (
+            <p className="mt-3 text-xs text-slate-600">
+              This month: {firQuota.usage_this_month} / {firQuota.usage_limit} reports
+              {firQuota.would_remain_after_n != null ? ` · after this ZIP: ${firQuota.would_remain_after_n} left` : ""}
             </p>
           )}
-          <p className="mt-3 text-xs leading-relaxed text-slate-600">
-            Each row has a <strong>live FIR preview</strong> below. Run <strong>Auto-fill all</strong>, then{" "}
-            <strong>Download all reports as ZIP</strong>. For reliability, use about{" "}
-            <strong>{ZIP_BATCH_RECOMMENDED_MAX_ROWS} or fewer</strong> rows per batch (team guideline).{" "}
-            <strong>Preview FIR</strong> opens a <em>new</em> tab.
+          <p className="mt-3 text-sm text-slate-600">
+            Run <strong>Auto-fill</strong>, then <strong>Download ZIP</strong>. Use <strong>Preview FIR</strong> to open one
+            report in a new tab.
           </p>
-          {data.rows.length > ZIP_BATCH_RECOMMENDED_MAX_ROWS && (
-            <p className="mt-3 text-xs font-medium leading-relaxed text-amber-800">
-              This batch has {data.rows.length} rows — consider splitting into multiple runs of ≤{ZIP_BATCH_RECOMMENDED_MAX_ROWS}{" "}
-              rows for faster, more reliable downloads.
-            </p>
-          )}
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -743,15 +713,14 @@ export default function InspectionResultsPage() {
             </p>
           )}
           {embedsReady && !autofillApplied && (
-            <p className="mt-4 text-xs leading-relaxed text-slate-600">
-              When ready, click <strong>Auto-fill all measured values</strong>, then <strong>Download all reports as ZIP</strong>.
+            <p className="mt-4 text-xs text-slate-600">
+              Next: <strong>Auto-fill</strong>, then <strong>Download ZIP</strong>.
             </p>
           )}
           {batchMsg && <p className="mt-4 text-sm text-green-700">{batchMsg}</p>}
           {batchErr && <p className="mt-4 text-sm text-red-600">{batchErr}</p>}
           {zipSaveHint && (
-            <p className="mt-4 text-xs leading-relaxed text-slate-700">
-              If the ZIP did not start downloading (some browsers block automatic downloads after a long run),{" "}
+            <p className="mt-4 text-xs text-slate-600">
               <button
                 type="button"
                 className="font-medium text-blue-700 underline"
@@ -760,9 +729,9 @@ export default function InspectionResultsPage() {
                   if (o) triggerBlobDownload(o.blob, o.filename);
                 }}
               >
-                click here to save the ZIP
+                Save the ZIP again
               </button>
-              .
+              {" "}if it didn&apos;t download.
             </p>
           )}
         </section>
@@ -828,10 +797,7 @@ export default function InspectionResultsPage() {
 
       <div ref={previewsSectionRef} className="mt-8 border-t border-slate-200 pt-6">
         <h2 className="text-lg font-semibold text-slate-900">Live FIR previews</h2>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">
-          These panels are the reports used for <strong>Auto-fill all</strong> and <strong>Download ZIP</strong>. After
-          auto-fill, measured values should appear here before you download.
-        </p>
+        <p className="mt-2 text-sm text-slate-600">Previews update when you auto-fill; they are used to build the ZIP.</p>
         <div className="mt-6 space-y-10">
           {data.rows.map((r, i) => {
             const partNo = String(r["Part Number"] ?? "").trim();
