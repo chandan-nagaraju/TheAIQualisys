@@ -193,14 +193,15 @@ def preview_fir_intelligence_batch(
         )
 
     unique_needed = list(dict.fromkeys(valid_uids))  # preserve order, unique
-    existing_db = set(
-        db.scalars(
+    existing_db = {
+        row[0]
+        for row in db.execute(
             select(FirReportEvent.event_uid).where(
                 FirReportEvent.company_id == company_id,
                 FirReportEvent.event_uid.in_(unique_needed),
             )
         ).all()
-    )
+    }
 
     seen_in_batch: set[str] = set()
     prospective_new = 0

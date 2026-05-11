@@ -67,5 +67,7 @@ def apply_sql_migrations(engine: Engine, backend_root: Path) -> None:
         with engine.begin() as conn:
             conn.exec_driver_sql(f"SET LOCAL statement_timeout = {timeout_ms}")
             conn.exec_driver_sql(body)
-            stmt = text("INSERT INTO schema_migrations (filename) VALUES (:filename)").bindparams(filename=name)
-            conn.execute(stmt)
+            conn.execute(
+                text("INSERT INTO schema_migrations (filename) VALUES (:filename)"),
+                {"filename": name},
+            )

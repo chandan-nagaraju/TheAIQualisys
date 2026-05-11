@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
             await asyncio.to_thread(_sync_lifespan_heavy, settings)
         except Exception as e:
             logger.exception("Background startup (migrations / seed) failed")
-            app.state.startup_error = str(e)[:2000]
+            app.state.startup_error = f"{type(e).__name__}: {e}"[:4000]
             return
         app.state.startup_complete = True
 
