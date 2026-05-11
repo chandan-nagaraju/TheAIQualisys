@@ -41,7 +41,11 @@ from app.deps import (
     get_db_session,
     impersonated_by_admin_from_request,
 )
-from app.fir_excel import enrich_rows_with_parts, parse_invoice_excel
+from app.fir_intelligence_ingest import (
+    ingest_fir_intelligence_rows,
+    parse_row_for_intelligence,
+    preview_fir_intelligence_batch,
+)
 from app.fir_part_excel import build_part_master_template_xlsx, parse_parts_excel_to_bundle_dict
 from app.part_field_validation import sanitize_part_master_alnum_upper
 from app.subscription_logic import (
@@ -59,7 +63,6 @@ from app.models import (
     CompanySettings,
     CompanyUser,
     Customer,
-    FirReportEvent,
     PartCoatingV2,
     PartComplaintV2,
     PartMaterialV2,
@@ -1409,6 +1412,7 @@ async def upload_invoice(ws: WsContext = Depends(get_ws), invoice_file: UploadFi
 
 class EnrichBody(BaseModel):
     rows: list[dict[str, Any]]
+    source_file: str | None = None
 
 
 @router.post("/inspection/enrich")
@@ -1446,6 +1450,20 @@ def inspection_enrich(body: EnrichBody, ws: WsContext = Depends(get_ws)):
     }
 
 
+@router.post("/inspection/preview-fir-intelligence")
+def inspection_preview_fir_intelligence(body: EnrichBody, ws: WsContext = Depends(get_ws)):
+    """Predict new vs duplicate intelligence rows (same logic as record-reports) for quota UI."""
+    rows_in = body.rows or []
+    parsed = [parse_row_for_intelligence(r, company_id=ws.company.id) for r in rows_in]
+    prev = preview_fir_intelligence_batch(ws.db, company_id=ws.company.id, parsed=parsed)
+    return {
+        "rows_total": prev.rows_total,
+        "rows_invalid": prev.rows_invalid,
+        "prospective_new_intelligence_records": prev.prospective_new,
+        "prospective_duplicate_intelligence_records": prev.prospective_duplicates,
+    }
+
+
 @router.get("/inspection/fir-quota")
 def inspection_fir_quota(
     n: int = 0,
@@ -1479,47 +1497,42 @@ def inspection_fir_quota(
 
 @router.post("/inspection/record-reports")
 def inspection_record_reports(body: EnrichBody, ws: WsContext = Depends(get_ws)):
-    """Persist one ledger row per FIR included in a batch (e.g. after ZIP). Counts toward monthly usage."""
+    """Persist deduplicated FIR intelligence events after a batch download. FIR PDFs always succeed independently."""
     settings = get_settings()
     today = billing_today()
     rows_in = body.rows or []
-    normalized: list[tuple[str, str | None]] = []
-    for row in rows_in:
-        pn = str(row.get("Part Number") or row.get("part_number") or "").strip()
-        inv_raw = row.get("Invoice Number")
-        if inv_raw is None:
-            inv_raw = row.get("invoice_number")
-        inv = str(inv_raw).strip() if inv_raw is not None and str(inv_raw).strip() else None
-        if not pn:
-            raise HTTPException(status_code=400, detail="Each row must include Part Number")
-        normalized.append((pn, inv))
+    parsed = [parse_row_for_intelligence(r, company_id=ws.company.id) for r in rows_in]
+    prev = preview_fir_intelligence_batch(ws.db, company_id=ws.company.id, parsed=parsed)
+    prospective_new = prev.prospective_new
 
-    n = len(normalized)
     ok, msg = can_record_fir_reports(
-        ws.db, ws.company, n=n, enable_subscription=settings.enable_subscription, today=today
+        ws.db, ws.company, n=prospective_new, enable_subscription=settings.enable_subscription, today=today
     )
     if not ok:
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=msg or "Usage limit exceeded")
 
     cust_id = ws.customer.id if ws.customer else None
-    for pn, inv in normalized:
-        ws.db.add(
-            FirReportEvent(
-                company_id=ws.company.id,
-                customer_id=cust_id,
-                part_no=pn,
-                invoice_no=inv,
-            )
-        )
+    summary = ingest_fir_intelligence_rows(
+        ws.db,
+        company_id=ws.company.id,
+        customer_id=cust_id,
+        rows=rows_in,
+        source_file=body.source_file,
+    )
     ws.db.commit()
 
     combined = count_combined_usage_this_month(ws.db, ws.company.id, today)
     return {
-        "recorded": n,
+        "rows_processed": summary.rows_total,
+        "rows_invalid": summary.rows_invalid,
+        "new_intelligence_records": summary.new_records,
+        "duplicate_intelligence_records": summary.duplicate_records,
+        "fir_reports_generated": summary.reports_generated,
         "invoices_this_month": count_invoices_this_month(ws.db, ws.company.id, today),
         "fir_reports_this_month": count_fir_reports_this_month(ws.db, ws.company.id, today),
         "usage_this_month": combined,
         "usage_limit": plan_invoice_limit(ws.db, ws.company.plan_type),
+        "recorded": summary.new_records,
     }
 
 

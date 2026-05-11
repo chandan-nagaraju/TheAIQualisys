@@ -27,6 +27,43 @@ type FirQuota = {
   would_remain_after_n: number | null;
 };
 
+type FirIntelPreview = {
+  rows_total: number;
+  rows_invalid: number;
+  prospective_new_intelligence_records: number;
+  prospective_duplicate_intelligence_records: number;
+};
+
+type RecordReportsRes = {
+  rows_processed: number;
+  rows_invalid: number;
+  new_intelligence_records: number;
+  duplicate_intelligence_records: number;
+  fir_reports_generated: number;
+  recorded: number;
+  invoices_this_month: number;
+  fir_reports_this_month: number;
+  usage_this_month: number;
+  usage_limit: number | null;
+};
+
+async function fetchFirQuotaUsingIntelPreview(
+  rows: Row[],
+  sourceFile: string | null | undefined,
+): Promise<FirQuota> {
+  try {
+    const preview = await workspaceFetch<FirIntelPreview>("/api/app/inspection/preview-fir-intelligence", {
+      method: "POST",
+      body: JSON.stringify({ rows, source_file: sourceFile ?? null }),
+    });
+    return workspaceFetch<FirQuota>(
+      `/api/app/inspection/fir-quota?n=${preview.prospective_new_intelligence_records}`,
+    );
+  } catch {
+    return workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${rows.length}`);
+  }
+}
+
 type FirPreviewApi = {
   ready?: boolean;
   waitForAssets?: () => Promise<void>;
@@ -202,7 +239,7 @@ function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: s
 export default function InspectionResultsPage() {
   const loc = useLocation();
   const nav = useNavigate();
-  const st = loc.state as { rows: Record<string, unknown>[] } | null;
+  const st = loc.state as { rows: Row[]; filename?: string } | null;
   const [data, setData] = useState<EnrichRes | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const iframeRefs = useRef<(HTMLIFrameElement | null)[]>([]);
@@ -259,11 +296,18 @@ export default function InspectionResultsPage() {
       setFirQuota(null);
       return;
     }
-    const n = data.rows.length;
-    workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`)
-      .then(setFirQuota)
-      .catch(() => setFirQuota(null));
-  }, [data?.rows]);
+    let cancelled = false;
+    fetchFirQuotaUsingIntelPreview(data.rows, st?.filename)
+      .then((q) => {
+        if (!cancelled) setFirQuota(q);
+      })
+      .catch(() => {
+        if (!cancelled) setFirQuota(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.rows, st?.filename]);
 
   const previewUrls = useMemo(() => {
     if (!data?.rows.length) return [];
@@ -387,7 +431,7 @@ export default function InspectionResultsPage() {
       pct: 0,
     });
     try {
-      const q = await workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`);
+      const q = await fetchFirQuotaUsingIntelPreview(data.rows, st?.filename);
       if (!q.allowed_for_n) {
         throw new Error(q.message || "Not allowed to record this many FIR reports under your plan.");
       }
@@ -558,15 +602,11 @@ export default function InspectionResultsPage() {
       setZipSaveHint(true);
       triggerBlobDownload(blob, zipName);
 
+      let intelSummary: RecordReportsRes;
       try {
-        await workspaceFetch<{
-          recorded: number;
-          usage_this_month: number;
-          usage_limit: number | null;
-          fir_reports_this_month: number;
-        }>("/api/app/inspection/record-reports", {
+        intelSummary = await workspaceFetch<RecordReportsRes>("/api/app/inspection/record-reports", {
           method: "POST",
-          body: JSON.stringify({ rows: data.rows }),
+          body: JSON.stringify({ rows: data.rows, source_file: st?.filename ?? null }),
         });
       } catch (recErr) {
         setBatchErr(
@@ -579,7 +619,7 @@ export default function InspectionResultsPage() {
           ? ` ${largePdfCount} PDF(s) exceeded the ~200 KB size target (still included).`
           : "";
       try {
-        const q2 = await workspaceFetch<FirQuota>(`/api/app/inspection/fir-quota?n=${n}`);
+        const q2 = await fetchFirQuotaUsingIntelPreview(data.rows, st?.filename);
         setFirQuota(q2);
       } catch {
         setFirQuota(null);
@@ -588,7 +628,8 @@ export default function InspectionResultsPage() {
         );
         return;
       }
-      setBatchMsg(`ZIP download started. Check your downloads folder.${sizeNote}`);
+      const intelLine = `${intelSummary.rows_processed} rows processed · ${intelSummary.new_intelligence_records} new intelligence records · ${intelSummary.duplicate_intelligence_records} duplicates skipped · ${intelSummary.fir_reports_generated} FIR reports logged for usage.`;
+      setBatchMsg(`${intelLine}${sizeNote}`);
     } catch (e) {
       setZipSaveHint(false);
       lastZipOfferRef.current = null;
@@ -597,7 +638,7 @@ export default function InspectionResultsPage() {
       setZipping(false);
       setZipProgress(null);
     }
-  }, [data]);
+  }, [data, st?.filename]);
 
   function openPreview(r: Row) {
     if (!data) return;

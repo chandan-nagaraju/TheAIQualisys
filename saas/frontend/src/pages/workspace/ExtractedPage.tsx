@@ -168,7 +168,7 @@ export default function ExtractedPage() {
               : "mt-6 cursor-not-allowed rounded bg-slate-400 px-4 py-2 text-sm text-white"
             : continueBtnClass
         }
-        onClick={() => nav("/workspace/inspection", { state: { rows: displayRows, columns } })}
+        onClick={() => nav("/workspace/inspection", { state: { rows: displayRows, columns, filename: st.filename } })}
       >
         Continue to inspection
       </button>

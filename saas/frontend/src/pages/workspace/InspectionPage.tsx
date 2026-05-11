@@ -41,7 +41,7 @@ export default function InspectionPage() {
     e.preventDefault();
     const picked = rows.filter((_, i) => sel.has(i));
     const finalRows = picked.length ? picked : rows;
-    nav("/workspace/inspection/results", { state: { rows: finalRows } });
+    nav("/workspace/inspection/results", { state: { rows: finalRows, filename: st.filename } });
   }
 
   return (

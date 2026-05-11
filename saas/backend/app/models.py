@@ -60,6 +60,9 @@ class Company(Base):
     fir_report_events: Mapped[list["FirReportEvent"]] = relationship(
         "FirReportEvent", back_populates="company", cascade="all, delete-orphan"
     )
+    fir_upload_logs: Mapped[list["FirUploadLog"]] = relationship(
+        "FirUploadLog", back_populates="company", cascade="all, delete-orphan"
+    )
 
 
 class CompanyUser(Base):
@@ -192,9 +195,10 @@ class Customer(Base):
 
 
 class FirReportEvent(Base):
-    """One row per FIR PDF/report generated from inspection batch (ZIP or future flows)."""
+    """Unique business event per invoice line (deduped via event_uid) for FIR Intelligence analytics."""
 
-    __tablename__ = "fir_report_events"
+    __tablename__ = "fir_events"
+    __table_args__ = (UniqueConstraint("event_uid", name="fir_events_event_uid_unique"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(
@@ -205,12 +209,36 @@ class FirReportEvent(Base):
     )
     part_no: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     invoice_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    event_uid: Mapped[str] = mapped_column(String(64), nullable=False)
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    quantity: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_file: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
 
     company: Mapped[Company] = relationship("Company", back_populates="fir_report_events")
     customer: Mapped[Customer | None] = relationship("Customer", back_populates="fir_report_events")
+
+
+class FirUploadLog(Base):
+    """Optional per-upload summary for FIR Intelligence ingestion."""
+
+    __tablename__ = "fir_upload_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    file_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    rows_processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    new_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duplicate_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reports_generated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    company: Mapped[Company] = relationship("Company", back_populates="fir_upload_logs")
 
 
 class CompanySettings(Base):

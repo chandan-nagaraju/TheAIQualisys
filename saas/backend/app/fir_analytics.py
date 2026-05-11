@@ -85,7 +85,11 @@ def build_fir_intelligence(db: Session, company_id: int, today: date | None = No
         if not pn:
             continue
         cid = ev.customer_id
-        by_key[(cid, pn)].append(_utc_date(ev.created_at))
+        if ev.invoice_date is not None:
+            evday = ev.invoice_date
+        else:
+            evday = _utc_date(ev.created_at)
+        by_key[(cid, pn)].append(evday)
 
     rhythm_counts: dict[str, int] = defaultdict(int)
     repeated_groups = 0
