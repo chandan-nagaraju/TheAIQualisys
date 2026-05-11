@@ -1196,13 +1196,13 @@ def import_part_master(body: PartMasterImportBody, ws: WsContext = Depends(get_w
     )
     pn = slice_body.part.part_no
     cust = _get_customer_for_part_upsert(ws, None)
-    existing = ws.db.execute(
+    existing = ws.db.scalars(
         select(PartV2.part_no).where(
             PartV2.company_id == ws.company.id,
             PartV2.customer_id == cust.id,
         )
     ).all()
-    existing_sanitized = {sanitize_part_master_alnum_upper(r[0]) for r in existing}
+    existing_sanitized = {sanitize_part_master_alnum_upper(r) for r in existing}
     existing_sanitized.discard("")
     if pn in existing_sanitized:
         raise HTTPException(
@@ -1225,13 +1225,13 @@ def import_part_bundle(body: PartMasterBundleBody, ws: WsContext = Depends(get_w
     if not body.parts:
         raise HTTPException(status_code=400, detail="parts array is empty")
     cust = _get_customer_for_part_upsert(ws, None)
-    existing_rows = ws.db.execute(
+    existing_rows = ws.db.scalars(
         select(PartV2.part_no).where(
             PartV2.company_id == ws.company.id,
             PartV2.customer_id == cust.id,
         )
     ).all()
-    existing_sanitized = {sanitize_part_master_alnum_upper(r[0]) for r in existing_rows}
+    existing_sanitized = {sanitize_part_master_alnum_upper(r) for r in existing_rows}
     existing_sanitized.discard("")
     conflicts: list[str] = []
     for sl in body.parts:
@@ -1447,13 +1447,13 @@ def inspection_enrich(body: EnrichBody, ws: WsContext = Depends(get_ws)):
         select(PartV2.id, PartV2.part_no, PartV2.drawing_rev, PartV2.customer_id, PartV2.description).where(
             PartV2.company_id == ws.company.id
         )
-    ).all()
+    ).fetchall()
     part_rows = [(str(pno).strip(), dr, pid, cid, desc) for pid, pno, dr, cid, desc in parts]
     counts = {
         r[0]: r[1]
         for r in ws.db.execute(
             select(PartSpecV2.part_id, func.count(PartSpecV2.id)).group_by(PartSpecV2.part_id)
-        ).all()
+        ).fetchall()
     }
     enriched = enrich_rows_with_parts(
         body.rows,

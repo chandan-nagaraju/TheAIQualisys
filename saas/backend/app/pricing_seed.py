@@ -133,9 +133,8 @@ def ensure_module_pricing_seeded(db: Session) -> None:
     backfill_listing_active_column(db)
     # Backfill missing defaults even if some rows already exist.
     # Older deployments can have partial data after incremental releases.
-    # Use row tuples, not set(scalars().all()) — some SQLAlchemy/psycopg builds raise
-    # "immutabledict is not a sequence" when mixing ScalarResult with set().
-    existing = {row[0] for row in db.execute(select(ModulePricing.module_name)).all()}
+    # Prefer scalars(): ResultRow indexing + set() hit immutabledict errors on some SQLAlchemy/psycopg2 combos.
+    existing = set(db.scalars(select(ModulePricing.module_name)).all())
     missing = [kwargs for kwargs in _DEFAULT_ROWS if kwargs["module_name"] not in existing]
     if not missing:
         return

@@ -3,13 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from sqlalchemy import column, table, text
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
-
-_SCHEMA_MIGRATIONS_TBL = table(
-    "schema_migrations",
-    column("filename"),
-)
 
 _MIGRATION_STATEMENT_TIMEOUT_MS = 60_000
 # 009_fir_events_intelligence can run heavy backfill + dedupe; 60s often kills production deploys.
@@ -72,4 +67,8 @@ def apply_sql_migrations(engine: Engine, backend_root: Path) -> None:
         with engine.begin() as conn:
             conn.exec_driver_sql(f"SET LOCAL statement_timeout = {timeout_ms}")
             conn.exec_driver_sql(body)
-            conn.execute(_SCHEMA_MIGRATIONS_TBL.insert().values(filename=name))
+            # Bound INSERT: Core insert().values() triggered immutabledict errors on some deployments.
+            conn.execute(
+                text("INSERT INTO schema_migrations (filename) VALUES (:filename)"),
+                {"filename": name},
+            )
