@@ -62,7 +62,9 @@ function computeCaptureTopPx(anchor: HTMLElement | null, iframeHeight: number): 
 /**
  * Browsers throttle html2pdf/html2canvas inside cross-origin iframes far from the viewport.
  * Lift the active iframe with `position: fixed` at `viewportTopPx` (see computeCaptureTopPx), same
- * pixel size as in-layout. Stack: mask z-150, main column z-220 (title + tools + table), capture iframe z-240.
+ * pixel size as in-layout. Stack: mask z-150, main column z-220, capture iframe z-240.
+ * Nearly invisible opacity on the iframe keeps the page clear for the user; html2pdf runs inside the
+ * iframe document (DOM clone), so PDF pixels are not driven by this outer opacity.
  */
 async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportTopPx: number): Promise<() => void> {
   if (!f) return () => {};
@@ -87,6 +89,8 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportT
     maxWidth: f.style.maxWidth,
     zIndex: f.style.zIndex,
     pointerEvents: f.style.pointerEvents,
+    opacity: f.style.opacity,
+    boxShadow: f.style.boxShadow,
   };
 
   f.style.position = "fixed";
@@ -99,6 +103,9 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportT
   /** Above main column (z-220) so the iframe is not fully covered by the opaque tools/table stack. */
   f.style.zIndex = "240";
   f.style.pointerEvents = "none";
+  /* ~4%: keeps layout readable to the compositor; barely visible over the slate mask */
+  f.style.opacity = "0.04";
+  f.style.boxShadow = "none";
 
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => {
@@ -117,6 +124,10 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportT
     f.style.maxWidth = prevStyle.maxWidth;
     f.style.zIndex = prevStyle.zIndex;
     f.style.pointerEvents = prevStyle.pointerEvents;
+    if (prevStyle.opacity) f.style.opacity = prevStyle.opacity;
+    else f.style.removeProperty("opacity");
+    if (prevStyle.boxShadow) f.style.boxShadow = prevStyle.boxShadow;
+    else f.style.removeProperty("box-shadow");
   };
 }
 
