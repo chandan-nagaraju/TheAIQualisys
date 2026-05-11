@@ -43,11 +43,26 @@ const ZIP_BATCH_RECOMMENDED_MAX_ROWS = 100;
 /** Cross-origin PDF waits (html2pdf); large pages can be slow */
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
+/** Where to pin the fixed capture iframe (px). If previews sit far below the fold, browsers throttle PDF → 0/n. */
+function computeCaptureTopPx(anchor: HTMLElement | null, iframeHeight: number): number {
+  const vh = window.innerHeight;
+  let topPx = anchor ? Math.max(0, Math.floor(anchor.getBoundingClientRect().top)) : Math.max(0, Math.floor(vh * 0.08));
+  const bottom = topPx + iframeHeight;
+  /* Anchor is mostly off-screen below */
+  if (topPx > vh * 0.92) {
+    topPx = Math.max(0, Math.floor(vh * 0.08));
+  }
+  /* Iframe would sit almost entirely above the viewport */
+  if (bottom < 48) {
+    topPx = Math.max(0, Math.floor(vh * 0.08));
+  }
+  return topPx;
+}
+
 /**
  * Browsers throttle html2pdf/html2canvas inside cross-origin iframes far from the viewport.
- * Lift the active iframe with `position: fixed` at `viewportTopPx` (top of “Live FIR previews”), same
- * pixel size as in-layout. Stack: mask z-150, parts table z-200, capture iframe z-210 (above opaque table
- * or PDF stalls), Batch FIR chrome z-220 (progress always on top).
+ * Lift the active iframe with `position: fixed` at `viewportTopPx` (see computeCaptureTopPx), same
+ * pixel size as in-layout. Stack: mask z-150, main column z-220 (title + tools + table), capture iframe z-240.
  */
 async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportTopPx: number): Promise<() => void> {
   if (!f) return () => {};
@@ -81,8 +96,8 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportT
   f.style.width = `${w}px`;
   f.style.height = `${h}px`;
   f.style.maxWidth = "none";
-  /** z-210: above parts table (200) + slate mask (150); below Batch FIR chrome (220). */
-  f.style.zIndex = "210";
+  /** Above main column (z-220) so the iframe is not fully covered by the opaque tools/table stack. */
+  f.style.zIndex = "240";
   f.style.pointerEvents = "none";
 
   await new Promise<void>((resolve) => {
@@ -348,6 +363,11 @@ export default function InspectionResultsPage() {
     lastZipOfferRef.current = null;
     pdfDurationsRef.current = [];
     setZipping(true);
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    } catch {
+      window.scrollTo(0, 0);
+    }
     const n = data.rows.length;
     setZipProgress({
       current: 0,
@@ -407,8 +427,9 @@ export default function InspectionResultsPage() {
       async function runOne(i: number) {
         const f = iframeRefs.current[i];
         if (!f?.contentWindow) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
-        const anchor = previewsSectionRef.current;
-        const viewportTopPx = anchor ? Math.max(0, Math.floor(anchor.getBoundingClientRect().top)) : 0;
+        const preRect = f.getBoundingClientRect();
+        const iframeH = Math.max(1, Math.round(preRect.height));
+        const viewportTopPx = computeCaptureTopPx(previewsSectionRef.current, iframeH);
         const restoreCaptureLayout = await prepareIframeForPdfCapture(f, viewportTopPx);
         try {
           let api: FirPreviewApi | null = null;
@@ -602,183 +623,191 @@ export default function InspectionResultsPage() {
   const cust = data.customer;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      {/* Full slate behind chrome + table; z-150. Iframe capture z-210; table z-200; chrome z-220. */}
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       {zipping && (
-        <div className="pointer-events-none fixed inset-0 z-[150] bg-slate-100" aria-hidden />
-      )}
-      <div
-        className={`relative z-[220] isolate bg-white ${zipping ? "sticky top-0 shadow-[0_4px_14px_rgba(0,0,0,0.08)] ring-1 ring-slate-200/90" : ""}`}
-      >
-      <h1 className="text-xl font-semibold text-slate-900">Inspection results</h1>
-      {cust && (
-        <p className="mt-1 text-sm text-slate-600">
-          Vendor: <span className="font-mono">{cust.vendor_code}</span> — {cust.name}
-        </p>
+        <div
+          className="pointer-events-none fixed inset-0 z-[150] bg-slate-100"
+          aria-hidden
+        />
       )}
 
-      <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
-        <h2 className="text-sm font-semibold text-slate-800">Batch FIR tools</h2>
-        {firQuota && (
-          <p className="mt-2 text-xs text-slate-700">
-            <strong>Usage (billing)</strong>: {firQuota.usage_this_month}
-            {firQuota.usage_limit != null ? ` / ${firQuota.usage_limit}` : " (unlimited)"} this month — v2 invoices{" "}
-            {firQuota.invoices_this_month} + FIR reports {firQuota.fir_reports_this_month} (same monthly cap).{" "}
-            {firQuota.usage_limit != null &&
-              firQuota.would_remain_after_n != null &&
-              firQuota.allowed_for_n && (
-                <span>
-                  After this ZIP: <strong>{firQuota.would_remain_after_n}</strong> slot(s) left.
-                </span>
+      <div className="relative z-[220] isolate space-y-5">
+        <header className="space-y-1.5">
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">Inspection results</h1>
+          {cust && (
+            <p className="text-sm text-slate-600">
+              Vendor: <span className="font-mono">{cust.vendor_code}</span> — {cust.name}
+            </p>
+          )}
+        </header>
+
+        <section className="rounded-xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-800">Batch FIR tools</h2>
+          {firQuota && (
+            <p className="mt-3 text-xs leading-relaxed text-slate-700">
+              <strong>Usage (billing)</strong>: {firQuota.usage_this_month}
+              {firQuota.usage_limit != null ? ` / ${firQuota.usage_limit}` : " (unlimited)"} this month — v2 invoices{" "}
+              {firQuota.invoices_this_month} + FIR reports {firQuota.fir_reports_this_month} (same monthly cap).{" "}
+              {firQuota.usage_limit != null &&
+                firQuota.would_remain_after_n != null &&
+                firQuota.allowed_for_n && (
+                  <span>
+                    After this ZIP: <strong>{firQuota.would_remain_after_n}</strong> slot(s) left.
+                  </span>
+                )}
+              {!firQuota.allowed_for_n && firQuota.message && (
+                <span className="mt-1 block text-amber-800">{firQuota.message}</span>
               )}
-            {!firQuota.allowed_for_n && firQuota.message && (
-              <span className="mt-1 block text-amber-800">{firQuota.message}</span>
-            )}
+            </p>
+          )}
+          <p className="mt-3 text-xs leading-relaxed text-slate-600">
+            Each row has a <strong>live FIR preview</strong> below. Run <strong>Auto-fill all</strong>, then{" "}
+            <strong>Download all reports as ZIP</strong>. For reliability, use about{" "}
+            <strong>{ZIP_BATCH_RECOMMENDED_MAX_ROWS} or fewer</strong> rows per batch (team guideline).{" "}
+            <strong>Preview FIR</strong> opens a <em>new</em> tab.
           </p>
-        )}
-        <p className="mt-1 text-xs text-slate-600">
-          Each row has a <strong>live FIR preview</strong> below. Run <strong>Auto-fill all</strong>, then{" "}
-          <strong>Download all reports as ZIP</strong>. For reliability, use about{" "}
-          <strong>{ZIP_BATCH_RECOMMENDED_MAX_ROWS} or fewer</strong> rows per batch (team guideline).{" "}
-          <strong>Preview FIR</strong> opens a <em>new</em> tab.
-        </p>
-        {data.rows.length > ZIP_BATCH_RECOMMENDED_MAX_ROWS && (
-          <p className="mt-2 text-xs font-medium text-amber-800">
-            This batch has {data.rows.length} rows — consider splitting into multiple runs of ≤{ZIP_BATCH_RECOMMENDED_MAX_ROWS}{" "}
-            rows for faster, more reliable downloads.
-          </p>
-        )}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={!embedsReady || zipping}
-            className="rounded px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-            style={{ backgroundColor: embedsReady && !zipping ? "#17a2b8" : undefined }}
-            onClick={runAutofillAll}
-          >
-            Auto-fill all measured values
-          </button>
-          <button
-            type="button"
-            disabled={!autofillApplied || zipping || (firQuota != null && !firQuota.allowed_for_n)}
-            className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-            aria-busy={zipping}
-            onClick={() => void downloadAllZip()}
-          >
-            {zipping ? "Building ZIP…" : "Download all reports as ZIP"}
-          </button>
-        </div>
-        {zipProgress && (
-          <div className="mt-3 rounded-md border border-slate-200 bg-white p-3" role="status" aria-live="polite">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700">
-              <span className="font-medium">{zipProgress.label}</span>
-              {zipProgress.etaSec != null && zipProgress.current < zipProgress.total ? (
-                <span className="text-slate-600">About {zipProgress.etaSec}s remaining</span>
-              ) : null}
-            </div>
-            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
-              <div
-                className="h-full rounded-full bg-green-600 transition-[width] duration-200"
-                style={{ width: `${zipProgress.pct}%` }}
-              />
-            </div>
-          </div>
-        )}
-        {!embedsReady && !embedWaitTimedOut && (
-          <p className="mt-2 text-xs text-amber-800">Loading FIR previews below…</p>
-        )}
-        {embedWaitTimedOut && !embedsReady && (
-          <p className="mt-2 text-xs text-red-700">
-            Some previews did not become ready (invalid part data or network). You can still use <strong>Preview FIR</strong>{" "}
-            per row.
-          </p>
-        )}
-        {embedsReady && !autofillApplied && (
-          <p className="mt-2 text-xs text-slate-600">
-            When ready, click <strong>Auto-fill all measured values</strong>, then <strong>Download all reports as ZIP</strong>.
-          </p>
-        )}
-        {batchMsg && <p className="mt-2 text-sm text-green-700">{batchMsg}</p>}
-        {batchErr && <p className="mt-2 text-sm text-red-600">{batchErr}</p>}
-        {zipSaveHint && (
-          <p className="mt-2 text-xs text-slate-700">
-            If the ZIP did not start downloading (some browsers block automatic downloads after a long run),{" "}
+          {data.rows.length > ZIP_BATCH_RECOMMENDED_MAX_ROWS && (
+            <p className="mt-3 text-xs font-medium leading-relaxed text-amber-800">
+              This batch has {data.rows.length} rows — consider splitting into multiple runs of ≤{ZIP_BATCH_RECOMMENDED_MAX_ROWS}{" "}
+              rows for faster, more reliable downloads.
+            </p>
+          )}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
-              className="font-medium text-blue-700 underline"
-              onClick={() => {
-                const o = lastZipOfferRef.current;
-                if (o) triggerBlobDownload(o.blob, o.filename);
-              }}
+              disabled={!embedsReady || zipping}
+              className="rounded-lg px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+              style={{ backgroundColor: embedsReady && !zipping ? "#17a2b8" : undefined }}
+              onClick={runAutofillAll}
             >
-              click here to save the ZIP
+              Auto-fill all measured values
             </button>
-            .
-          </p>
-        )}
-      </div>
-      </div>
-
-      <div
-        className={`mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow duration-300 ${
-          zipping ? "relative z-[200] shadow-lg ring-2 ring-green-500/20" : ""
-        }`}
-      >
-        {zipping && (
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-4 py-2.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">Parts in this batch</span>
-            <span className="font-mono text-xs tabular-nums text-slate-500">
-              {zipProgress ? `PDF ${zipProgress.current}/${zipProgress.total}` : "Starting…"}
-            </span>
+            <button
+              type="button"
+              disabled={!autofillApplied || zipping || (firQuota != null && !firQuota.allowed_for_n)}
+              className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              aria-busy={zipping}
+              onClick={() => void downloadAllZip()}
+            >
+              {zipping ? "Building ZIP…" : "Download all reports as ZIP"}
+            </button>
           </div>
-        )}
-        <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse text-sm">
-          <thead>
-            <tr className={`bg-slate-100 ${zipping ? "text-slate-800" : ""}`}>
-              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Part Number</th>
-              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Description</th>
-              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Draw Rev</th>
-              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Qty</th>
-              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Invoice</th>
-              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Sample</th>
-              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Params</th>
-              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">FIR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map((r, i) => (
-              <tr
-                key={i}
-                className={zipping && i % 2 === 1 ? "bg-slate-50/90" : zipping ? "bg-white" : ""}
+          {zipProgress && (
+            <div
+              className="mt-5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700">
+                <span className="font-medium">{zipProgress.label}</span>
+                {zipProgress.etaSec != null && zipProgress.current < zipProgress.total ? (
+                  <span className="text-slate-600">About {zipProgress.etaSec}s remaining</span>
+                ) : null}
+              </div>
+              <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-green-600 transition-[width] duration-200"
+                  style={{ width: `${zipProgress.pct}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {!embedsReady && !embedWaitTimedOut && (
+            <p className="mt-4 text-xs text-amber-800">Loading FIR previews below…</p>
+          )}
+          {embedWaitTimedOut && !embedsReady && (
+            <p className="mt-4 text-xs leading-relaxed text-red-700">
+              Some previews did not become ready (invalid part data or network). You can still use <strong>Preview FIR</strong>{" "}
+              per row.
+            </p>
+          )}
+          {embedsReady && !autofillApplied && (
+            <p className="mt-4 text-xs leading-relaxed text-slate-600">
+              When ready, click <strong>Auto-fill all measured values</strong>, then <strong>Download all reports as ZIP</strong>.
+            </p>
+          )}
+          {batchMsg && <p className="mt-4 text-sm text-green-700">{batchMsg}</p>}
+          {batchErr && <p className="mt-4 text-sm text-red-600">{batchErr}</p>}
+          {zipSaveHint && (
+            <p className="mt-4 text-xs leading-relaxed text-slate-700">
+              If the ZIP did not start downloading (some browsers block automatic downloads after a long run),{" "}
+              <button
+                type="button"
+                className="font-medium text-blue-700 underline"
+                onClick={() => {
+                  const o = lastZipOfferRef.current;
+                  if (o) triggerBlobDownload(o.blob, o.filename);
+                }}
               >
-                <td className="border border-slate-200 px-2 py-1.5">{String(r["Part Number"] ?? "")}</td>
-                <td className="border border-slate-200 px-2 py-1.5">{String(r["Description"] ?? "")}</td>
-                <td className="border border-slate-200 px-2 py-1.5">{String(r.draw_rev ?? "")}</td>
-                <td className="border border-slate-200 px-2 py-1.5">{String(r["Quantity"] ?? "")}</td>
-                <td className="border border-slate-200 px-2 py-1.5">{String(r["Invoice Number"] ?? "")}</td>
-                <td className="border border-slate-200 px-2 py-1.5">{String(r.sample_size ?? "")}</td>
-                <td className="border border-slate-200 px-2 py-1.5">{String(r.num_params ?? "")}</td>
-                <td className="border border-slate-200 px-2 py-1.5">
-                  <button
-                    type="button"
-                    className="text-blue-700 underline"
-                    title="New tab = fresh report. Batch auto-fill only updates the embedded previews below."
-                    onClick={() => openPreview(r)}
-                  >
-                    Preview FIR (new tab)
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+                click here to save the ZIP
+              </button>
+              .
+            </p>
+          )}
+        </section>
+
+        <section
+          className={`overflow-hidden rounded-xl border border-slate-200 bg-white ${
+            zipping ? "shadow-md ring-2 ring-green-500/15" : ""
+          }`}
+        >
+          {zipping && (
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-4 py-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Parts in this batch
+              </span>
+              <span className="font-mono text-xs tabular-nums text-slate-500">
+                {zipProgress ? `PDF ${zipProgress.current}/${zipProgress.total}` : "Starting…"}
+              </span>
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-100 text-slate-800">
+                  <th className="border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold">
+                    Part Number
+                  </th>
+                  <th className="border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold">Description</th>
+                  <th className="border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold">Draw Rev</th>
+                  <th className="border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold">Qty</th>
+                  <th className="border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold">Invoice</th>
+                  <th className="border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold">Sample</th>
+                  <th className="border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold">Params</th>
+                  <th className="border border-slate-200 px-3 py-2.5 text-left text-xs font-semibold">FIR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((r, i) => (
+                  <tr key={i} className={zipping && i % 2 === 1 ? "bg-slate-50/90" : zipping ? "bg-white" : ""}>
+                    <td className="border border-slate-200 px-3 py-2">{String(r["Part Number"] ?? "")}</td>
+                    <td className="border border-slate-200 px-3 py-2">{String(r["Description"] ?? "")}</td>
+                    <td className="border border-slate-200 px-3 py-2">{String(r.draw_rev ?? "")}</td>
+                    <td className="border border-slate-200 px-3 py-2">{String(r["Quantity"] ?? "")}</td>
+                    <td className="border border-slate-200 px-3 py-2">{String(r["Invoice Number"] ?? "")}</td>
+                    <td className="border border-slate-200 px-3 py-2">{String(r.sample_size ?? "")}</td>
+                    <td className="border border-slate-200 px-3 py-2">{String(r.num_params ?? "")}</td>
+                    <td className="border border-slate-200 px-3 py-2">
+                      <button
+                        type="button"
+                        className="text-blue-700 underline"
+                        title="New tab = fresh report. Batch auto-fill only updates the embedded previews below."
+                        onClick={() => openPreview(r)}
+                      >
+                        Preview FIR (new tab)
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
 
-      <div ref={previewsSectionRef} className="mt-10 border-t border-slate-200 pt-8">
+      <div ref={previewsSectionRef} className="mt-8 border-t border-slate-200 pt-6">
         <h2 className="text-lg font-semibold text-slate-900">Live FIR previews</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
           These panels are the reports used for <strong>Auto-fill all</strong> and <strong>Download ZIP</strong>. After
           auto-fill, measured values should appear here before you download.
         </p>
