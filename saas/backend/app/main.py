@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
 from app.config import Settings, get_settings
@@ -20,17 +20,6 @@ from app.routers.workspace import fir_preview as legacy_fir_preview_alias, route
 from app.security import hash_password, verify_password
 
 logger = logging.getLogger(__name__)
-
-
-def _path_allowed_before_db_ready(path: str) -> bool:
-    """Routes that must work during migrations (LB health checks, OpenAPI)."""
-    if path.startswith("/health"):
-        return True
-    if path == "/openapi.json" or path == "/docs" or path == "/redoc":
-        return True
-    if path.startswith("/docs/") or path.startswith("/redoc/"):
-        return True
-    return False
 
 
 def _sync_lifespan_heavy(settings: Settings) -> None:
@@ -100,25 +89,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    @app.middleware("http")
-    async def startup_gate(request: Request, call_next):
-        path = request.url.path
-        if not _path_allowed_before_db_ready(path):
-            complete = getattr(request.app.state, "startup_complete", False)
-            err = getattr(request.app.state, "startup_error", None)
-            if err:
-                return JSONResponse(
-                    status_code=503,
-                    content={"detail": "Service failed during startup (migrations or seed). Check server logs."},
-                )
-            if not complete:
-                return JSONResponse(
-                    status_code=503,
-                    content={"detail": "Service is starting; retry shortly."},
-                    headers={"Retry-After": "3"},
-                )
-        return await call_next(request)
 
     app.include_router(auth.router)
     app.include_router(auth.router, prefix="/api")
