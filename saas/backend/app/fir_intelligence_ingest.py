@@ -67,6 +67,14 @@ def _parse_invoice_date(val: Any) -> date | None:
         return date.fromisoformat(s[:10])
     except ValueError:
         pass
+    # Excel EU-style: 09.05.2026 — treat as invoice date (same semantic as canonical "Date" column).
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$", s)
+    if m:
+        day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            return date(year, month, day)
+        except ValueError:
+            return None
     ts = pd.to_datetime(s, errors="coerce", dayfirst=True)
     if pd.isna(ts):
         ts = pd.to_datetime(s, errors="coerce", dayfirst=False)
@@ -133,10 +141,12 @@ def parse_row_for_intelligence(row: dict[str, Any], *, company_id: int) -> Parse
     if not invoice_no:
         return None
 
+    # Excel / fir_excel canonical column is "Date" — that IS the invoice date for intelligence + FIR.
+    # Prefer it over separate "Invoice Date" / invoice_date keys when multiple exist.
     date_raw = None
-    for k in ("Invoice Date", "invoice_date", "Date", "date"):
-        if k in row:
-            date_raw = row.get(k)
+    for label in ("Date", "date", "Invoice Date", "invoice_date"):
+        if label in row:
+            date_raw = row.get(label)
             break
     invoice_date = _parse_invoice_date(date_raw)
     if invoice_date is None:
