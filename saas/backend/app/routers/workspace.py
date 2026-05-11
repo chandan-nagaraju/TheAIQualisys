@@ -86,10 +86,33 @@ class WsContext:
     customer: Customer | None
 
 
+def _parse_optional_int_header(raw: str | None, *, label: str) -> int | None:
+    """Headers are always strings; empty / whitespace must mean “unset”, not a validation error."""
+    if raw is None:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    try:
+        return int(s)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{label} must be a valid integer",
+        ) from e
+
+
+def optional_customer_id_query(
+    customer_id: Annotated[str | None, Query(default=None)] = None,
+) -> int | None:
+    """Query param can be absent, or present but empty (e.g. ?customer_id=); both mean no filter."""
+    return _parse_optional_int_header(customer_id, label="customer_id")
+
+
 def get_ws(
     user: CompanyUser = Depends(get_company_user_from_token_str),
     db: Session = Depends(get_db_session),
-    x_customer_id: Annotated[int | None, Header(alias="X-Customer-Id")] = None,
+    x_customer_id_header: Annotated[str | None, Header(alias="X-Customer-Id", default=None)] = None,
     admin_impersonation: bool = Depends(impersonated_by_admin_from_request),
 ) -> WsContext:
     settings = get_settings()
@@ -107,6 +130,7 @@ def get_ws(
                 "message": FIR_WORKSPACE_FORBIDDEN_MESSAGE,
             },
         )
+    x_customer_id = _parse_optional_int_header(x_customer_id_header, label="X-Customer-Id")
     cust = None
     if x_customer_id is not None:
         cust = db.execute(
@@ -635,7 +659,7 @@ async def save_settings(
 # --- Parts ---
 @router.get("/parts")
 def list_parts(
-    customer_id: int | None = Query(None),
+    customer_id: int | None = Depends(optional_customer_id_query),
     ws: WsContext = Depends(get_ws),
 ):
     q = select(PartV2).where(PartV2.company_id == ws.company.id)
@@ -1302,7 +1326,7 @@ async def import_part_master_excel(
 
 @router.get("/parts/export-all")
 def export_all_parts_master(
-    customer_id: int | None = Query(None),
+    customer_id: int | None = Depends(optional_customer_id_query),
     ws: WsContext = Depends(get_ws),
 ):
     q = select(PartV2).where(PartV2.company_id == ws.company.id)
