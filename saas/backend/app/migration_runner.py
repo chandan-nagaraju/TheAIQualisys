@@ -29,6 +29,25 @@ def _strip_outer_transaction_directives(sql: str) -> str:
     return s.strip()
 
 
+def _execute_migration_sql_batch(conn, sql: str, *, timeout_ms: int) -> None:
+    """
+    Run a full `.sql` file as one server batch.
+
+    We use the DB-API cursor directly (no SQLAlchemy ``exec_driver_sql`` on the full
+    script).  PL/pgSQL uses ``%`` in ``RAISE NOTICE '... %', var;`` — SQLAlchemy
+    interprets ``%`` as pyformat placeholders for psycopg2 and ends up calling
+    ``cursor.execute(stmt, immutabledict(...))``, which raises
+    ``TypeError: immutabledict is not a sequence``.
+    """
+    dbapi = conn.connection.dbapi_connection
+    cur = dbapi.cursor()
+    try:
+        cur.execute(f"SET LOCAL statement_timeout = {int(timeout_ms)}")
+        cur.execute(sql)
+    finally:
+        cur.close()
+
+
 def apply_sql_migrations(engine: Engine, backend_root: Path) -> None:
     """
     Best-effort SQL migration runner for environments without Alembic.
@@ -65,6 +84,5 @@ def apply_sql_migrations(engine: Engine, backend_root: Path) -> None:
             continue
         timeout_ms = _statement_timeout_ms_for_migration(name)
         with engine.begin() as conn:
-            conn.exec_driver_sql(f"SET LOCAL statement_timeout = {timeout_ms}")
-            conn.exec_driver_sql(body)
+            _execute_migration_sql_batch(conn, body, timeout_ms=timeout_ms)
             conn.exec_driver_sql("INSERT INTO schema_migrations (filename) VALUES (%s)", (name,))
