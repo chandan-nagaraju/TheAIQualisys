@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import JSZip from "jszip";
 import { apiFetch, firPreviewUrl, workspaceFetch } from "../../api";
@@ -45,11 +45,10 @@ const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
 /**
  * Browsers throttle html2pdf/html2canvas inside cross-origin iframes far from the viewport.
- * We lift the active iframe into the viewport with `position: fixed` (same size, no scroll) but keep
- * We lift the active iframe into the viewport with `position: fixed` (same size, no scroll) but keep
- * `z-index` low so a full-screen mask (`z-150`) and Batch FIR tools (`z-200`) hide previews during ZIP.
+ * Lift the active iframe with `position: fixed` at `viewportTopPx` (top of “Live FIR previews”), same
+ * pixel size as in-layout, `z-index` 40. A partial viewport mask (z-150) sits above it; Batch FIR tools (z-200) above that.
  */
-async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<() => void> {
+async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportTopPx: number): Promise<() => void> {
   if (!f) return () => {};
   const parent = f.parentElement as HTMLElement | null;
   if (!parent) return () => {};
@@ -75,13 +74,12 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<
   };
 
   f.style.position = "fixed";
-  f.style.top = "0";
+  f.style.top = `${Math.max(0, viewportTopPx)}px`;
   f.style.left = "0";
   f.style.transform = "none";
   f.style.width = `${w}px`;
   f.style.height = `${h}px`;
   f.style.maxWidth = "none";
-  /** Below Batch FIR tools stack (z-200); keep capture painted in viewport for browsers that throttle off-screen frames */
   f.style.zIndex = "40";
   f.style.pointerEvents = "none";
 
@@ -195,6 +193,26 @@ export default function InspectionResultsPage() {
   } | null>(null);
   const [zipSaveHint, setZipSaveHint] = useState(false);
   const [firEntitled, setFirEntitled] = useState<"loading" | "yes" | "no">("loading");
+  /** Top edge (viewport px) for partial mask + iframe capture — hides only “Live FIR previews”, keeps parts table visible */
+  const [zipMaskTopPx, setZipMaskTopPx] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    if (!zipping) {
+      setZipMaskTopPx(null);
+      return;
+    }
+    const read = () => {
+      const el = previewsSectionRef.current;
+      setZipMaskTopPx(el ? Math.max(0, Math.floor(el.getBoundingClientRect().top)) : 0);
+    };
+    read();
+    window.addEventListener("scroll", read, true);
+    window.addEventListener("resize", read);
+    return () => {
+      window.removeEventListener("scroll", read, true);
+      window.removeEventListener("resize", read);
+    };
+  }, [zipping]);
 
   useEffect(() => {
     let cancelled = false;
@@ -401,7 +419,9 @@ export default function InspectionResultsPage() {
       async function runOne(i: number) {
         const f = iframeRefs.current[i];
         if (!f?.contentWindow) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
-        const restoreCaptureLayout = await prepareIframeForPdfCapture(f);
+        const anchor = previewsSectionRef.current;
+        const viewportTopPx = anchor ? Math.max(0, Math.floor(anchor.getBoundingClientRect().top)) : 0;
+        const restoreCaptureLayout = await prepareIframeForPdfCapture(f, viewportTopPx);
         try {
           let api: FirPreviewApi | null = null;
           try {
@@ -707,39 +727,56 @@ export default function InspectionResultsPage() {
       </div>
       </div>
 
-      {/* Hide live PDF previews + table while ZIP runs; capture iframes stay under this layer (z-40 < 150 < chrome z-200). */}
-      {zipping && (
+      {/* Partial mask from “Live FIR previews” downward: parts table stays visible (iframe z-40 < 150 < chrome z-200). */}
+      {zipping && zipMaskTopPx != null && (
         <div
-          className="pointer-events-none fixed inset-0 z-[150] bg-slate-100"
+          className="pointer-events-none fixed left-0 right-0 z-[150] bg-slate-100"
+          style={{ top: zipMaskTopPx, bottom: 0 }}
           aria-hidden
         />
       )}
 
-      <div className="mt-4 overflow-x-auto">
+      <div
+        className={`mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow duration-300 ${
+          zipping ? "shadow-lg ring-2 ring-green-500/20" : ""
+        }`}
+      >
+        {zipping && (
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-4 py-2.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">Parts in this batch</span>
+            <span className="font-mono text-xs tabular-nums text-slate-500">
+              {zipProgress ? `PDF ${zipProgress.current}/${zipProgress.total}` : "Starting…"}
+            </span>
+          </div>
+        )}
+        <div className="overflow-x-auto">
         <table className="min-w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-slate-100">
-              <th className="border px-2 py-1">Part Number</th>
-              <th className="border px-2 py-1">Description</th>
-              <th className="border px-2 py-1">Draw Rev</th>
-              <th className="border px-2 py-1">Qty</th>
-              <th className="border px-2 py-1">Invoice</th>
-              <th className="border px-2 py-1">Sample</th>
-              <th className="border px-2 py-1">Params</th>
-              <th className="border px-2 py-1">FIR</th>
+            <tr className={`bg-slate-100 ${zipping ? "text-slate-800" : ""}`}>
+              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Part Number</th>
+              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Description</th>
+              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Draw Rev</th>
+              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Qty</th>
+              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Invoice</th>
+              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Sample</th>
+              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">Params</th>
+              <th className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold">FIR</th>
             </tr>
           </thead>
           <tbody>
             {data.rows.map((r, i) => (
-              <tr key={i}>
-                <td className="border px-2 py-1">{String(r["Part Number"] ?? "")}</td>
-                <td className="border px-2 py-1">{String(r["Description"] ?? "")}</td>
-                <td className="border px-2 py-1">{String(r.draw_rev ?? "")}</td>
-                <td className="border px-2 py-1">{String(r["Quantity"] ?? "")}</td>
-                <td className="border px-2 py-1">{String(r["Invoice Number"] ?? "")}</td>
-                <td className="border px-2 py-1">{String(r.sample_size ?? "")}</td>
-                <td className="border px-2 py-1">{String(r.num_params ?? "")}</td>
-                <td className="border px-2 py-1">
+              <tr
+                key={i}
+                className={zipping && i % 2 === 1 ? "bg-slate-50/90" : zipping ? "bg-white" : ""}
+              >
+                <td className="border border-slate-200 px-2 py-1.5">{String(r["Part Number"] ?? "")}</td>
+                <td className="border border-slate-200 px-2 py-1.5">{String(r["Description"] ?? "")}</td>
+                <td className="border border-slate-200 px-2 py-1.5">{String(r.draw_rev ?? "")}</td>
+                <td className="border border-slate-200 px-2 py-1.5">{String(r["Quantity"] ?? "")}</td>
+                <td className="border border-slate-200 px-2 py-1.5">{String(r["Invoice Number"] ?? "")}</td>
+                <td className="border border-slate-200 px-2 py-1.5">{String(r.sample_size ?? "")}</td>
+                <td className="border border-slate-200 px-2 py-1.5">{String(r.num_params ?? "")}</td>
+                <td className="border border-slate-200 px-2 py-1.5">
                   <button
                     type="button"
                     className="text-blue-700 underline"
@@ -753,6 +790,7 @@ export default function InspectionResultsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div ref={previewsSectionRef} className="mt-10 border-t border-slate-200 pt-8">
