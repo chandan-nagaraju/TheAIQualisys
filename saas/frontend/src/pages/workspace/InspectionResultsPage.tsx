@@ -46,7 +46,8 @@ const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 /**
  * Browsers throttle html2pdf/html2canvas inside cross-origin iframes far from the viewport.
  * Lift the active iframe with `position: fixed` at `viewportTopPx` (top of “Live FIR previews”), same
- * pixel size as in-layout, `z-index` 40. A partial viewport mask (z-150) sits above it; Batch FIR tools (z-200) above that.
+ * pixel size as in-layout. Stack: partial mask z-150, capture iframe z-160 (must be above mask — a fully
+ * occluded iframe never finishes PDF), Batch FIR tools z-200.
  */
 async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportTopPx: number): Promise<() => void> {
   if (!f) return () => {};
@@ -80,7 +81,8 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportT
   f.style.width = `${w}px`;
   f.style.height = `${h}px`;
   f.style.maxWidth = "none";
-  f.style.zIndex = "40";
+  /** Above slate mask (150) so the browsing context is not treated as fully occluded (otherwise PDF never advances). */
+  f.style.zIndex = "160";
   f.style.pointerEvents = "none";
 
   await new Promise<void>((resolve) => {
@@ -727,7 +729,7 @@ export default function InspectionResultsPage() {
       </div>
       </div>
 
-      {/* Partial mask from “Live FIR previews” downward: parts table stays visible (iframe z-40 < 150 < chrome z-200). */}
+      {/* Partial mask from “Live FIR previews” downward (z-150). Capture iframe is z-160 so html2pdf is not occluded. */}
       {zipping && zipMaskTopPx != null && (
         <div
           className="pointer-events-none fixed left-0 right-0 z-[150] bg-slate-100"
