@@ -44,21 +44,63 @@ const ZIP_BATCH_RECOMMENDED_MAX_ROWS = 100;
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
 /**
- * Cross-origin preview iframes are throttled when far off-screen, which stalls batch PDF unless each frame
- * intersects the viewport. We nudge with minimal scroll (`nearest`) — no user action required.
+ * Browsers throttle html2pdf/html2canvas inside cross-origin iframes that are far from the viewport.
+ * Scrolling the document (scrollIntoView) forces users down a long list. Instead we lift the active
+ * iframe into a fixed overlay (same pixel size as before) so the window scroll position never changes.
  */
-async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<void> {
-  if (!f) return;
-  try {
-    f.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
-  } catch {
-    /* ignore */
-  }
+async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<() => void> {
+  if (!f) return () => {};
+  const parent = f.parentElement as HTMLElement | null;
+  if (!parent) return () => {};
+
+  const rect = f.getBoundingClientRect();
+  const w = Math.max(1, Math.round(rect.width));
+  const h = Math.max(1, Math.round(rect.height));
+
+  const prevParentMinHeight = parent.style.minHeight;
+  const lockH = Math.ceil(parent.getBoundingClientRect().height);
+  parent.style.minHeight = `${lockH}px`;
+
+  const prevStyle = {
+    position: f.style.position,
+    top: f.style.top,
+    left: f.style.left,
+    transform: f.style.transform,
+    width: f.style.width,
+    height: f.style.height,
+    maxWidth: f.style.maxWidth,
+    zIndex: f.style.zIndex,
+    pointerEvents: f.style.pointerEvents,
+  };
+
+  f.style.position = "fixed";
+  f.style.top = "50%";
+  f.style.left = "50%";
+  f.style.transform = "translate(-50%, -50%)";
+  f.style.width = `${w}px`;
+  f.style.height = `${h}px`;
+  f.style.maxWidth = "none";
+  f.style.zIndex = "2147483646";
+  f.style.pointerEvents = "none";
+
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => resolve());
     });
   });
+
+  return () => {
+    parent.style.minHeight = prevParentMinHeight;
+    f.style.position = prevStyle.position;
+    f.style.top = prevStyle.top;
+    f.style.left = prevStyle.left;
+    f.style.transform = prevStyle.transform;
+    f.style.width = prevStyle.width;
+    f.style.height = prevStyle.height;
+    f.style.maxWidth = prevStyle.maxWidth;
+    f.style.zIndex = prevStyle.zIndex;
+    f.style.pointerEvents = prevStyle.pointerEvents;
+  };
 }
 
 /**
@@ -357,93 +399,97 @@ export default function InspectionResultsPage() {
       async function runOne(i: number) {
         const f = iframeRefs.current[i];
         if (!f?.contentWindow) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
-        await prepareIframeForPdfCapture(f);
-        let api: FirPreviewApi | null = null;
+        const restoreCaptureLayout = await prepareIframeForPdfCapture(f);
         try {
-          api = (f.contentWindow as Window & { FIR_PREVIEW_API?: FirPreviewApi }).FIR_PREVIEW_API ?? null;
-        } catch {
-          api = null;
-        }
+          let api: FirPreviewApi | null = null;
+          try {
+            api = (f.contentWindow as Window & { FIR_PREVIEW_API?: FirPreviewApi }).FIR_PREVIEW_API ?? null;
+          } catch {
+            api = null;
+          }
 
-        const runDirect = async () => {
-          const gen = api!.generatePdfBlob!;
-          /* generatePdfBlob already runs firWaitForAssets — do not wait here (main branch also did both = 2× wait). */
-          const t0 = performance.now();
-          const result = await gen();
-          const dt = performance.now() - t0;
-          return { result, dt };
-        };
+          const runDirect = async () => {
+            const gen = api!.generatePdfBlob!;
+            /* generatePdfBlob already runs firWaitForAssets — do not wait here (main branch also did both = 2× wait). */
+            const t0 = performance.now();
+            const result = await gen();
+            const dt = performance.now() - t0;
+            return { result, dt };
+          };
 
-        const runViaPostMessage = async () => {
-          const requestId = crypto.randomUUID();
-          const origin = firIframeTargetOrigin(f);
-          const t0 = performance.now();
-          let timeoutId: ReturnType<typeof window.setTimeout> | undefined;
-          const result = await new Promise<{
+          const runViaPostMessage = async () => {
+            const requestId = crypto.randomUUID();
+            const origin = firIframeTargetOrigin(f);
+            const t0 = performance.now();
+            let timeoutId: ReturnType<typeof window.setTimeout> | undefined;
+            const result = await new Promise<{
+              blob: Blob;
+              filename: string;
+              byteSize?: number;
+              sizeWarning?: string;
+            }>((resolve, reject) => {
+              const handler = (ev: MessageEvent) => {
+                const d = ev.data;
+                if (!d || d.source !== "fir-saas-fir-preview" || d.type !== "pdfBlobResult" || d.requestId !== requestId) {
+                  return;
+                }
+                if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+                window.removeEventListener("message", handler);
+                if (!d.ok) reject(new Error(d.error || "PDF generation failed"));
+                else if (!d.blob) reject(new Error("No PDF blob returned"));
+                else
+                  resolve({
+                    blob: d.blob as Blob,
+                    filename: String(d.filename || `FIR_${i + 1}.pdf`),
+                    byteSize: d.byteSize,
+                    sizeWarning: d.sizeWarning,
+                  });
+              };
+              window.addEventListener("message", handler);
+              timeoutId = window.setTimeout(() => {
+                window.removeEventListener("message", handler);
+                reject(
+                  new Error(
+                    `Timed out waiting for PDF ${i + 1} (${Math.round(FIR_PDF_POSTMESSAGE_TIMEOUT_MS / 1000)}s). Try reloading or fewer rows.`,
+                  ),
+                );
+              }, FIR_PDF_POSTMESSAGE_TIMEOUT_MS);
+              f!.contentWindow!.postMessage(
+                { source: "fir-saas-fir-preview-parent", type: "generatePdf", requestId },
+                origin,
+              );
+            });
+            const dt = performance.now() - t0;
+            return { result, dt };
+          };
+
+          let result: {
             blob: Blob;
             filename: string;
             byteSize?: number;
             sizeWarning?: string;
-          }>((resolve, reject) => {
-            const handler = (ev: MessageEvent) => {
-              const d = ev.data;
-              if (!d || d.source !== "fir-saas-fir-preview" || d.type !== "pdfBlobResult" || d.requestId !== requestId) {
-                return;
-              }
-              if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-              window.removeEventListener("message", handler);
-              if (!d.ok) reject(new Error(d.error || "PDF generation failed"));
-              else if (!d.blob) reject(new Error("No PDF blob returned"));
-              else
-                resolve({
-                  blob: d.blob as Blob,
-                  filename: String(d.filename || `FIR_${i + 1}.pdf`),
-                  byteSize: d.byteSize,
-                  sizeWarning: d.sizeWarning,
-                });
-            };
-            window.addEventListener("message", handler);
-            timeoutId = window.setTimeout(() => {
-              window.removeEventListener("message", handler);
-              reject(
-                new Error(
-                  `Timed out waiting for PDF ${i + 1} (${Math.round(FIR_PDF_POSTMESSAGE_TIMEOUT_MS / 1000)}s). Try reloading or fewer rows.`,
-                ),
-              );
-            }, FIR_PDF_POSTMESSAGE_TIMEOUT_MS);
-            f!.contentWindow!.postMessage(
-              { source: "fir-saas-fir-preview-parent", type: "generatePdf", requestId },
-              origin,
-            );
-          });
-          const dt = performance.now() - t0;
-          return { result, dt };
-        };
-
-        let result: {
-          blob: Blob;
-          filename: string;
-          byteSize?: number;
-          sizeWarning?: string;
-        };
-        let dt: number;
-        if (api?.generatePdfBlob) {
-          try {
-            const out = await runDirect();
-            result = out.result;
-            dt = out.dt;
-          } catch {
+          };
+          let dt: number;
+          if (api?.generatePdfBlob) {
+            try {
+              const out = await runDirect();
+              result = out.result;
+              dt = out.dt;
+            } catch {
+              const out = await runViaPostMessage();
+              result = out.result;
+              dt = out.dt;
+            }
+          } else {
             const out = await runViaPostMessage();
             result = out.result;
             dt = out.dt;
           }
-        } else {
-          const out = await runViaPostMessage();
-          result = out.result;
-          dt = out.dt;
+          results[i] = result;
+          updateProgress(dt);
+        } finally {
+          restoreCaptureLayout();
         }
-        results[i] = result;
-        updateProgress(dt);
       }
 
       for (let i = 0; i < n; i++) {
