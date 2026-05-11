@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import JSZip from "jszip";
 import { apiFetch, firPreviewUrl, workspaceFetch } from "../../api";
@@ -46,8 +46,8 @@ const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 /**
  * Browsers throttle html2pdf/html2canvas inside cross-origin iframes far from the viewport.
  * Lift the active iframe with `position: fixed` at `viewportTopPx` (top of “Live FIR previews”), same
- * pixel size as in-layout. Stack: partial mask z-150, capture iframe z-160 (must be above mask — a fully
- * occluded iframe never finishes PDF), Batch FIR tools z-200.
+ * pixel size as in-layout. Full-viewport slate mask is z-150; capture iframe z-160 (must sit above the
+ * mask or PDF stalls); Batch FIR tools + parts table wrapper sit at z-200 above both.
  */
 async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportTopPx: number): Promise<() => void> {
   if (!f) return () => {};
@@ -195,26 +195,6 @@ export default function InspectionResultsPage() {
   } | null>(null);
   const [zipSaveHint, setZipSaveHint] = useState(false);
   const [firEntitled, setFirEntitled] = useState<"loading" | "yes" | "no">("loading");
-  /** Top edge (viewport px) for partial mask + iframe capture — hides only “Live FIR previews”, keeps parts table visible */
-  const [zipMaskTopPx, setZipMaskTopPx] = useState<number | null>(null);
-
-  useLayoutEffect(() => {
-    if (!zipping) {
-      setZipMaskTopPx(null);
-      return;
-    }
-    const read = () => {
-      const el = previewsSectionRef.current;
-      setZipMaskTopPx(el ? Math.max(0, Math.floor(el.getBoundingClientRect().top)) : 0);
-    };
-    read();
-    window.addEventListener("scroll", read, true);
-    window.addEventListener("resize", read);
-    return () => {
-      window.removeEventListener("scroll", read, true);
-      window.removeEventListener("resize", read);
-    };
-  }, [zipping]);
 
   useEffect(() => {
     let cancelled = false;
@@ -617,6 +597,10 @@ export default function InspectionResultsPage() {
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      {/* Full slate behind chrome + table; previews/iframes sit under this. Iframe capture z-160 stays above mask. */}
+      {zipping && (
+        <div className="pointer-events-none fixed inset-0 z-[150] bg-slate-100" aria-hidden />
+      )}
       <div
         className={`relative z-[200] isolate bg-white ${zipping ? "sticky top-0 shadow-[0_4px_14px_rgba(0,0,0,0.08)] ring-1 ring-slate-200/90" : ""}`}
       >
@@ -729,18 +713,9 @@ export default function InspectionResultsPage() {
       </div>
       </div>
 
-      {/* Partial mask from “Live FIR previews” downward (z-150). Capture iframe is z-160 so html2pdf is not occluded. */}
-      {zipping && zipMaskTopPx != null && (
-        <div
-          className="pointer-events-none fixed left-0 right-0 z-[150] bg-slate-100"
-          style={{ top: zipMaskTopPx, bottom: 0 }}
-          aria-hidden
-        />
-      )}
-
       <div
         className={`mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white transition-shadow duration-300 ${
-          zipping ? "shadow-lg ring-2 ring-green-500/20" : ""
+          zipping ? "relative z-[200] shadow-lg ring-2 ring-green-500/20" : ""
         }`}
       >
         {zipping && (
