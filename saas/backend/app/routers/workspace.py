@@ -848,6 +848,99 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
     }
 
 
+@router.get("/parts/export-all")
+def export_all_parts_master(
+    customer_id: int | None = Depends(optional_customer_id_from_request),
+    ws: WsContext = Depends(get_ws),
+):
+    q = select(PartV2).where(PartV2.company_id == ws.company.id)
+    if customer_id is not None:
+        q = q.where(PartV2.customer_id == customer_id)
+    rows = ws.db.execute(q.order_by(PartV2.part_no)).scalars().all()
+    parts_out: list[dict[str, Any]] = []
+    for p in rows:
+        inner = _serialize_part_detail(ws, p)
+
+        # Be defensive with legacy-imported data: some old rows may have
+        # non-string values in text fields. Normalize everything to strings
+        # so JSON export never fails with validation/type parse errors.
+        def _safe_text(v: Any) -> str:
+            return "" if v is None else str(v)
+
+        spec_rows = [
+            {
+                "parameter": _safe_text(r.get("parameter")),
+                "specification": _safe_text(r.get("specification")),
+                "special_char": _safe_text(r.get("special_char")),
+                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
+            }
+            for r in inner["spec_rows"]
+        ]
+        ccp_rows = [
+            {
+                "parameter": _safe_text(r.get("parameter")),
+                "specification": _safe_text(r.get("specification")),
+                "special_char": _safe_text(r.get("special_char")),
+                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
+            }
+            for r in inner["ccp_rows"]
+        ]
+        material_rows = [{"material_grade": _safe_text(m.get("material_grade"))} for m in inner["material_rows"]]
+        coating_rows = [
+            {
+                "parameter": _safe_text(r.get("parameter")),
+                "specification": _safe_text(r.get("specification")),
+                "special_char": _safe_text(r.get("special_char")),
+                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
+            }
+            for r in inner["coating_rows"]
+        ]
+        parts_out.append(
+            {
+                "part": {
+                    "part_no": _safe_text(inner["part_no"]),
+                    "drawing_rev": _safe_text(inner.get("drawing_rev")),
+                    "description": _safe_text(inner.get("description")),
+                    "customer_id": inner.get("customer_id"),
+                    "customer_vendor_code": _safe_text(inner.get("customer_vendor_code")),
+                    "customer_name": _safe_text(inner.get("customer_name")),
+                },
+                "spec_rows": spec_rows,
+                "ccp_rows": ccp_rows,
+                "material_rows": material_rows,
+                "coating_rows": coating_rows,
+            }
+        )
+    payload = {
+        "format": "fir_part_master_bundle_v1",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "exported_from": "saas",
+        "parts": parts_out,
+    }
+    filename = "fir_all_parts_master.json"
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/parts/excel-template")
+def download_part_master_excel_template():
+    """Blank workbook: Parts, Section_A–D with header rows matching import parser."""
+    body = build_part_master_template_xlsx()
+    return Response(
+        content=body,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="fir_part_master_template.xlsx"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @router.get("/parts/{part_id}")
 def get_part_detail(part_id: int, ws: WsContext = Depends(get_ws)):
     p = _get_part(ws, part_id)
@@ -1258,20 +1351,6 @@ def import_part_bundle(body: PartMasterBundleBody, ws: WsContext = Depends(get_w
     return {"ok": True, "imported": len(body.parts)}
 
 
-@router.get("/parts/excel-template")
-def download_part_master_excel_template():
-    """Blank workbook: Parts, Section_A–D with header rows matching import parser."""
-    body = build_part_master_template_xlsx()
-    return Response(
-        content=body,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": 'attachment; filename="fir_part_master_template.xlsx"',
-            "Cache-Control": "no-store",
-        },
-    )
-
-
 @router.post("/parts/preview-excel-master")
 async def preview_part_master_excel(
     file: UploadFile = File(...),
@@ -1323,85 +1402,6 @@ async def import_part_master_excel(
     if last:
         ws.db.refresh(last)
     return {"ok": True, "imported": len(body.parts), "format": body.format}
-
-
-@router.get("/parts/export-all")
-def export_all_parts_master(
-    customer_id: int | None = Depends(optional_customer_id_from_request),
-    ws: WsContext = Depends(get_ws),
-):
-    q = select(PartV2).where(PartV2.company_id == ws.company.id)
-    if customer_id is not None:
-        q = q.where(PartV2.customer_id == customer_id)
-    rows = ws.db.execute(q.order_by(PartV2.part_no)).scalars().all()
-    parts_out: list[dict[str, Any]] = []
-    for p in rows:
-        inner = _serialize_part_detail(ws, p)
-
-        # Be defensive with legacy-imported data: some old rows may have
-        # non-string values in text fields. Normalize everything to strings
-        # so JSON export never fails with validation/type parse errors.
-        def _safe_text(v: Any) -> str:
-            return "" if v is None else str(v)
-
-        spec_rows = [
-            {
-                "parameter": _safe_text(r.get("parameter")),
-                "specification": _safe_text(r.get("specification")),
-                "special_char": _safe_text(r.get("special_char")),
-                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
-            }
-            for r in inner["spec_rows"]
-        ]
-        ccp_rows = [
-            {
-                "parameter": _safe_text(r.get("parameter")),
-                "specification": _safe_text(r.get("specification")),
-                "special_char": _safe_text(r.get("special_char")),
-                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
-            }
-            for r in inner["ccp_rows"]
-        ]
-        material_rows = [{"material_grade": _safe_text(m.get("material_grade"))} for m in inner["material_rows"]]
-        coating_rows = [
-            {
-                "parameter": _safe_text(r.get("parameter")),
-                "specification": _safe_text(r.get("specification")),
-                "special_char": _safe_text(r.get("special_char")),
-                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
-            }
-            for r in inner["coating_rows"]
-        ]
-        parts_out.append(
-            {
-                "part": {
-                    "part_no": _safe_text(inner["part_no"]),
-                    "drawing_rev": _safe_text(inner.get("drawing_rev")),
-                    "description": _safe_text(inner.get("description")),
-                    "customer_id": inner.get("customer_id"),
-                    "customer_vendor_code": _safe_text(inner.get("customer_vendor_code")),
-                    "customer_name": _safe_text(inner.get("customer_name")),
-                },
-                "spec_rows": spec_rows,
-                "ccp_rows": ccp_rows,
-                "material_rows": material_rows,
-                "coating_rows": coating_rows,
-            }
-        )
-    payload = {
-        "format": "fir_part_master_bundle_v1",
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "exported_from": "saas",
-        "parts": parts_out,
-    }
-    filename = "fir_all_parts_master.json"
-    return JSONResponse(
-        content=payload,
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "no-store",
-        },
-    )
 
 
 @router.delete("/parts/{part_id}/specs/{spec_row_id}")
