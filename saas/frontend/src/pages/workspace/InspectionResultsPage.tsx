@@ -63,8 +63,7 @@ function computeCaptureTopPx(anchor: HTMLElement | null, iframeHeight: number): 
  * Browsers throttle html2pdf/html2canvas inside cross-origin iframes far from the viewport.
  * Lift the active iframe with `position: fixed` at `viewportTopPx` (see computeCaptureTopPx), same
  * pixel size as in-layout. Stack: mask z-150, main column z-220, capture iframe z-240.
- * Nearly invisible opacity on the iframe keeps the page clear for the user; html2pdf runs inside the
- * iframe document (DOM clone), so PDF pixels are not driven by this outer opacity.
+ * Completely hidden outer opacity during capture (html2pdf runs inside the iframe document).
  */
 async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportTopPx: number): Promise<() => void> {
   if (!f) return () => {};
@@ -103,8 +102,8 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportT
   /** Above main column (z-220) so the iframe is not fully covered by the opaque tools/table stack. */
   f.style.zIndex = "240";
   f.style.pointerEvents = "none";
-  /* ~4%: keeps layout readable to the compositor; barely visible over the slate mask */
-  f.style.opacity = "0.04";
+  /* Outer opacity only (user must not see the lifted preview); capture uses the iframe’s internal DOM. */
+  f.style.opacity = "0";
   f.style.boxShadow = "none";
 
   await new Promise<void>((resolve) => {
