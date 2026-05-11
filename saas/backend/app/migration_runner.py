@@ -3,8 +3,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import column, table, text
 from sqlalchemy.engine import Engine
+
+_SCHEMA_MIGRATIONS_TBL = table(
+    "schema_migrations",
+    column("filename"),
+)
 
 _MIGRATION_STATEMENT_TIMEOUT_MS = 60_000
 # 009_fir_events_intelligence can run heavy backfill + dedupe; 60s often kills production deploys.
@@ -12,7 +17,7 @@ _HEAVY_MIGRATION_TIMEOUT_MS = 900_000  # 15 minutes
 
 
 def _statement_timeout_ms_for_migration(filename: str) -> int:
-    if filename.startswith("009_"):
+    if filename.startswith("009_") or filename.startswith("010_"):
         return _HEAVY_MIGRATION_TIMEOUT_MS
     return _MIGRATION_STATEMENT_TIMEOUT_MS
 
@@ -67,7 +72,4 @@ def apply_sql_migrations(engine: Engine, backend_root: Path) -> None:
         with engine.begin() as conn:
             conn.exec_driver_sql(f"SET LOCAL statement_timeout = {timeout_ms}")
             conn.exec_driver_sql(body)
-            conn.execute(
-                text("INSERT INTO schema_migrations (filename) VALUES (:filename)"),
-                {"filename": name},
-            )
+            conn.execute(_SCHEMA_MIGRATIONS_TBL.insert().values(filename=name))

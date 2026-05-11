@@ -67,6 +67,7 @@ async def lifespan(app: FastAPI):
             logger.exception("Background startup (migrations / seed) failed")
             app.state.startup_error = f"{type(e).__name__}: {e}"[:4000]
             return
+        app.state.startup_error = None
         app.state.startup_complete = True
 
     asyncio.create_task(_run_startup())
