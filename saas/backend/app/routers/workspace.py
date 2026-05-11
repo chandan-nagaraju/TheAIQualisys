@@ -41,6 +41,7 @@ from app.deps import (
     get_db_session,
     impersonated_by_admin_from_request,
 )
+from app.fir_excel import enrich_rows_with_parts, parse_invoice_excel
 from app.fir_intelligence_ingest import (
     ingest_fir_intelligence_rows,
     parse_row_for_intelligence,

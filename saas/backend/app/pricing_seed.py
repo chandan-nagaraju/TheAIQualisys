@@ -133,7 +133,7 @@ def ensure_module_pricing_seeded(db: Session) -> None:
     backfill_listing_active_column(db)
     # Backfill missing defaults even if some rows already exist.
     # Older deployments can have partial data after incremental releases.
-    existing = set(db.execute(select(ModulePricing.module_name)).scalars().all())
+    existing = set(db.scalars(select(ModulePricing.module_name)).all())
     missing = [kwargs for kwargs in _DEFAULT_ROWS if kwargs["module_name"] not in existing]
     if not missing:
         return
