@@ -12,26 +12,27 @@ export default function UploadPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
 
   useEffect(() => {
-    workspaceFetch<CustomerRow[]>("/api/app/customers")
-      .then((list) => {
-        setCustomers(list);
-        const ws = getWorkspaceCustomerId();
-        if (list.length === 1) {
-          setSelectedCustomerId(list[0].id);
-          setWorkspaceCustomerId(list[0].id);
-        } else if (ws != null && list.some((c) => c.id === ws)) {
-          setSelectedCustomerId(ws);
-        } else if (list.length > 1) {
-          setSelectedCustomerId((prev) => prev ?? list[0].id);
-          setWorkspaceCustomerId(list[0].id);
-        }
-      })
-      .catch(() => setCustomers([]));
-  }, []);
-
-  useEffect(() => {
-    workspaceFetch<{ ok: boolean; reason?: string; auto_customer_id?: number }>("/api/app/upload-check")
-      .then((c) => {
+    let cancelled = false;
+    (async () => {
+      const [list, c] = await Promise.all([
+        workspaceFetch<CustomerRow[]>("/api/app/customers").catch(() => [] as CustomerRow[]),
+        workspaceFetch<{ ok: boolean; reason?: string; auto_customer_id?: number }>("/api/app/upload-check").catch(
+          () => null,
+        ),
+      ]);
+      if (cancelled) return;
+      setCustomers(list);
+      const ws = getWorkspaceCustomerId();
+      if (list.length === 1) {
+        setSelectedCustomerId(list[0].id);
+        setWorkspaceCustomerId(list[0].id);
+      } else if (ws != null && list.some((x) => x.id === ws)) {
+        setSelectedCustomerId(ws);
+      } else if (list.length > 1) {
+        setSelectedCustomerId((prev) => prev ?? list[0].id);
+        setWorkspaceCustomerId(list[0].id);
+      }
+      if (c) {
         if (!c.ok && c.reason === "no_customers") {
           setErr("Add at least one customer before uploading.");
         }
@@ -42,8 +43,11 @@ export default function UploadPage() {
         if (!c.ok && c.reason === "select_customer") {
           setErr("select_customer");
         }
-      })
-      .catch(() => {});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function onCustomerChange(id: number) {

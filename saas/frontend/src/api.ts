@@ -218,8 +218,9 @@ export async function workspaceFetch<T>(path: string, opts: RequestInit = {}): P
   const isForm = opts.body instanceof FormData;
   if (!isForm) base["Content-Type"] = "application/json";
 
+  /* Short backoff: extra round-trips here block the UI during “network checking” flows. */
   const maxAttempts = 4;
-  const baseDelayMs = 500;
+  const baseDelayMs = 200;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let res: Response;
