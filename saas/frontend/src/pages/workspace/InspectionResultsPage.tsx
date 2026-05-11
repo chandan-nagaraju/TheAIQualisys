@@ -44,23 +44,6 @@ const ZIP_BATCH_RECOMMENDED_MAX_ROWS = 100;
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
 /**
- * Browsers throttle work in off-screen iframes. Align each preview before capture without requiring user interaction.
- */
-async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<void> {
-  if (!f) return;
-  try {
-    f.scrollIntoView({ block: "center", behavior: "auto" });
-  } catch {
-    /* ignore */
-  }
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve());
-    });
-  });
-}
-
-/**
  * Programmatic file save from a Blob. Defers revokeObjectURL so the browser can start the read.
  * After long async work, some browsers block auto-download — pair with a manual "Save again" control.
  */
@@ -356,7 +339,6 @@ export default function InspectionResultsPage() {
       async function runOne(i: number) {
         const f = iframeRefs.current[i];
         if (!f?.contentWindow) throw new Error(`Report ${i + 1} is not ready for PDF export.`);
-        await prepareIframeForPdfCapture(f);
         let api: FirPreviewApi | null = null;
         try {
           api = (f.contentWindow as Window & { FIR_PREVIEW_API?: FirPreviewApi }).FIR_PREVIEW_API ?? null;
