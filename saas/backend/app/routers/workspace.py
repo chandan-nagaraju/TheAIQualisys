@@ -103,7 +103,7 @@ def _parse_optional_int_header(raw: str | None, *, label: str) -> int | None:
 
 
 def optional_customer_id_query(
-    customer_id: Annotated[str | None, Query(default=None)] = None,
+    customer_id: Annotated[str | None, Query()] = None,
 ) -> int | None:
     """Query param can be absent, or present but empty (e.g. ?customer_id=); both mean no filter."""
     return _parse_optional_int_header(customer_id, label="customer_id")
@@ -112,7 +112,7 @@ def optional_customer_id_query(
 def get_ws(
     user: CompanyUser = Depends(get_company_user_from_token_str),
     db: Session = Depends(get_db_session),
-    x_customer_id_header: Annotated[str | None, Header(alias="X-Customer-Id", default=None)] = None,
+    x_customer_id_header: Annotated[str | None, Header(alias="X-Customer-Id")] = None,
     admin_impersonation: bool = Depends(impersonated_by_admin_from_request),
 ) -> WsContext:
     settings = get_settings()
