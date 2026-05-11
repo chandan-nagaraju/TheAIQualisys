@@ -46,7 +46,8 @@ const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 /**
  * Browsers throttle html2pdf/html2canvas inside cross-origin iframes far from the viewport.
  * We lift the active iframe into the viewport with `position: fixed` (same size, no scroll) but keep
- * `z-index` below the Batch FIR tools chrome so the progress bar stays visible on top.
+ * We lift the active iframe into the viewport with `position: fixed` (same size, no scroll) but keep
+ * `z-index` low so a full-screen mask (`z-150`) and Batch FIR tools (`z-200`) hide previews during ZIP.
  */
 async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<() => void> {
   if (!f) return () => {};
@@ -705,6 +706,14 @@ export default function InspectionResultsPage() {
         )}
       </div>
       </div>
+
+      {/* Hide live PDF previews + table while ZIP runs; capture iframes stay under this layer (z-40 < 150 < chrome z-200). */}
+      {zipping && (
+        <div
+          className="pointer-events-none fixed inset-0 z-[150] bg-slate-100"
+          aria-hidden
+        />
+      )}
 
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full border-collapse text-sm">
