@@ -44,9 +44,9 @@ const ZIP_BATCH_RECOMMENDED_MAX_ROWS = 100;
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 
 /**
- * Browsers throttle html2pdf/html2canvas inside cross-origin iframes that are far from the viewport.
- * Scrolling the document (scrollIntoView) forces users down a long list. Instead we lift the active
- * iframe into a fixed overlay (same pixel size as before) so the window scroll position never changes.
+ * Browsers throttle html2pdf/html2canvas inside cross-origin iframes far from the viewport.
+ * We lift the active iframe into the viewport with `position: fixed` (same size, no scroll) but keep
+ * `z-index` below the Batch FIR tools chrome so the progress bar stays visible on top.
  */
 async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<() => void> {
   if (!f) return () => {};
@@ -74,13 +74,14 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null): Promise<
   };
 
   f.style.position = "fixed";
-  f.style.top = "50%";
-  f.style.left = "50%";
-  f.style.transform = "translate(-50%, -50%)";
+  f.style.top = "0";
+  f.style.left = "0";
+  f.style.transform = "none";
   f.style.width = `${w}px`;
   f.style.height = `${h}px`;
   f.style.maxWidth = "none";
-  f.style.zIndex = "2147483646";
+  /** Below Batch FIR tools stack (z-200); keep capture painted in viewport for browsers that throttle off-screen frames */
+  f.style.zIndex = "40";
   f.style.pointerEvents = "none";
 
   await new Promise<void>((resolve) => {
@@ -593,6 +594,9 @@ export default function InspectionResultsPage() {
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div
+        className={`relative z-[200] isolate bg-white ${zipping ? "sticky top-0 shadow-[0_4px_14px_rgba(0,0,0,0.08)] ring-1 ring-slate-200/90" : ""}`}
+      >
       <h1 className="text-xl font-semibold text-slate-900">Inspection results</h1>
       {cust && (
         <p className="mt-1 text-sm text-slate-600">
@@ -699,6 +703,7 @@ export default function InspectionResultsPage() {
             .
           </p>
         )}
+      </div>
       </div>
 
       <div className="mt-4 overflow-x-auto">
