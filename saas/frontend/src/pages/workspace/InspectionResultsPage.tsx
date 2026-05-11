@@ -46,8 +46,8 @@ const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
 /**
  * Browsers throttle html2pdf/html2canvas inside cross-origin iframes far from the viewport.
  * Lift the active iframe with `position: fixed` at `viewportTopPx` (top of “Live FIR previews”), same
- * pixel size as in-layout. Full-viewport slate mask is z-150; capture iframe z-160 (must sit above the
- * mask or PDF stalls); Batch FIR tools + parts table wrapper sit at z-200 above both.
+ * pixel size as in-layout. Stack: mask z-150, parts table z-200, capture iframe z-210 (above opaque table
+ * or PDF stalls), Batch FIR chrome z-220 (progress always on top).
  */
 async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportTopPx: number): Promise<() => void> {
   if (!f) return () => {};
@@ -81,8 +81,8 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportT
   f.style.width = `${w}px`;
   f.style.height = `${h}px`;
   f.style.maxWidth = "none";
-  /** Above slate mask (150) so the browsing context is not treated as fully occluded (otherwise PDF never advances). */
-  f.style.zIndex = "160";
+  /** z-210: above parts table (200) + slate mask (150); below Batch FIR chrome (220). */
+  f.style.zIndex = "210";
   f.style.pointerEvents = "none";
 
   await new Promise<void>((resolve) => {
@@ -106,23 +106,29 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportT
 }
 
 /**
- * Programmatic file save from a Blob. Defers revokeObjectURL so the browser can start the read.
- * After long async work, some browsers block auto-download — pair with a manual "Save again" control.
+ * Programmatic save. Keep the blob URL alive long enough for large ZIPs — revoking early cancels the download.
  */
 function triggerBlobDownload(blob: Blob, filename: string): void {
   const safeName = filename.replace(/[/\\]/g, "_");
   const url = URL.createObjectURL(blob);
+  const revokeMs = Math.max(10_000, Math.min(600_000, Math.floor(blob.size / 200 + 8000)));
   const a = document.createElement("a");
   a.href = url;
   a.download = safeName;
   a.rel = "noopener";
   a.style.display = "none";
   document.body.appendChild(a);
-  a.click();
-  window.setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 2500);
+  requestAnimationFrame(() => {
+    a.click();
+    window.setTimeout(() => {
+      try {
+        if (a.parentNode) document.body.removeChild(a);
+      } catch {
+        /* ignore */
+      }
+      URL.revokeObjectURL(url);
+    }, revokeMs);
+  });
 }
 
 function firIframeTargetOrigin(iframe: HTMLIFrameElement | null): string {
@@ -597,12 +603,12 @@ export default function InspectionResultsPage() {
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      {/* Full slate behind chrome + table; previews/iframes sit under this. Iframe capture z-160 stays above mask. */}
+      {/* Full slate behind chrome + table; z-150. Iframe capture z-210; table z-200; chrome z-220. */}
       {zipping && (
         <div className="pointer-events-none fixed inset-0 z-[150] bg-slate-100" aria-hidden />
       )}
       <div
-        className={`relative z-[200] isolate bg-white ${zipping ? "sticky top-0 shadow-[0_4px_14px_rgba(0,0,0,0.08)] ring-1 ring-slate-200/90" : ""}`}
+        className={`relative z-[220] isolate bg-white ${zipping ? "sticky top-0 shadow-[0_4px_14px_rgba(0,0,0,0.08)] ring-1 ring-slate-200/90" : ""}`}
       >
       <h1 className="text-xl font-semibold text-slate-900">Inspection results</h1>
       {cust && (
