@@ -23,8 +23,11 @@ logger = logging.getLogger(__name__)
 
 
 def _sync_lifespan_heavy(settings: Settings) -> None:
-    Base.metadata.create_all(bind=engine)
+    # Run SQL migrations BEFORE create_all so migration 009 can rename fir_report_events → fir_events.
+    # If create_all runs first, it creates an empty fir_events and the rename is skipped (data stays
+    # in fir_report_events while the ORM reads empty fir_events — FIR Intelligence shows zero events).
     apply_sql_migrations(engine, settings.backend_root)
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         ensure_module_pricing_seeded(db)
