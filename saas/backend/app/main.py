@@ -1,11 +1,13 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import select
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.cors_origins import expand_cors_origins
 from app.database import Base, SessionLocal, engine
 from app.s3_assets import s3_assets_configured
@@ -17,13 +19,22 @@ from app.routers.v2.endpoints import router as v2_router
 from app.routers.workspace import fir_preview as legacy_fir_preview_alias, router as workspace_router
 from app.security import hash_password, verify_password
 
+logger = logging.getLogger(__name__)
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    settings = get_settings()
+
+def _path_allowed_before_db_ready(path: str) -> bool:
+    """Routes that must work during migrations (LB health checks, OpenAPI)."""
+    if path.startswith("/health"):
+        return True
+    if path == "/openapi.json" or path == "/docs" or path == "/redoc":
+        return True
+    if path.startswith("/docs/") or path.startswith("/redoc/"):
+        return True
+    return False
+
+
+def _sync_lifespan_heavy(settings: Settings) -> None:
     Base.metadata.create_all(bind=engine)
-    # Ensure incremental SQL migrations are applied in hosted environments
-    # (e.g. Supabase/Render) after base tables exist.
     apply_sql_migrations(engine, settings.backend_root)
     db = SessionLocal()
     try:
@@ -45,6 +56,28 @@ async def lifespan(_: FastAPI):
                 db.commit()
     finally:
         db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Yield quickly so load balancers (e.g. Railway healthchecks) get HTTP 200 from /health
+    while migrations and seeding run in a worker thread.
+    """
+    settings = get_settings()
+    app.state.startup_complete = False
+    app.state.startup_error = None
+
+    async def _run_startup() -> None:
+        try:
+            await asyncio.to_thread(_sync_lifespan_heavy, settings)
+        except Exception as e:
+            logger.exception("Background startup (migrations / seed) failed")
+            app.state.startup_error = str(e)[:2000]
+            return
+        app.state.startup_complete = True
+
+    asyncio.create_task(_run_startup())
     yield
 
 
@@ -68,6 +101,25 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def startup_gate(request: Request, call_next):
+        path = request.url.path
+        if not _path_allowed_before_db_ready(path):
+            complete = getattr(request.app.state, "startup_complete", False)
+            err = getattr(request.app.state, "startup_error", None)
+            if err:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Service failed during startup (migrations or seed). Check server logs."},
+                )
+            if not complete:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Service is starting; retry shortly."},
+                    headers={"Retry-After": "3"},
+                )
+        return await call_next(request)
+
     app.include_router(auth.router)
     app.include_router(auth.router, prefix="/api")
     app.include_router(pricing_public.router)
@@ -90,14 +142,20 @@ def create_app() -> FastAPI:
     )
 
     @app.get("/health")
-    def health():
+    def health(request: Request):
         cfg = get_settings()
+        err = getattr(request.app.state, "startup_error", None)
+        ready = getattr(request.app.state, "startup_complete", False)
+        # Always HTTP 200 when the process is up so load balancers mark the instance healthy.
+        # Use db_ready / startup_error for observability and alerting.
         return {
             "status": "ok",
             "enable_subscription": cfg.enable_subscription,
             # True when all S3 env vars are set (AWS keys, region, bucket, PUBLIC_S3_BASE_URL).
             # Use this after deploy to confirm Railway/hosting picked up secrets without opening settings.
             "s3_assets_configured": s3_assets_configured(cfg),
+            "db_ready": ready,
+            "startup_error": err,
         }
 
     return app
