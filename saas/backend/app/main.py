@@ -111,6 +111,17 @@ def create_app() -> FastAPI:
         include_in_schema=False,
     )
 
+    @app.get("/")
+    def service_root(request: Request):
+        """Visiting the bare Railway URL: quick status without opening /health."""
+        return {
+            "service": "FIR Automation SaaS API",
+            "health": "/health",
+            "docs": "/docs",
+            "db_ready": getattr(request.app.state, "startup_complete", False),
+            "startup_error": getattr(request.app.state, "startup_error", None),
+        }
+
     @app.get("/health")
     def health(request: Request):
         cfg = get_settings()

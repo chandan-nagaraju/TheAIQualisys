@@ -7,6 +7,14 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 _MIGRATION_STATEMENT_TIMEOUT_MS = 60_000
+# 009_fir_events_intelligence can run heavy backfill + dedupe; 60s often kills production deploys.
+_HEAVY_MIGRATION_TIMEOUT_MS = 900_000  # 15 minutes
+
+
+def _statement_timeout_ms_for_migration(filename: str) -> int:
+    if filename.startswith("009_"):
+        return _HEAVY_MIGRATION_TIMEOUT_MS
+    return _MIGRATION_STATEMENT_TIMEOUT_MS
 
 
 def _strip_outer_transaction_directives(sql: str) -> str:
@@ -53,7 +61,7 @@ def apply_sql_migrations(engine: Engine, backend_root: Path) -> None:
         body = _strip_outer_transaction_directives(raw)
         if not body:
             continue
-        timeout_ms = _MIGRATION_STATEMENT_TIMEOUT_MS
+        timeout_ms = _statement_timeout_ms_for_migration(name)
         with engine.begin() as conn:
             conn.exec_driver_sql(f"SET LOCAL statement_timeout = {timeout_ms}")
             conn.exec_driver_sql(body)
