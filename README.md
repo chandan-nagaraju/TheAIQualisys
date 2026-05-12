@@ -192,6 +192,17 @@ For a **visual** diagram, generate from models or use Alembic if you add it late
 
 Do **not** put `DATABASE_URL` in the **frontend** host’s env (unnecessary and risky); only the API service needs it.
 
+### Password reset email (forgot / reset)
+
+Company users reset passwords through the **API**, not Supabase Auth: the SPA calls `POST /auth/forgot-password` and `POST /auth/reset-password`, and hashes are stored on `company_users` as today.
+
+On the **backend** host, set:
+
+- **`PUBLIC_APP_URL`** — Canonical site origin users open in the browser (for example `https://www.theaiqualisys.com`). Reset emails link to `{PUBLIC_APP_URL}/reset-password?token=...`, so this must match your deployed SPA hostname (including `www` vs apex if you use one consistently).
+- **`EMAIL_FROM`**, **`SMTP_HOST`**, **`SMTP_PORT`** — Required to send the reset message; optional `SMTP_USER`, `SMTP_PASSWORD`, and TLS/SSL flags are in `saas/backend/app/config.py`.
+
+If SMTP is not configured, forgot-password returns a clear error instead of failing silently.
+
 ---
 
 ## 14. Future improvements
