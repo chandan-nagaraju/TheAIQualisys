@@ -36,8 +36,9 @@ class Settings(BaseSettings):
     admin_jwt_secret: str = "change-me-admin-jwt-separate"
     admin_access_token_expire_minutes: int = 60 * 8
 
-    # When False, FIR workspace and limits are not enforced (local/dev only). Production should use True.
-    # When True, expired trial / inactive subscription blocks the FIR workspace (/api/app) but not billing pages.
+    # When False: skip invoice/FIR monthly-cap checks in API (dev convenience). FIR workspace access
+    # still requires a valid trial or active paid window (see can_access_fir_workspace).
+    # Production: set True (env ENABLE_SUBSCRIPTION=true).
     enable_subscription: bool = Field(
         default=True,
         validation_alias=AliasChoices("ENABLE_SUBSCRIPTION", "enable_subscription"),
