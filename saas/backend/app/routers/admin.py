@@ -8,7 +8,19 @@ from sqlalchemy.orm import Session
 
 from app.deps import get_db_session, get_platform_admin
 from app.fir_analytics import build_fir_intelligence
-from app.models import Company, CompanyUser, Customer, InvoiceV2, ModulePricing, PlanType, PlatformAdmin, SubscriptionStatus
+from app.models import (
+    Company,
+    CompanySettings,
+    CompanyUser,
+    Customer,
+    FirReportEvent,
+    InvoiceV2,
+    ModulePricing,
+    PartV2,
+    PlanType,
+    PlatformAdmin,
+    SubscriptionStatus,
+)
 from app.module_access import resync_qms_trials_after_pricing_change
 from app.pricing_catalog import list_all_pricing_rows
 from app.schemas import (
@@ -220,6 +232,32 @@ def impersonate_company(
         {"company_id": user.company_id, "impersonated_by_admin": True},
     )
     return TokenResponse(access_token=token)
+
+
+@router.delete("/companies/{company_id}")
+def delete_company(
+    company_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Remove a tenant and all associated workspace data (users, customers, parts, FIR rows, etc.).
+
+    Deleting only a `CompanyUser` does not remove the company — use this when offboarding a customer entirely.
+    """
+    c = db.get(Company, company_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Company not found")
+    cid = company_id
+    # Parts reference fir_customers with ON DELETE RESTRICT — delete parts before customers.
+    db.execute(delete(FirReportEvent).where(FirReportEvent.company_id == cid))
+    db.execute(delete(PartV2).where(PartV2.company_id == cid))
+    db.execute(delete(Customer).where(Customer.company_id == cid))
+    db.execute(delete(InvoiceV2).where(InvoiceV2.company_id == cid))
+    db.execute(delete(CompanyUser).where(CompanyUser.company_id == cid))
+    db.execute(delete(CompanySettings).where(CompanySettings.company_id == cid))
+    db.execute(delete(Company).where(Company.id == cid))
+    db.commit()
+    return {"ok": True, "deleted_company_id": company_id}
 
 
 @router.get("/companies", response_model=list[AdminCompanySummary])
