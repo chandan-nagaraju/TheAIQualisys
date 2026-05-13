@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api";
 
@@ -37,26 +37,26 @@ export default function AdminUsersPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadAll = useCallback(async () => {
     const t = localStorage.getItem("fir_admin_token");
     if (!t) {
       nav("/login");
       return;
     }
-    (async () => {
-      try {
-        const [u, c] = await Promise.all([
-          apiFetch<TenantUser[]>("/admin/tenant-users", { token: "admin" }),
-          apiFetch<FirCustomer[]>("/admin/fir-customers", { token: "admin" }),
-        ]);
-        setTenantUsers(u);
-        setFirCustomers(c);
-      } catch {
-        localStorage.removeItem("fir_admin_token");
-        nav("/login");
-      }
-    })();
+    const [u, c] = await Promise.all([
+      apiFetch<TenantUser[]>("/admin/tenant-users", { token: "admin" }),
+      apiFetch<FirCustomer[]>("/admin/fir-customers", { token: "admin" }),
+    ]);
+    setTenantUsers(u);
+    setFirCustomers(c);
   }, [nav]);
+
+  useEffect(() => {
+    loadAll().catch(() => {
+      localStorage.removeItem("fir_admin_token");
+      nav("/login");
+    });
+  }, [loadAll, nav]);
 
   async function toggleUserBlocked(userId: number, currentlyBlocked: boolean) {
     setBusyUserId(userId);
@@ -92,7 +92,7 @@ export default function AdminUsersPage() {
         token: "admin",
         method: "DELETE",
       });
-      setTenantUsers((prev) => prev.filter((u) => u.user_id !== userId));
+      await loadAll();
       setMsg("User deleted successfully.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to delete user.");
@@ -134,6 +134,10 @@ export default function AdminUsersPage() {
           <h1 className="mt-2 text-2xl font-semibold text-white">Users &amp; customers (all tenants)</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-400">
             <strong className="text-slate-300">Tenant users</strong> are login accounts for each company.{" "}
+            <strong className="text-slate-300">Deleting a user</strong> only removes that sign-in; the company, FIR
+            customers, and parts stay in the database and still appear on the main admin companies list. To remove an
+            entire customer, open <strong className="text-slate-300">Manage</strong> on that company and use{" "}
+            <strong className="text-slate-300">Delete tenant</strong>.{" "}
             <strong className="text-slate-300">FIR customers</strong> are vendor records used at upload / inspection
             (customer-facing process).
           </p>
