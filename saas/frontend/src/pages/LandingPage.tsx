@@ -168,10 +168,10 @@ export default function LandingPage() {
               )}
             </div>
             <Link
-              to="/signup"
+              to={signedIn ? "/workspace/dashboard" : "/signup"}
               className="mt-6 inline-flex w-full justify-center rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
             >
-              Start with FIR
+              {signedIn ? "Open FIR workspace" : "Start with FIR"}
             </Link>
           </div>
 
