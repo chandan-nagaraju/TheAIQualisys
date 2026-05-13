@@ -19,6 +19,7 @@ type Row = {
   monthly_usage: number;
   monthly_fir_reports: number;
   monthly_usage_combined: number;
+  tenant_user_count: number;
 };
 
 export default function AdminDashboardPage() {
@@ -27,6 +28,7 @@ export default function AdminDashboardPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [openCompanyId, setOpenCompanyId] = useState<number | null>(null);
   const [openBusy, setOpenBusy] = useState(false);
+  const [openErr, setOpenErr] = useState<string | null>(null);
   useEffect(() => {
     const t = localStorage.getItem("fir_admin_token");
     if (!t) {
@@ -51,7 +53,13 @@ export default function AdminDashboardPage() {
   async function openTenantWorkspace(companyId: number) {
     const adminTok = localStorage.getItem("fir_admin_token");
     if (!adminTok) return;
+    const row = rows.find((r) => r.id === companyId);
+    if (!row || row.tenant_user_count < 1) {
+      setOpenErr("That company has no workspace logins. Deleted users do not remove the company — add a user from signup/support or clean up the tenant from Manage.");
+      return;
+    }
     setOpenBusy(true);
+    setOpenErr(null);
     try {
       sessionStorage.setItem("fir_admin_token_backup", adminTok);
       sessionStorage.setItem("fir_impersonating", "1");
@@ -63,9 +71,10 @@ export default function AdminDashboardPage() {
       localStorage.setItem("fir_token", res.access_token);
       localStorage.removeItem("fir_admin_token");
       nav("/dashboard");
-    } catch {
+    } catch (e) {
       sessionStorage.removeItem("fir_admin_token_backup");
       sessionStorage.removeItem("fir_impersonating");
+      setOpenErr(e instanceof Error ? e.message : "Could not open workspace.");
     } finally {
       setOpenBusy(false);
     }
@@ -122,27 +131,37 @@ export default function AdminDashboardPage() {
           <select
             className="mt-1 block min-w-[16rem] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
             value={openCompanyId ?? ""}
-            onChange={(e) => setOpenCompanyId(e.target.value ? Number(e.target.value) : null)}
+            onChange={(e) => {
+              setOpenErr(null);
+              setOpenCompanyId(e.target.value ? Number(e.target.value) : null);
+            }}
           >
             <option value="">Select company…</option>
             {rows.map((r) => (
-              <option key={r.id} value={r.id}>
+              <option key={r.id} value={r.id} disabled={r.tenant_user_count < 1}>
                 {r.company_name} ({r.vendor_code})
+                {r.tenant_user_count < 1 ? " — no logins" : ""}
               </option>
             ))}
           </select>
         </div>
         <button
           type="button"
-          disabled={openCompanyId == null || openBusy}
+          disabled={
+            openCompanyId == null ||
+            openBusy ||
+            (rows.find((r) => r.id === openCompanyId)?.tenant_user_count ?? 0) < 1
+          }
           className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
           onClick={() => openCompanyId != null && void openTenantWorkspace(openCompanyId)}
         >
           {openBusy ? "Opening…" : "Open workspace"}
         </button>
-        <p className="text-xs text-slate-500">
-          Uses the first login user for that company. Your admin session is saved — use <strong>Exit to admin</strong> in
-          the workspace banner to return.
+        {openErr && <p className="w-full text-sm text-amber-400">{openErr}</p>}
+        <p className="w-full text-xs text-slate-500">
+          Uses the first login user for that company. <strong className="text-slate-400">0 logins</strong> means no one
+          can sign in until you add a user — removing users does not delete the company row. Your admin session is saved
+          — use <strong>Exit to admin</strong> in the workspace banner to return.
         </p>
       </div>
 
@@ -156,6 +175,7 @@ export default function AdminDashboardPage() {
                 <th className="px-4 py-3">Vendor</th>
                 <th className="px-4 py-3">Plan</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Logins</th>
                 <th className="px-4 py-3">Usage (mo)</th>
                 <th className="px-4 py-3 text-slate-500">Inv / FIR</th>
                 <th className="px-4 py-3" />
@@ -168,6 +188,12 @@ export default function AdminDashboardPage() {
                   <td className="px-4 py-3 font-mono text-slate-400">{r.vendor_code}</td>
                   <td className="px-4 py-3 text-slate-300">{r.plan_type}</td>
                   <td className="px-4 py-3 text-slate-300">{r.subscription_status}</td>
+                  <td
+                    className={`px-4 py-3 font-medium tabular-nums ${r.tenant_user_count < 1 ? "text-amber-400" : "text-slate-200"}`}
+                    title="Workspace users (company_users) for this tenant"
+                  >
+                    {r.tenant_user_count}
+                  </td>
                   <td className="px-4 py-3 font-medium text-slate-200">{r.monthly_usage_combined}</td>
                   <td className="px-4 py-3 text-xs text-slate-500">
                     {r.monthly_usage} / {r.monthly_fir_reports}

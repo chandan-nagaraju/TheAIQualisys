@@ -171,9 +171,19 @@ def delete_tenant_user(
     user = db.get(CompanyUser, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Tenant user not found")
+    company_id = int(user.company_id)
     db.execute(delete(CompanyUser).where(CompanyUser.id == user_id))
     db.commit()
-    return {"ok": True, "deleted_user_id": user_id}
+    remaining = db.execute(
+        select(func.count(CompanyUser.id)).where(CompanyUser.company_id == company_id)
+    ).scalar_one()
+    n = int(remaining or 0)
+    return {
+        "ok": True,
+        "deleted_user_id": user_id,
+        "company_id": company_id,
+        "remaining_tenant_users": n,
+    }
 
 
 @router.get("/fir-customers", response_model=list[AdminFirCustomerRow])
@@ -238,6 +248,10 @@ def list_companies(
         db.commit()
         for c in companies:
             db.refresh(c)
+    uid_rows = db.execute(
+        select(CompanyUser.company_id, func.count(CompanyUser.id)).group_by(CompanyUser.company_id)
+    ).all()
+    user_count_by_company = {int(cid): int(n) for cid, n in uid_rows}
     out: list[AdminCompanySummary] = []
     for c in companies:
         inv = count_invoices_this_month(db, c.id, today)
@@ -252,6 +266,7 @@ def list_companies(
                 monthly_usage=inv,
                 monthly_fir_reports=fir,
                 monthly_usage_combined=inv + fir,
+                tenant_user_count=user_count_by_company.get(c.id, 0),
             )
         )
     return out

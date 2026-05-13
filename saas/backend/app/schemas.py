@@ -173,6 +173,7 @@ class AdminCompanySummary(BaseModel):
     monthly_usage: int
     monthly_fir_reports: int
     monthly_usage_combined: int
+    tenant_user_count: int = 0
 
 
 class AdminDashboardResponse(BaseModel):
