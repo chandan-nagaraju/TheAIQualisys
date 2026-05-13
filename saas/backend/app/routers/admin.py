@@ -8,7 +8,20 @@ from sqlalchemy.orm import Session
 
 from app.deps import get_db_session, get_platform_admin
 from app.fir_analytics import build_fir_intelligence
-from app.models import Company, CompanyUser, Customer, InvoiceV2, ModulePricing, PlanType, PlatformAdmin, SubscriptionStatus
+from app.models import (
+    Company,
+    CompanySettings,
+    CompanyUser,
+    Customer,
+    FirReportEvent,
+    FirUploadLog,
+    InvoiceV2,
+    ModulePricing,
+    PartV2,
+    PlanType,
+    PlatformAdmin,
+    SubscriptionStatus,
+)
 from app.module_access import resync_qms_trials_after_pricing_change
 from app.pricing_catalog import list_all_pricing_rows
 from app.schemas import (
@@ -345,6 +358,32 @@ def patch_company(
     db.commit()
     db.refresh(c)
     return _company_out(c)
+
+
+@router.delete("/companies/{company_id}")
+def delete_tenant_company(
+    company_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Permanently remove a tenant and all related workspace data (admin offboarding).
+
+    Order respects ``parts_v2.customer_id`` → ``fir_customers`` **RESTRICT** (parts deleted first).
+    """
+    c = db.get(Company, company_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Company not found")
+    cid = company_id
+    db.execute(delete(FirReportEvent).where(FirReportEvent.company_id == cid))
+    db.execute(delete(FirUploadLog).where(FirUploadLog.company_id == cid))
+    db.execute(delete(PartV2).where(PartV2.company_id == cid))
+    db.execute(delete(Customer).where(Customer.company_id == cid))
+    db.execute(delete(InvoiceV2).where(InvoiceV2.company_id == cid))
+    db.execute(delete(CompanyUser).where(CompanyUser.company_id == cid))
+    db.execute(delete(CompanySettings).where(CompanySettings.company_id == cid))
+    db.execute(delete(Company).where(Company.id == cid))
+    db.commit()
+    return {"ok": True, "deleted_company_id": company_id}
 
 
 @router.get("/companies/{company_id}/users", response_model=list[dict])

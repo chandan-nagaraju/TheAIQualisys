@@ -68,6 +68,8 @@ export default function AdminCompanyPage() {
   const [extendDays, setExtendDays] = useState(30);
   const [msg, setMsg] = useState<string | null>(null);
   const [intel, setIntel] = useState<FirIntel | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
   async function load() {
     if (!id) return;
@@ -109,6 +111,31 @@ export default function AdminCompanyPage() {
     setMsg("Updated.");
   }
 
+  async function deleteTenantPermanently() {
+    if (!id || !company) return;
+    const cid = Number(id);
+    const proceed = window.confirm(
+      `Permanently delete tenant "${company.company_name}" and ALL data (users, FIR customers, parts, invoices, FIR intelligence, uploads log, settings)? This cannot be undone.`,
+    );
+    if (!proceed) return;
+    const typed = window.prompt(`Type the vendor code ${company.vendor_code} to confirm:`);
+    if (typed == null) return;
+    if (typed.trim() !== company.vendor_code) {
+      setDeleteErr("Vendor code did not match. Nothing was deleted.");
+      return;
+    }
+    setDeleteBusy(true);
+    setDeleteErr(null);
+    try {
+      await apiFetch(`/admin/companies/${cid}`, { method: "DELETE", token: "admin" });
+      nav("/admin");
+    } catch (e) {
+      setDeleteErr(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   async function activate(e: FormEvent) {
     e.preventDefault();
     await patch({ action: "activate", plan_type: plan });
@@ -148,11 +175,15 @@ export default function AdminCompanyPage() {
         <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
           <p className="text-xs uppercase text-slate-500">Users</p>
           <ul className="mt-2 space-y-1 text-sm text-slate-300">
-            {users.map((u) => (
-              <li key={u.id}>
-                {u.email} {u.name ? `(${u.name})` : ""}
-              </li>
-            ))}
+            {users.length === 0 ? (
+              <li className="text-slate-500">No workspace logins for this tenant.</li>
+            ) : (
+              users.map((u) => (
+                <li key={u.id}>
+                  {u.email} {u.name ? `(${u.name})` : ""}
+                </li>
+              ))
+            )}
           </ul>
           <p className="mt-3 text-xs text-slate-500">
             <Link className="text-brand-600 hover:underline" to="/admin/users">
@@ -221,6 +252,27 @@ export default function AdminCompanyPage() {
           </button>
         </div>
         {msg && <p className="text-sm text-emerald-400">{msg}</p>}
+      </div>
+
+      <div className="rounded-2xl border border-red-900/50 bg-red-950/15 p-6 space-y-3">
+        <h2 className="text-lg font-semibold text-red-200">Delete tenant</h2>
+        <p className="text-sm text-slate-400">
+          Removes this company from the admin list and deletes all related workspace data. Use this after offboarding a
+          customer. To remove only sign-in accounts, use{" "}
+          <Link className="text-brand-500 hover:underline" to="/admin/users">
+            Users &amp; customers
+          </Link>{" "}
+          instead.
+        </p>
+        {deleteErr && <p className="text-sm text-red-400">{deleteErr}</p>}
+        <button
+          type="button"
+          disabled={deleteBusy}
+          className="rounded-lg border border-red-700 bg-red-950/40 px-4 py-2 text-sm font-semibold text-red-100 hover:bg-red-900/50 disabled:opacity-50"
+          onClick={() => void deleteTenantPermanently()}
+        >
+          {deleteBusy ? "Deleting…" : "Delete tenant permanently"}
+        </button>
       </div>
 
       {intel && (
