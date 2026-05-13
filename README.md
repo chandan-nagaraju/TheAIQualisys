@@ -174,6 +174,7 @@ For a **visual** diagram, generate from models or use Alembic if you add it late
 2. **Backend** — `cd saas/backend`, `python -m venv venv`, `pip install -r requirements.txt`, copy `.env.example` → `.env`, set `DATABASE_URL`, `JWT_SECRET`, `ADMIN_JWT_SECRET`, `CORS_ORIGINS`, `PUBLIC_APP_URL`.
 3. **Run API** — `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 4. **Frontend** — `cd saas/frontend`, `npm install`, `npm run dev` (port 5173, proxies to 8000).
+5. **Backend unit tests (optional)** — from `saas/backend`: `pip install -r requirements-dev.txt`, then `PYTHONPATH=. python -m pytest tests/ -q`.
 
 **One-command Windows:** `.\start-dev.ps1` (see `docs/QUICKSTART.md`).
 
@@ -214,6 +215,7 @@ Do **not** put `DATABASE_URL` in the **frontend** host’s env (unnecessary and 
 | [`docs/POSTGRES_WINDOWS.md`](docs/POSTGRES_WINDOWS.md) | Postgres on Windows |
 | [`docs/PART_MASTER_EXCEL.md`](docs/PART_MASTER_EXCEL.md) | Part master Excel format |
 | [`docs/PRICING.md`](docs/PRICING.md) | Pricing notes |
+| [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) | Ops limits, config pitfalls, test notes, historical regressions |
 
 ---
 
