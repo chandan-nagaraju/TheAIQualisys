@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import QRCode from "qrcode";
 import { apiFetch } from "../api";
 import { useTheme } from "../theme/ThemeContext";
@@ -151,12 +150,6 @@ export default function UpgradePage() {
       theme === "dark"
         ? "border-slate-600 bg-brand-700/90 text-white hover:bg-brand-600"
         : "border-brand-600 bg-brand-600 text-white hover:bg-brand-500",
-    marketBox:
-      theme === "dark"
-        ? "border-amber-700/40 bg-gradient-to-br from-amber-950/50 to-slate-900/80"
-        : "border-amber-200 bg-gradient-to-br from-amber-50 to-white",
-    marketTitle: theme === "dark" ? "text-amber-200" : "text-amber-900",
-    marketBody: theme === "dark" ? "text-slate-300" : "text-slate-700",
   };
 
   const selectedPlanText = selected
@@ -167,65 +160,6 @@ export default function UpgradePage() {
   const billingLabel = billingSelection
     ? (BILLING_OPTIONS.find((o) => o.id === billingSelection)?.label ?? "")
     : "";
-
-  const marketingContent = enterprisePricing ? (
-    <>
-      <p className={t.marketBody}>
-        Each option below shows a different prepay total from the same monthly list price. Longer prepay means fewer payment cycles
-        and predictable cost for your FIR workspace—helpful for budgets, audits, and keeping the team on the tool without monthly
-        renewals.
-      </p>
-      <ul className={`mt-3 list-disc space-y-1.5 pl-5 text-sm leading-relaxed sm:text-[0.9375rem] ${t.marketBody}`}>
-        <li>
-          <strong className="font-semibold">Month</strong> — one month at list price. Maximum flexibility if you prefer paying as you
-          go.
-        </li>
-        <li>
-          <strong className="font-semibold">Quarterly</strong> — three months at the list rate (3× the monthly amount). One payment
-          covers a quarter of access with less admin than three separate months.
-        </li>
-        <li>
-          <strong className="font-semibold">Half yearly</strong> — six months at the Enterprise partner total: 5.5× your monthly list
-          price (rounded to the nearest rupee), which is better than paying six separate months.
-        </li>
-        <li>
-          <strong className="font-semibold">Yearly</strong> — twelve months of access for the price of eleven months (11× monthly).
-          Best per-month value and the least interruption for finance and operations.
-        </li>
-      </ul>
-      <p className={`mt-3 ${t.marketBody}`}>
-        Complete payment below to lock in access for the period you selected; we verify and activate so your FIR workflow stays
-        uninterrupted.
-      </p>
-    </>
-  ) : (
-    <>
-      <p className={t.marketBody}>
-        Your total changes by how far ahead you prepay, using the same monthly list price. Prepaying longer reduces how often you
-        pay and makes cost predictable—easier for planning and fewer interruptions to your FIR process.
-      </p>
-      <ul className={`mt-3 list-disc space-y-1.5 pl-5 text-sm leading-relaxed sm:text-[0.9375rem] ${t.marketBody}`}>
-        <li>
-          <strong className="font-semibold">Month</strong> — one month at list price. Pay as you go when you want the shortest
-          commitment.
-        </li>
-        <li>
-          <strong className="font-semibold">Quarterly</strong> — three months at the list rate (3× monthly). One invoice-style
-          payment for a full quarter.
-        </li>
-        <li>
-          <strong className="font-semibold">Half yearly</strong> — six months at 6× the monthly list price.
-        </li>
-        <li>
-          <strong className="font-semibold">Yearly</strong> — twelve months of access for 11× the monthly price (one month
-          equivalent waived). Strongest discount and the least payment overhead for the year.
-        </li>
-      </ul>
-      <p className={`mt-3 ${t.marketBody}`}>
-        Pay below with the QR amount shown for your choice; we confirm payment and activate your plan quickly.
-      </p>
-    </>
-  );
 
   const whatsappHref = useMemo(() => {
     if (!info || !billingSelection) return "";
@@ -309,20 +243,6 @@ export default function UpgradePage() {
       {err && <p className={`mt-4 text-sm ${t.err}`}>{err}</p>}
       {info && (
         <div className="mt-6 space-y-4 sm:mt-8">
-          <div className={`rounded-xl border p-4 sm:p-5 ${t.upiBox}`}>
-            <p className={`text-xs uppercase tracking-wide ${t.upiLabel}`}>Your modules &amp; pricing</p>
-            <p className={`mt-2 text-sm ${t.msg}`}>
-              <strong className={t.title}>FIR Automation</strong> — pick a plan on the pricing page, then select billing
-              here.
-            </p>
-            <Link
-              to="/pricing"
-              className="mt-3 inline-flex rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-500"
-            >
-              View FIR pricing &amp; plans
-            </Link>
-          </div>
-
           {billingSelection && (
             <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
               QR payment — amount matches your billing choice; QR refreshes every {QR_REFRESH_MS / 1000} seconds
@@ -375,13 +295,6 @@ export default function UpgradePage() {
             >
               <p className={`text-xs uppercase tracking-wide ${t.upiLabel}`}>Amount to pay ({billingLabel})</p>
               <p className={`mt-1 text-2xl font-bold ${t.title}`}>₹{payAmount}</p>
-            </div>
-          )}
-
-          {billingSelection && payAmount != null && (
-            <div className={`rounded-xl border p-4 sm:p-5 ${t.marketBox}`}>
-              <p className={`text-sm font-semibold ${t.marketTitle}`}>What each billing option means</p>
-              <div className="mt-2">{marketingContent}</div>
             </div>
           )}
 
