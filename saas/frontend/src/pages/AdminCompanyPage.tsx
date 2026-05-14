@@ -84,6 +84,191 @@ type FirIntel = {
   }>;
 };
 
+type FirIntelPart = FirIntel["customers"][number]["parts"][number];
+
+type IntelSortPreset =
+  | "part_asc"
+  | "part_desc"
+  | "description_asc"
+  | "description_desc"
+  | "reports_desc"
+  | "reports_asc"
+  | "qty_desc"
+  | "qty_asc"
+  | "gap_desc"
+  | "gap_asc"
+  | "since_desc"
+  | "since_asc"
+  | "rhythm_asc"
+  | "rhythm_desc"
+  | "span_desc"
+  | "span_asc";
+
+function filterAndSortIntelParts(
+  parts: FirIntelPart[],
+  partQ: string,
+  descQ: string,
+  rhythm: string,
+  repeat: "all" | "yes" | "no",
+  preset: IntelSortPreset,
+): FirIntelPart[] {
+  let rows = [...parts];
+  const pq = partQ.trim().toLowerCase();
+  if (pq) rows = rows.filter((p) => p.part_no.toLowerCase().includes(pq));
+  const dq = descQ.trim().toLowerCase();
+  if (dq) rows = rows.filter((p) => (p.description || "").toLowerCase().includes(dq));
+  if (rhythm.trim()) {
+    const r = rhythm.trim().toLowerCase();
+    rows = rows.filter((p) => p.rhythm.toLowerCase() === r);
+  }
+  if (repeat === "yes") rows = rows.filter((p) => p.is_repeat);
+  if (repeat === "no") rows = rows.filter((p) => !p.is_repeat);
+
+  const dir = preset.endsWith("_desc") ? -1 : 1;
+  const cmpStr = (a: string, b: string) => dir * a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+  const cmpNum = (a: number, b: number) => dir * (a - b);
+
+  const nullsLast = (a: number | null | undefined, b: number | null | undefined, compare: (x: number, y: number) => number): number => {
+    const na = a == null || !Number.isFinite(a);
+    const nb = b == null || !Number.isFinite(b);
+    if (na && nb) return 0;
+    if (na) return 1;
+    if (nb) return -1;
+    return compare(a as number, b as number);
+  };
+
+  rows.sort((a, b) => {
+    switch (preset) {
+      case "part_asc":
+      case "part_desc":
+        return cmpStr(a.part_no, b.part_no);
+      case "description_asc":
+      case "description_desc":
+        return cmpStr(a.description || "", b.description || "");
+      case "reports_asc":
+      case "reports_desc":
+        return cmpNum(a.report_count, b.report_count);
+      case "qty_asc":
+      case "qty_desc":
+        return nullsLast(a.median_quantity ?? null, b.median_quantity ?? null, (x, y) => cmpNum(x, y));
+      case "gap_asc":
+      case "gap_desc":
+        return nullsLast(a.median_interval_days ?? null, b.median_interval_days ?? null, (x, y) => cmpNum(x, y));
+      case "since_asc":
+      case "since_desc":
+        return cmpNum(a.days_since_last_report, b.days_since_last_report);
+      case "rhythm_asc":
+      case "rhythm_desc":
+        return cmpStr(a.rhythm || "", b.rhythm || "");
+      case "span_asc":
+      case "span_desc":
+        return cmpNum(a.avg_reports_per_day_in_span, b.avg_reports_per_day_in_span);
+      default:
+        return cmpStr(a.part_no, b.part_no);
+    }
+  });
+
+  return rows;
+}
+
+function CustomerFirPartsTable({
+  cust,
+  intelPartQuery,
+  intelDescQuery,
+  intelRhythmFilter,
+  intelRepeatFilter,
+  intelSortPreset,
+}: {
+  cust: FirIntel["customers"][number];
+  intelPartQuery: string;
+  intelDescQuery: string;
+  intelRhythmFilter: string;
+  intelRepeatFilter: "all" | "yes" | "no";
+  intelSortPreset: IntelSortPreset;
+}) {
+  const displayed = filterAndSortIntelParts(
+    cust.parts,
+    intelPartQuery,
+    intelDescQuery,
+    intelRhythmFilter,
+    intelRepeatFilter,
+    intelSortPreset,
+  );
+  const filteredOut = cust.parts.length - displayed.length;
+
+  return (
+    <div className="mt-3 overflow-x-auto">
+      {filteredOut > 0 ? (
+        <p className="mb-2 text-xs text-slate-500">
+          Showing {displayed.length} of {cust.parts.length} parts (filters hide {filteredOut})
+        </p>
+      ) : null}
+      {displayed.length === 0 ? (
+        <p className="text-sm text-slate-500">No rows match the current filters for this customer.</p>
+      ) : (
+        <table className="min-w-full text-left text-xs text-slate-300">
+          <thead className="border-b border-slate-800 text-slate-500">
+            <tr>
+              <th className="py-2 pr-3">Part</th>
+              <th className="py-2 pr-3">Description</th>
+              <th className="py-2 pr-2">Reports</th>
+              <th
+                className="py-2 pr-2"
+                title="Median of quantities on FIR rows in this month (optional cutoff date on server)"
+              >
+                Expected QTY
+              </th>
+              <th className="py-2 pr-2">Repeat</th>
+              <th className="py-2 pr-2">Median gap (d)</th>
+              <th className="py-2 pr-2">Since last</th>
+              <th className="py-2 pr-2">Rhythm</th>
+              <th className="py-2">Span avg/d</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800/80">
+            {displayed.map((p) => (
+              <tr key={`${cust.id ?? "u"}-${p.part_no}`}>
+                <td className="py-2 pr-3 font-mono text-slate-200">{p.part_no}</td>
+                <td className="max-w-[200px] truncate py-2 pr-3 text-slate-400" title={p.description}>
+                  {p.description || "—"}
+                </td>
+                <td className="py-2 pr-2">{p.report_count}</td>
+                <td className="py-2 pr-2 tabular-nums" title="Median quantity for this part in the selected month">
+                  {formatExpectedQty(p.median_quantity)}
+                </td>
+                <td className="py-2 pr-2">{p.is_repeat ? "yes" : "no"}</td>
+                <td className="py-2 pr-2">{p.median_interval_days ?? "—"}</td>
+                <td className="py-2 pr-2">{p.days_since_last_report}d</td>
+                <td className="py-2 pr-2 capitalize text-amber-200/90">{p.rhythm}</td>
+                <td className="py-2">{p.avg_reports_per_day_in_span}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+const INTEL_TABLE_SORT_OPTIONS: { value: IntelSortPreset; label: string }[] = [
+  { value: "part_asc", label: "Part A→Z" },
+  { value: "part_desc", label: "Part Z→A" },
+  { value: "description_asc", label: "Description A→Z" },
+  { value: "description_desc", label: "Description Z→A" },
+  { value: "reports_desc", label: "Reports (high → low)" },
+  { value: "reports_asc", label: "Reports (low → high)" },
+  { value: "qty_desc", label: "Expected QTY (high → low)" },
+  { value: "qty_asc", label: "Expected QTY (low → high)" },
+  { value: "gap_desc", label: "Median gap (high → low)" },
+  { value: "gap_asc", label: "Median gap (low → high)" },
+  { value: "since_desc", label: "Since last (most days first)" },
+  { value: "since_asc", label: "Since last (fewest days first)" },
+  { value: "rhythm_asc", label: "Rhythm A→Z" },
+  { value: "rhythm_desc", label: "Rhythm Z→A" },
+  { value: "span_desc", label: "Span avg/d (high → low)" },
+  { value: "span_asc", label: "Span avg/d (low → high)" },
+];
+
 function formatExpectedQty(medianQuantity: number | null | undefined): string {
   if (medianQuantity == null || !Number.isFinite(medianQuantity)) return "—";
   if (Number.isInteger(medianQuantity)) return String(medianQuantity);
@@ -149,6 +334,11 @@ export default function AdminCompanyPage() {
   const [intelMonths, setIntelMonths] = useState<FirIntelMonthRow[] | null>(null);
   const [intelYm, setIntelYm] = useState("");
   const [intelErr, setIntelErr] = useState<string | null>(null);
+  const [intelPartQuery, setIntelPartQuery] = useState("");
+  const [intelDescQuery, setIntelDescQuery] = useState("");
+  const [intelRhythmFilter, setIntelRhythmFilter] = useState("");
+  const [intelRepeatFilter, setIntelRepeatFilter] = useState<"all" | "yes" | "no">("all");
+  const [intelSortPreset, setIntelSortPreset] = useState<IntelSortPreset>("part_asc");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
@@ -217,7 +407,20 @@ export default function AdminCompanyPage() {
     setIntelYm("");
     setIntel(null);
     setIntelErr(null);
+    setIntelPartQuery("");
+    setIntelDescQuery("");
+    setIntelRhythmFilter("");
+    setIntelRepeatFilter("all");
+    setIntelSortPreset("part_asc");
   }, [id]);
+
+  useEffect(() => {
+    setIntelPartQuery("");
+    setIntelDescQuery("");
+    setIntelRhythmFilter("");
+    setIntelRepeatFilter("all");
+    setIntelSortPreset("part_asc");
+  }, [intelYm]);
 
   useEffect(() => {
     const t = localStorage.getItem("fir_admin_token");
@@ -447,7 +650,7 @@ export default function AdminCompanyPage() {
                   const v = `${r.year}-${String(r.month).padStart(2, "0")}`;
                   return (
                     <option key={v} value={v}>
-                      {r.label} · {r.row_count.toLocaleString()} rows
+                      {r.label}
                     </option>
                   );
                 })
@@ -515,6 +718,102 @@ export default function AdminCompanyPage() {
               </div>
             </div>
 
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Part table filters &amp; sort</p>
+              <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+                <div className="min-w-[10rem] flex-1">
+                  <label className="block text-xs text-slate-500" htmlFor="intel-filter-part">
+                    Part contains
+                  </label>
+                  <input
+                    id="intel-filter-part"
+                    type="search"
+                    autoComplete="off"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white outline-none ring-brand-600 focus:ring-2"
+                    value={intelPartQuery}
+                    onChange={(e) => setIntelPartQuery(e.target.value)}
+                    placeholder="e.g. MB12"
+                  />
+                </div>
+                <div className="min-w-[10rem] flex-1">
+                  <label className="block text-xs text-slate-500" htmlFor="intel-filter-desc">
+                    Description contains
+                  </label>
+                  <input
+                    id="intel-filter-desc"
+                    type="search"
+                    autoComplete="off"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white outline-none ring-brand-600 focus:ring-2"
+                    value={intelDescQuery}
+                    onChange={(e) => setIntelDescQuery(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500" htmlFor="intel-filter-rhythm">
+                    Rhythm
+                  </label>
+                  <select
+                    id="intel-filter-rhythm"
+                    className="mt-1 min-w-[9rem] rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white outline-none ring-brand-600 focus:ring-2"
+                    value={intelRhythmFilter}
+                    onChange={(e) => setIntelRhythmFilter(e.target.value)}
+                  >
+                    <option value="">All</option>
+                    <option value="running">Running</option>
+                    <option value="regular">Regular</option>
+                    <option value="occasional">Occasional</option>
+                    <option value="stranger">Stranger</option>
+                    <option value="new">New</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500" htmlFor="intel-filter-repeat">
+                    Repeat
+                  </label>
+                  <select
+                    id="intel-filter-repeat"
+                    className="mt-1 min-w-[8rem] rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white outline-none ring-brand-600 focus:ring-2"
+                    value={intelRepeatFilter}
+                    onChange={(e) => setIntelRepeatFilter(e.target.value as "all" | "yes" | "no")}
+                  >
+                    <option value="all">All</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </div>
+                <div className="min-w-[14rem] flex-1">
+                  <label className="block text-xs text-slate-500" htmlFor="intel-sort">
+                    Sort
+                  </label>
+                  <select
+                    id="intel-sort"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white outline-none ring-brand-600 focus:ring-2"
+                    value={intelSortPreset}
+                    onChange={(e) => setIntelSortPreset(e.target.value as IntelSortPreset)}
+                  >
+                    {INTEL_TABLE_SORT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800"
+                  onClick={() => {
+                    setIntelPartQuery("");
+                    setIntelDescQuery("");
+                    setIntelRhythmFilter("");
+                    setIntelRepeatFilter("all");
+                    setIntelSortPreset("part_asc");
+                  }}
+                >
+                  Clear filters
+                </button>
+              </div>
+            </div>
+
             <div className="space-y-8">
               {intel.customers.map((cust) => (
                 <div key={`${cust.id ?? "u"}-${cust.name}`} className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">
@@ -530,47 +829,14 @@ export default function AdminCompanyPage() {
                   {cust.parts.length === 0 ? (
                     <p className="mt-2 text-sm text-slate-500">No FIR intelligence rows for this customer in this month.</p>
                   ) : (
-                    <div className="mt-3 overflow-x-auto">
-                      <table className="min-w-full text-left text-xs text-slate-300">
-                        <thead className="border-b border-slate-800 text-slate-500">
-                          <tr>
-                            <th className="py-2 pr-3">Part</th>
-                            <th className="py-2 pr-3">Description</th>
-                            <th className="py-2 pr-2">Reports</th>
-                            <th
-                              className="py-2 pr-2"
-                              title="Median of quantities on FIR rows in this month (optional cutoff date on server)"
-                            >
-                              Expected QTY
-                            </th>
-                            <th className="py-2 pr-2">Repeat</th>
-                            <th className="py-2 pr-2">Median gap (d)</th>
-                            <th className="py-2 pr-2">Since last</th>
-                            <th className="py-2 pr-2">Rhythm</th>
-                            <th className="py-2">Span avg/d</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/80">
-                          {cust.parts.map((p) => (
-                            <tr key={`${cust.id ?? "u"}-${p.part_no}`}>
-                              <td className="py-2 pr-3 font-mono text-slate-200">{p.part_no}</td>
-                              <td className="max-w-[200px] truncate py-2 pr-3 text-slate-400" title={p.description}>
-                                {p.description || "—"}
-                              </td>
-                              <td className="py-2 pr-2">{p.report_count}</td>
-                              <td className="py-2 pr-2 tabular-nums" title="Median quantity for this part in the selected month">
-                                {formatExpectedQty(p.median_quantity)}
-                              </td>
-                              <td className="py-2 pr-2">{p.is_repeat ? "yes" : "no"}</td>
-                              <td className="py-2 pr-2">{p.median_interval_days ?? "—"}</td>
-                              <td className="py-2 pr-2">{p.days_since_last_report}d</td>
-                              <td className="py-2 pr-2 capitalize text-amber-200/90">{p.rhythm}</td>
-                              <td className="py-2">{p.avg_reports_per_day_in_span}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <CustomerFirPartsTable
+                      cust={cust}
+                      intelPartQuery={intelPartQuery}
+                      intelDescQuery={intelDescQuery}
+                      intelRhythmFilter={intelRhythmFilter}
+                      intelRepeatFilter={intelRepeatFilter}
+                      intelSortPreset={intelSortPreset}
+                    />
                   )}
                 </div>
               ))}
