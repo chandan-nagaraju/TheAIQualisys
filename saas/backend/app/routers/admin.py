@@ -459,8 +459,8 @@ def company_fir_intelligence(
             status_code=400,
             detail={
                 "code": "year_required",
-                "message": "Pass year (and optionally month). "
-                "Full calendar year: ?year=2026. Single month: ?year=2026&month=4.",
+                "message": "Pass `year` as the April-start year of the Indian FY when using a full-year rollup "
+                "(e.g. ?year=2026 → Apr 2026–Mar 2027). Single calendar month: ?year=2026&month=4.",
             },
         )
     settings = get_settings()
