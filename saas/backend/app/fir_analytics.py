@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 from statistics import median
 from typing import Any, Protocol
 
@@ -22,6 +24,34 @@ def _utc_date(dt: datetime) -> date:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).date()
+
+
+def _parse_quantity_numeric(qty: str | None) -> float | None:
+    """Parse stored fir_events.quantity (normalized string) to float for median; mirrors ingest normalization loosely."""
+    if qty is None:
+        return None
+    s = str(qty).strip().replace(",", "")
+    if not s:
+        return None
+    s = s.replace("\u2009", "").replace("\u00a0", "")
+    try:
+        d = Decimal(s)
+    except InvalidOperation:
+        m = re.match(r"^([-+]?\d+(?:\.\d+)?)", s)
+        if not m:
+            return None
+        try:
+            d = Decimal(m.group(1))
+        except InvalidOperation:
+            return None
+    return float(d)
+
+
+def _median_quantity_from_event_qty_strings(qty_strings: list[str]) -> float | None:
+    nums = [n for s in qty_strings if (n := _parse_quantity_numeric(s)) is not None]
+    if not nums:
+        return None
+    return float(median(nums))
 
 
 def fy_april_start_year_for_date(d: date) -> int:
@@ -131,8 +161,8 @@ def build_fir_intelligence(db: Session, company_id: int, today: date | None = No
     parts = db.execute(select(PartV2).where(PartV2.company_id == company_id)).scalars().all()
     desc_by_part_no = {p.part_no.strip(): (p.description or "") for p in parts}
 
-    # (customer_key, part_no) -> list of dates (one per event, preserves frequency on same day)
-    by_key: dict[tuple[int | None, str], list[date]] = defaultdict(list)
+    # (customer_key, part_no) -> list of (event_date, quantity_str) — one entry per fir_events row
+    by_key: dict[tuple[int | None, str], list[tuple[date, str]]] = defaultdict(list)
     for ev in events:
         pn = (ev.part_no or "").strip()
         if not pn:
@@ -142,14 +172,18 @@ def build_fir_intelligence(db: Session, company_id: int, today: date | None = No
             evday = ev.invoice_date
         else:
             evday = _utc_date(ev.created_at)
-        by_key[(cid, pn)].append(evday)
+        qty_raw = (ev.quantity or "").strip()
+        by_key[(cid, pn)].append((evday, qty_raw))
 
     rhythm_counts: dict[str, int] = defaultdict(int)
     repeated_groups = 0
     part_rows: list[dict[str, Any]] = []
 
-    for (cid, pn), dates in by_key.items():
-        sorted_dates = sorted(dates)
+    for (cid, pn), pairs in by_key.items():
+        pairs_sorted = sorted(pairs, key=lambda x: (x[0], x[1]))
+        sorted_dates = [d for d, _ in pairs_sorted]
+        qty_strings = [q for _, q in pairs_sorted]
+        median_qty = _median_quantity_from_event_qty_strings(qty_strings)
         rc = len(sorted_dates)
         if rc > 1:
             repeated_groups += 1
@@ -172,6 +206,7 @@ def build_fir_intelligence(db: Session, company_id: int, today: date | None = No
                 "part_no": pn,
                 "description": (desc_by_part_no.get(pn) or "")[:500],
                 "report_count": rc,
+                "median_quantity": median_qty,
                 "is_repeat": rc > 1,
                 "first_report_date": first_d.isoformat(),
                 "last_report_date": last_d.isoformat(),

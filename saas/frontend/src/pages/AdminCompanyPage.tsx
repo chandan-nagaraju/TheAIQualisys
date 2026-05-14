@@ -58,6 +58,7 @@ type FirIntel = {
       part_no: string;
       description: string;
       report_count: number;
+      median_quantity?: number | null;
       is_repeat: boolean;
       first_report_date: string;
       last_report_date: string;
@@ -68,6 +69,13 @@ type FirIntel = {
     }>;
   }>;
 };
+
+function formatExpectedQty(medianQuantity: number | null | undefined): string {
+  if (medianQuantity == null || !Number.isFinite(medianQuantity)) return "—";
+  if (Number.isInteger(medianQuantity)) return String(medianQuantity);
+  const rounded = Math.round(medianQuantity * 10_000) / 10_000;
+  return String(rounded).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
+}
 
 function FirFyReportsBarChart({
   fyLabel,
@@ -386,6 +394,7 @@ export default function AdminCompanyPage() {
                           <th className="py-2 pr-3">Part</th>
                           <th className="py-2 pr-3">Description</th>
                           <th className="py-2 pr-2">Reports</th>
+                          <th className="py-2 pr-2">Expected QTY</th>
                           <th className="py-2 pr-2">Repeat</th>
                           <th className="py-2 pr-2">Median gap (d)</th>
                           <th className="py-2 pr-2">Since last</th>
@@ -401,6 +410,9 @@ export default function AdminCompanyPage() {
                               {p.description || "—"}
                             </td>
                             <td className="py-2 pr-2">{p.report_count}</td>
+                            <td className="py-2 pr-2 tabular-nums" title="Median quantity across logged FIR rows for this part">
+                              {formatExpectedQty(p.median_quantity)}
+                            </td>
                             <td className="py-2 pr-2">{p.is_repeat ? "yes" : "no"}</td>
                             <td className="py-2 pr-2">{p.median_interval_days ?? "—"}</td>
                             <td className="py-2 pr-2">{p.days_since_last_report}d</td>

@@ -3,7 +3,12 @@
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
-from app.fir_analytics import build_fy_monthly_report_series, fy_april_start_year_for_date
+from app.fir_analytics import (
+    _median_quantity_from_event_qty_strings,
+    _parse_quantity_numeric,
+    build_fy_monthly_report_series,
+    fy_april_start_year_for_date,
+)
 
 
 def test_fy_april_start_year() -> None:
@@ -26,3 +31,19 @@ def test_build_fy_monthly_report_series_buckets() -> None:
     assert s[0]["month"] == 4 and s[0]["count"] == 2
     assert s[-1]["month"] == 3 and s[-1]["count"] == 1
     assert sum(m["count"] for m in s) == 3
+
+
+def test_parse_quantity_numeric_basic() -> None:
+    assert _parse_quantity_numeric("10") == 10.0
+    assert _parse_quantity_numeric("2.5") == 2.5
+    assert _parse_quantity_numeric("1,000") == 1000.0
+    assert _parse_quantity_numeric("12 EA") == 12.0
+    assert _parse_quantity_numeric("") is None
+    assert _parse_quantity_numeric("n/a") is None
+
+
+def test_median_quantity_from_strings() -> None:
+    assert _median_quantity_from_event_qty_strings(["1", "3", "2"]) == 2.0
+    assert _median_quantity_from_event_qty_strings(["1", "x", "3"]) == 2.0
+    assert _median_quantity_from_event_qty_strings(["1", "2", "3", "4"]) == 2.5
+    assert _median_quantity_from_event_qty_strings(["", "bad"]) is None
