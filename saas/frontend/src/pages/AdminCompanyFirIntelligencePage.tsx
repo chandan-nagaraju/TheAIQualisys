@@ -364,6 +364,36 @@ export default function AdminCompanyFirIntelligencePage() {
       .sort((a, b) => (a.year !== b.year ? b.year - a.year : b.month - a.month));
   }, [intelMonths, intelPickerFyStart]);
 
+  /** When chart (log month) and summary (invoice month/FY) totals differ — not missing rows. */
+  const chartVsInvoiceNote = useMemo(() => {
+    if (!intel?.fy_monthly_reports) return null;
+    const invoiced = intel.summary.total_report_events;
+
+    if (intelReportScope === "single_month" && intelYm) {
+      const [y, m] = intelYm.split("-").map(Number);
+      const logged = intel.fy_monthly_reports.months.find((mm) => mm.year === y && mm.month === m)?.count;
+      if (logged == null || logged === invoiced) return null;
+      const label = new Date(`${y}-${String(m).padStart(2, "0")}-01`).toLocaleString("en-IN", {
+        month: "long",
+        year: "numeric",
+      });
+      return { scope: "month" as const, label, logged, invoiced };
+    }
+
+    if (intelReportScope === "full_year") {
+      const logged = intel.fy_monthly_reports.fy_total;
+      if (logged === invoiced) return null;
+      return {
+        scope: "fy" as const,
+        label: `FY ${intel.fy_monthly_reports.fy_label}`,
+        logged,
+        invoiced,
+      };
+    }
+
+    return null;
+  }, [intel, intelReportScope, intelYm]);
+
   const loadCompany = useCallback(async () => {
     if (!id) return;
     const cid = Number(id);
@@ -633,6 +663,17 @@ export default function AdminCompanyFirIntelligencePage() {
                 </p>
               </div>
             </div>
+
+            {chartVsInvoiceNote ? (
+              <p className="text-xs leading-relaxed text-slate-500">
+                <strong className="text-slate-400">Why two totals:</strong> for {chartVsInvoiceNote.label}, the chart bar (
+                {chartVsInvoiceNote.logged.toLocaleString()}) counts FIR rows by <strong className="text-slate-400">when they were saved</strong>{" "}
+                (UTC, same as admin Usage). {chartVsInvoiceNote.invoiced.toLocaleString()} is rows whose{" "}
+                <strong className="text-slate-400">invoice date</strong> falls in that{" "}
+                {chartVsInvoiceNote.scope === "fy" ? "financial year" : "month"}
+                —used for the parts table and cadence. Nothing is missing: extra saves in a month often come from re-prints where the invoice date on the file stayed in an earlier month.
+              </p>
+            ) : null}
 
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Filters &amp; sort</p>
