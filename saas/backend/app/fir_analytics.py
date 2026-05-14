@@ -343,25 +343,30 @@ def build_fir_intelligence(
 
     rhythm_summary = {k: rhythm_counts[k] for k in sorted(rhythm_counts.keys())}
 
+    # FY bar chart: bucket by created_at (log/save time, UTC), same basis as
+    # subscription_logic.count_fir_reports_this_month. Invoice-date slicing above
+    # can differ (e.g. May uploads for April-dated invoices).
     fy_chart: dict[str, Any] | None = None
     if filter_month is None:
-        fy_series = build_fy_monthly_report_series(events, filter_year, use_invoice_date=True)
+        fy_series = build_fy_monthly_report_series(events, filter_year, use_invoice_date=False)
         fy_label = f"{filter_year}-{filter_year + 1}"
         fy_chart = {
             "fy_start_year": filter_year,
             "fy_label": fy_label,
             "months": fy_series,
             "fy_total": sum(m["count"] for m in fy_series),
+            "bucket": "created_at",
         }
     else:
         fy_start = fy_april_start_year_for_date(month_start)
-        fy_series = build_fy_monthly_report_series(events, fy_start, use_invoice_date=True)
+        fy_series = build_fy_monthly_report_series(events, fy_start, use_invoice_date=False)
         fy_label = f"{fy_start}-{fy_start + 1}"
         fy_chart = {
             "fy_start_year": fy_start,
             "fy_label": fy_label,
             "months": fy_series,
             "fy_total": sum(m["count"] for m in fy_series),
+            "bucket": "created_at",
         }
 
     return {

@@ -33,6 +33,19 @@ def test_build_fy_monthly_report_series_buckets() -> None:
     assert sum(m["count"] for m in s) == 3
 
 
+def test_build_fy_monthly_report_series_invoice_month_vs_logged_month() -> None:
+    """Admin Usage counts by created_at; chart uses same so May uploads for April invoices match."""
+    fy0 = 2026
+    ev = SimpleNamespace(
+        invoice_date=date(2026, 4, 15),
+        created_at=datetime(2026, 5, 10, 12, 0, tzinfo=timezone.utc),
+    )
+    by_invoice = build_fy_monthly_report_series([ev], fy0, use_invoice_date=True)
+    by_logged = build_fy_monthly_report_series([ev], fy0, use_invoice_date=False)
+    assert by_invoice[0]["month"] == 4 and by_invoice[0]["count"] == 1 and by_invoice[1]["count"] == 0
+    assert by_logged[0]["month"] == 4 and by_logged[0]["count"] == 0 and by_logged[1]["count"] == 1
+
+
 def test_parse_quantity_numeric_basic() -> None:
     assert _parse_quantity_numeric("10") == 10.0
     assert _parse_quantity_numeric("2.5") == 2.5
