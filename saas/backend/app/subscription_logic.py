@@ -40,12 +40,19 @@ def count_invoices_this_month(db: Session, company_id: int, today: date | None =
 
 
 def count_fir_reports_this_month(db: Session, company_id: int, today: date | None = None) -> int:
+    """FIR intelligence rows whose **invoice_date** falls in the same calendar month as ``today``.
+
+    One row per invoice line ingested into ``fir_events``; the business month is the invoice date
+    on the file (same basis as admin FIR charts and monthly slices), not ``created_at``.
+    """
     today = today or datetime.now(timezone.utc).date()
-    start, end = month_bounds_utc(today)
+    first = date(today.year, today.month, 1)
+    last_day_num = monthrange(today.year, today.month)[1]
+    last = date(today.year, today.month, last_day_num)
     q = select(func.count()).select_from(FirReportEvent).where(
         FirReportEvent.company_id == company_id,
-        FirReportEvent.created_at >= start,
-        FirReportEvent.created_at <= end,
+        FirReportEvent.invoice_date >= first,
+        FirReportEvent.invoice_date <= last,
     )
     return int(db.execute(q).scalar_one())
 

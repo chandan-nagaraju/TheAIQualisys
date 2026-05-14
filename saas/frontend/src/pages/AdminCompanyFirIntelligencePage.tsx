@@ -45,7 +45,6 @@ type FirIntel = {
     fy_start_year: number;
     fy_label: string;
     fy_total: number;
-    bucket?: "created_at" | "invoice_date";
     months: Array<{
       year: number;
       month: number;
@@ -278,19 +277,14 @@ function FirFyReportsBarChart({
   fyLabel,
   months,
   fyTotal,
-  bucket = "created_at",
 }: {
   fyLabel: string;
   fyTotal: number;
   months: Array<{ label: string; count: number }>;
-  bucket?: "created_at" | "invoice_date";
 }) {
   const max = Math.max(1, ...months.map((m) => m.count));
   const title = `FIR reports by month — FY ${fyLabel}`;
-  const subtitle =
-    bucket === "invoice_date"
-      ? `April–March · ${fyTotal.toLocaleString()} rows by invoice date in this FY`
-      : `April–March · ${fyTotal.toLocaleString()} rows by month logged (UTC; matches admin Usage)`;
+  const subtitle = `April–March · ${fyTotal.toLocaleString()} FIR rows by invoice date (same basis as admin Usage)`;
   return (
     <div
       className="rounded-lg border border-slate-800 bg-slate-950/50 p-4"
@@ -363,36 +357,6 @@ export default function AdminCompanyFirIntelligencePage() {
       .filter((r) => fyAprilStartFromCalendarMonth(r.year, r.month) === intelPickerFyStart)
       .sort((a, b) => (a.year !== b.year ? b.year - a.year : b.month - a.month));
   }, [intelMonths, intelPickerFyStart]);
-
-  /** When chart (log month) and summary (invoice month/FY) totals differ — not missing rows. */
-  const chartVsInvoiceNote = useMemo(() => {
-    if (!intel?.fy_monthly_reports) return null;
-    const invoiced = intel.summary.total_report_events;
-
-    if (intelReportScope === "single_month" && intelYm) {
-      const [y, m] = intelYm.split("-").map(Number);
-      const logged = intel.fy_monthly_reports.months.find((mm) => mm.year === y && mm.month === m)?.count;
-      if (logged == null || logged === invoiced) return null;
-      const label = new Date(`${y}-${String(m).padStart(2, "0")}-01`).toLocaleString("en-IN", {
-        month: "long",
-        year: "numeric",
-      });
-      return { scope: "month" as const, label, logged, invoiced };
-    }
-
-    if (intelReportScope === "full_year") {
-      const logged = intel.fy_monthly_reports.fy_total;
-      if (logged === invoiced) return null;
-      return {
-        scope: "fy" as const,
-        label: `FY ${intel.fy_monthly_reports.fy_label}`,
-        logged,
-        invoiced,
-      };
-    }
-
-    return null;
-  }, [intel, intelReportScope, intelYm]);
 
   const loadCompany = useCallback(async () => {
     if (!id) return;
@@ -637,21 +601,20 @@ export default function AdminCompanyFirIntelligencePage() {
                 fyLabel={intel.fy_monthly_reports.fy_label}
                 months={intel.fy_monthly_reports.months}
                 fyTotal={intel.fy_monthly_reports.fy_total}
-                bucket={intel.fy_monthly_reports.bucket ?? "created_at"}
               />
             ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
               <IntelStat
-                label={`FIR rows (${intel.view?.scope === "financial_year" ? "invoice FY" : "invoice month"})`}
+                label={`FIR rows (this ${intel.view?.scope === "financial_year" ? "FY" : "month"})`}
                 value={intel.summary.total_report_events}
               />
               <IntelStat
-                label={`Part × customer pairs (${intel.view?.scope === "financial_year" ? "invoice FY" : "invoice month"})`}
+                label={`Part × customer pairs (this ${intel.view?.scope === "financial_year" ? "FY" : "month"})`}
                 value={intel.summary.distinct_part_customer_pairs}
               />
               <IntelStat
-                label={`Repeating pairs (2+) — ${intel.view?.scope === "financial_year" ? "invoice FY" : "invoice month"}`}
+                label={`Repeating pairs (2+) — ${intel.view?.scope === "financial_year" ? "FY" : "month"}`}
                 value={intel.summary.repeated_part_pairs}
               />
               <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
@@ -663,17 +626,6 @@ export default function AdminCompanyFirIntelligencePage() {
                 </p>
               </div>
             </div>
-
-            {chartVsInvoiceNote ? (
-              <p className="text-xs leading-relaxed text-slate-500">
-                <strong className="text-slate-400">Why two totals:</strong> for {chartVsInvoiceNote.label}, the chart bar (
-                {chartVsInvoiceNote.logged.toLocaleString()}) counts FIR rows by <strong className="text-slate-400">when they were saved</strong>{" "}
-                (UTC, same as admin Usage). {chartVsInvoiceNote.invoiced.toLocaleString()} is rows whose{" "}
-                <strong className="text-slate-400">invoice date</strong> falls in that{" "}
-                {chartVsInvoiceNote.scope === "fy" ? "financial year" : "month"}
-                —used for the parts table and cadence. Nothing is missing: extra saves in a month often come from re-prints where the invoice date on the file stayed in an earlier month.
-              </p>
-            ) : null}
 
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Filters &amp; sort</p>
@@ -780,12 +732,12 @@ export default function AdminCompanyFirIntelligencePage() {
                       {cust.vendor_code ? <span className="font-mono text-slate-400">{cust.vendor_code}</span> : null}
                       {cust.vendor_code ? " · " : null}
                       avg {cust.avg_reports_per_day}/day · {cust.total_reports} FIR rows (
-                      {intel.view?.scope === "financial_year" ? "invoice FY" : "invoice month"}) · {cust.distinct_parts} parts
+                      {intel.view?.scope === "financial_year" ? "FY" : "month"}) · {cust.distinct_parts} parts
                     </p>
                   </div>
                   {cust.parts.length === 0 ? (
                     <p className="mt-2 text-sm text-slate-500">
-                      No FIR intelligence rows for this customer in this {intel.view?.scope === "financial_year" ? "invoice FY" : "invoice month"}.
+                      No FIR intelligence rows for this customer in this {intel.view?.scope === "financial_year" ? "FY" : "month"}.
                     </p>
                   ) : (
                     <CustomerFirPartsTable
