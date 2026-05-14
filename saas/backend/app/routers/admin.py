@@ -2,10 +2,11 @@ from datetime import date, timedelta
 
 from app.dates import billing_today
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.deps import get_db_session, get_platform_admin
 from app.fir_analytics import build_fir_intelligence
 from app.models import (
@@ -432,13 +433,30 @@ def company_usage(
 @router.get("/companies/{company_id}/fir-intelligence")
 def company_fir_intelligence(
     company_id: int,
+    year: int | None = Query(None, ge=2000, le=2100),
+    month: int | None = Query(None, ge=1, le=12),
     _: PlatformAdmin = Depends(get_platform_admin),
     db: Session = Depends(get_db_session),
 ):
     c = db.get(Company, company_id)
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
-    return build_fir_intelligence(db, company_id)
+    if year is None or month is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "month_required",
+                "message": "Select a calendar month: pass year and month query parameters (e.g. ?year=2026&month=5).",
+            },
+        )
+    settings = get_settings()
+    return build_fir_intelligence(
+        db,
+        company_id,
+        filter_year=year,
+        filter_month=month,
+        qty_reliable_since=settings.fir_intelligence_qty_reliable_since,
+    )
 
 
 @router.get("/pricing-modules", response_model=list[ModulePricingPublicOut])

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from datetime import date
 from pathlib import Path
 
 from pydantic import AliasChoices, Field, field_validator
@@ -86,6 +87,16 @@ class Settings(BaseSettings):
     aws_region: str | None = Field(default=None, validation_alias=AliasChoices("AWS_REGION"))
     s3_bucket_name: str | None = Field(default=None, validation_alias=AliasChoices("S3_BUCKET_NAME"))
     public_s3_base_url: str | None = Field(default=None, validation_alias=AliasChoices("PUBLIC_S3_BASE_URL"))
+
+    # FIR Intelligence admin: only events with invoice_date >= this day contribute quantities to Expected QTY
+    # (median). Rows before this often have placeholder quantity 0 from legacy migrations. ISO YYYY-MM-DD.
+    fir_intelligence_qty_reliable_since: date | None = Field(
+        default=date(2026, 5, 1),
+        validation_alias=AliasChoices(
+            "FIR_INTELLIGENCE_QTY_RELIABLE_SINCE",
+            "fir_intelligence_qty_reliable_since",
+        ),
+    )
 
 
 @lru_cache

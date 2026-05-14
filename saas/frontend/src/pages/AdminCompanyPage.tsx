@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api";
 
@@ -30,6 +30,13 @@ type Usage = {
 type FirIntel = {
   as_of: string;
   company_id: number;
+  view?: {
+    year: number;
+    month: number;
+    month_start: string;
+    month_end: string;
+    qty_reliable_since: string | null;
+  };
   fy_monthly_reports?: {
     fy_start_year: number;
     fy_label: string;
@@ -77,6 +84,20 @@ function formatExpectedQty(medianQuantity: number | null | undefined): string {
   return String(rounded).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
 }
 
+function intelMonthOptions(): { value: string; label: string }[] {
+  const out: { value: string; label: string }[] = [];
+  const now = new Date();
+  for (let i = 0; i < 36; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const value = `${y}-${String(m).padStart(2, "0")}`;
+    const label = d.toLocaleString("en-IN", { month: "long", year: "numeric" });
+    out.push({ value, label });
+  }
+  return out;
+}
+
 function FirFyReportsBarChart({
   fyLabel,
   months,
@@ -87,7 +108,7 @@ function FirFyReportsBarChart({
   months: Array<{ label: string; count: number }>;
 }) {
   const max = Math.max(1, ...months.map((m) => m.count));
-  const subtitle = `April–March · ${fyTotal.toLocaleString()} FIR rows logged this FY (by generation date)`;
+  const subtitle = `April–March · ${fyTotal.toLocaleString()} FIR rows in this FY (by invoice date)`;
   return (
     <div
       className="rounded-lg border border-slate-800 bg-slate-950/50 p-4"
@@ -132,26 +153,47 @@ export default function AdminCompanyPage() {
   const [extendDays, setExtendDays] = useState(30);
   const [msg, setMsg] = useState<string | null>(null);
   const [intel, setIntel] = useState<FirIntel | null>(null);
+  const [intelYm, setIntelYm] = useState("");
+  const [intelErr, setIntelErr] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
-  async function load() {
+  const loadCore = useCallback(async () => {
     if (!id) return;
     const cid = Number(id);
-    const [c, u, usr, fi] = await Promise.all([
+    const [c, u, usr] = await Promise.all([
       apiFetch<Company>(`/admin/companies/${cid}`, { token: "admin" }),
       apiFetch<Usage>(`/admin/companies/${cid}/usage`, { token: "admin" }),
       apiFetch<{ id: number; email: string; name: string | null }[]>(`/admin/companies/${cid}/users`, {
         token: "admin",
       }),
-      apiFetch<FirIntel>(`/admin/companies/${cid}/fir-intelligence`, { token: "admin" }),
     ]);
     setCompany(c);
     setUsage(u);
     setUsers(usr);
-    setIntel(fi);
     setPlan(c.plan_type);
-  }
+  }, [id]);
+
+  const loadIntel = useCallback(async () => {
+    if (!id || !intelYm) {
+      setIntel(null);
+      setIntelErr(null);
+      return;
+    }
+    const cid = Number(id);
+    const [y, m] = intelYm.split("-").map(Number);
+    setIntelErr(null);
+    setIntel(null);
+    try {
+      const fi = await apiFetch<FirIntel>(`/admin/companies/${cid}/fir-intelligence?year=${y}&month=${m}`, {
+        token: "admin",
+      });
+      setIntel(fi);
+    } catch (e) {
+      setIntelErr(e instanceof Error ? e.message : "Failed to load FIR intelligence");
+      setIntel(null);
+    }
+  }, [id, intelYm]);
 
   useEffect(() => {
     const t = localStorage.getItem("fir_admin_token");
@@ -159,8 +201,17 @@ export default function AdminCompanyPage() {
       nav("/login");
       return;
     }
-    load().catch(() => nav("/login"));
-  }, [id, nav]);
+    loadCore().catch(() => nav("/login"));
+  }, [id, nav, loadCore]);
+
+  useEffect(() => {
+    void loadIntel();
+  }, [loadIntel]);
+
+  async function load() {
+    await loadCore();
+    await loadIntel();
+  }
 
   async function patch(body: object) {
     if (!id) return;
@@ -339,98 +390,154 @@ export default function AdminCompanyPage() {
         </button>
       </div>
 
-      {intel && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 space-y-6">
+      {intelErr && <p className="text-sm text-red-400">{intelErr}</p>}
+
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-white">FIR intelligence (admin)</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Cadence from logged FIR batches: <strong className="text-slate-400">running</strong> ≈ every 1–3 days,{" "}
-              <strong className="text-slate-400">regular</strong> 3–10 days, <strong className="text-slate-400">occasional</strong>{" "}
-              11–30 days, <strong className="text-slate-400">stranger</strong> sparse or quiet &gt;30 days,{" "}
-              <strong className="text-slate-400">new</strong> first/only touch in the last 30 days. Data as of {intel.as_of}.
+              Pick a month: the table and summary counts use <strong className="text-slate-400">invoice date</strong> in that
+              month only. Expected QTY respects <code className="rounded bg-slate-950 px-1 text-slate-400">FIR_INTELLIGENCE_QTY_RELIABLE_SINCE</code> on the API. The bar chart is the full FY (invoice dates).
             </p>
           </div>
-
-          {intel.fy_monthly_reports && (
-            <FirFyReportsBarChart
-              fyLabel={intel.fy_monthly_reports.fy_label}
-              months={intel.fy_monthly_reports.months}
-              fyTotal={intel.fy_monthly_reports.fy_total}
-            />
-          )}
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-            <IntelStat label="FIR events (all time)" value={intel.summary.total_report_events} />
-            <IntelStat label="Part × customer pairs" value={intel.summary.distinct_part_customer_pairs} />
-            <IntelStat label="Repeating pairs (2+)" value={intel.summary.repeated_part_pairs} />
-            <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-              <p className="text-xs uppercase text-slate-500">By rhythm (pairs)</p>
-              <p className="mt-1 text-slate-300">
-                {Object.entries(intel.summary.rhythm_part_pairs)
-                  .map(([k, v]) => `${k}: ${v}`)
-                  .join(" · ") || "—"}
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-8">
-            {intel.customers.map((cust) => (
-              <div key={`${cust.id ?? "u"}-${cust.name}`} className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="text-base font-semibold text-white">{cust.name}</h3>
-                  <p className="text-xs text-slate-500">
-                    {cust.vendor_code ? <span className="font-mono text-slate-400">{cust.vendor_code}</span> : null}
-                    {cust.vendor_code ? " · " : null}
-                    avg {cust.avg_reports_per_day}/day · {cust.total_reports} FIR rows · {cust.distinct_parts} parts
-                  </p>
-                </div>
-                {cust.parts.length === 0 ? (
-                  <p className="mt-2 text-sm text-slate-500">No logged FIR reports for this customer yet.</p>
-                ) : (
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="min-w-full text-left text-xs text-slate-300">
-                      <thead className="border-b border-slate-800 text-slate-500">
-                        <tr>
-                          <th className="py-2 pr-3">Part</th>
-                          <th className="py-2 pr-3">Description</th>
-                          <th className="py-2 pr-2">Reports</th>
-                          <th className="py-2 pr-2" title="Median of quantities stored on FIR intelligence rows. Legacy rows may show — until new batches are logged with real qty.">
-                            Expected QTY
-                          </th>
-                          <th className="py-2 pr-2">Repeat</th>
-                          <th className="py-2 pr-2">Median gap (d)</th>
-                          <th className="py-2 pr-2">Since last</th>
-                          <th className="py-2 pr-2">Rhythm</th>
-                          <th className="py-2">Span avg/d</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/80">
-                        {cust.parts.map((p) => (
-                          <tr key={`${cust.id ?? "u"}-${p.part_no}`}>
-                            <td className="py-2 pr-3 font-mono text-slate-200">{p.part_no}</td>
-                            <td className="max-w-[200px] truncate py-2 pr-3 text-slate-400" title={p.description}>
-                              {p.description || "—"}
-                            </td>
-                            <td className="py-2 pr-2">{p.report_count}</td>
-                            <td className="py-2 pr-2 tabular-nums" title="Median quantity across logged FIR rows for this part">
-                              {formatExpectedQty(p.median_quantity)}
-                            </td>
-                            <td className="py-2 pr-2">{p.is_repeat ? "yes" : "no"}</td>
-                            <td className="py-2 pr-2">{p.median_interval_days ?? "—"}</td>
-                            <td className="py-2 pr-2">{p.days_since_last_report}d</td>
-                            <td className="py-2 pr-2 capitalize text-amber-200/90">{p.rhythm}</td>
-                            <td className="py-2">{p.avg_reports_per_day_in_span}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ))}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-500" htmlFor="intel-month-select">
+              Report month (required)
+            </label>
+            <select
+              id="intel-month-select"
+              className="min-w-[14rem] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none ring-brand-600 focus:ring-2"
+              value={intelYm}
+              onChange={(e) => setIntelYm(e.target.value)}
+            >
+              <option value="">Select month…</option>
+              {intelMonthOptions().map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-      )}
+
+        {!intelYm ? (
+          <p className="text-sm text-amber-200/90">Choose a calendar month to load FIR intelligence for this tenant.</p>
+        ) : intel ? (
+          <>
+            <div>
+              <p className="mt-1 text-xs text-slate-500">
+                Cadence from logged FIR batches in{" "}
+                <strong className="text-slate-400">
+                  {intel.view
+                    ? new Date(`${intel.view.year}-${String(intel.view.month).padStart(2, "0")}-01`).toLocaleString(
+                        "en-IN",
+                        { month: "long", year: "numeric" },
+                      )
+                    : "this month"}
+                </strong>
+                : <strong className="text-slate-400">running</strong> ≈ every 1–3 days,{" "}
+                <strong className="text-slate-400">regular</strong> 3–10 days,{" "}
+                <strong className="text-slate-400">occasional</strong> 11–30 days,{" "}
+                <strong className="text-slate-400">stranger</strong> sparse or quiet &gt;30 days,{" "}
+                <strong className="text-slate-400">new</strong> first/only touch in the last 30 days (from slice end{" "}
+                {intel.as_of}).{" "}
+                {intel.view?.qty_reliable_since ? (
+                  <>
+                    Expected QTY uses invoice dates from <strong className="text-slate-400">{intel.view.qty_reliable_since}</strong>{" "}
+                    onward within the month.
+                  </>
+                ) : null}
+              </p>
+            </div>
+
+            {intel.fy_monthly_reports && (
+              <FirFyReportsBarChart
+                fyLabel={intel.fy_monthly_reports.fy_label}
+                months={intel.fy_monthly_reports.months}
+                fyTotal={intel.fy_monthly_reports.fy_total}
+              />
+            )}
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+              <IntelStat label="FIR events (this month)" value={intel.summary.total_report_events} />
+              <IntelStat label="Part × customer pairs (this month)" value={intel.summary.distinct_part_customer_pairs} />
+              <IntelStat label="Repeating pairs (2+) — month" value={intel.summary.repeated_part_pairs} />
+              <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                <p className="text-xs uppercase text-slate-500">By rhythm (pairs)</p>
+                <p className="mt-1 text-slate-300">
+                  {Object.entries(intel.summary.rhythm_part_pairs)
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join(" · ") || "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-8">
+              {intel.customers.map((cust) => (
+                <div key={`${cust.id ?? "u"}-${cust.name}`} className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 className="text-base font-semibold text-white">{cust.name}</h3>
+                    <p className="text-xs text-slate-500">
+                      {cust.vendor_code ? <span className="font-mono text-slate-400">{cust.vendor_code}</span> : null}
+                      {cust.vendor_code ? " · " : null}
+                      avg {cust.avg_reports_per_day}/day · {cust.total_reports} FIR rows (month) · {cust.distinct_parts}{" "}
+                      parts
+                    </p>
+                  </div>
+                  {cust.parts.length === 0 ? (
+                    <p className="mt-2 text-sm text-slate-500">No FIR intelligence rows for this customer in this month.</p>
+                  ) : (
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="min-w-full text-left text-xs text-slate-300">
+                        <thead className="border-b border-slate-800 text-slate-500">
+                          <tr>
+                            <th className="py-2 pr-3">Part</th>
+                            <th className="py-2 pr-3">Description</th>
+                            <th className="py-2 pr-2">Reports</th>
+                            <th
+                              className="py-2 pr-2"
+                              title="Median of quantities on FIR rows in this month (optional cutoff date on server)"
+                            >
+                              Expected QTY
+                            </th>
+                            <th className="py-2 pr-2">Repeat</th>
+                            <th className="py-2 pr-2">Median gap (d)</th>
+                            <th className="py-2 pr-2">Since last</th>
+                            <th className="py-2 pr-2">Rhythm</th>
+                            <th className="py-2">Span avg/d</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/80">
+                          {cust.parts.map((p) => (
+                            <tr key={`${cust.id ?? "u"}-${p.part_no}`}>
+                              <td className="py-2 pr-3 font-mono text-slate-200">{p.part_no}</td>
+                              <td className="max-w-[200px] truncate py-2 pr-3 text-slate-400" title={p.description}>
+                                {p.description || "—"}
+                              </td>
+                              <td className="py-2 pr-2">{p.report_count}</td>
+                              <td className="py-2 pr-2 tabular-nums" title="Median quantity for this part in the selected month">
+                                {formatExpectedQty(p.median_quantity)}
+                              </td>
+                              <td className="py-2 pr-2">{p.is_repeat ? "yes" : "no"}</td>
+                              <td className="py-2 pr-2">{p.median_interval_days ?? "—"}</td>
+                              <td className="py-2 pr-2">{p.days_since_last_report}d</td>
+                              <td className="py-2 pr-2 capitalize text-amber-200/90">{p.rhythm}</td>
+                              <td className="py-2">{p.avg_reports_per_day_in_span}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-slate-500">Loading…</p>
+        )}
+      </div>
     </div>
   );
 }
