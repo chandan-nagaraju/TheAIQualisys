@@ -144,6 +144,36 @@ def build_fy_monthly_report_series(
     return out
 
 
+def build_calendar_year_report_series(
+    events: Iterable[Any],
+    cal_year: int,
+    *,
+    use_invoice_date: bool = False,
+) -> list[dict[str, Any]]:
+    """Count FIR rows by calendar month January–December for one calendar year."""
+    start = date(cal_year, 1, 1)
+    end_excl = date(cal_year + 1, 1, 1)
+    counts = [0] * 12
+    for ev in events:
+        d = _event_day_for_fy_series(ev, use_invoice_date=use_invoice_date)
+        if d < start or d >= end_excl:
+            continue
+        counts[d.month - 1] += 1
+    month_abbr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    out: list[dict[str, Any]] = []
+    for m in range(1, 13):
+        yy = cal_year % 100
+        out.append(
+            {
+                "year": cal_year,
+                "month": m,
+                "label": f"{month_abbr[m - 1]} '{yy:02d}",
+                "count": counts[m - 1],
+            }
+        )
+    return out
+
+
 def _classify_rhythm(
     *,
     report_count: int,
@@ -209,13 +239,19 @@ def build_fir_intelligence(
     company_id: int,
     *,
     filter_year: int,
-    filter_month: int,
+    filter_month: int | None = None,
     qty_reliable_since: date | None = None,
     today: date | None = None,
 ) -> dict[str, Any]:
     real_today = today or datetime.now(timezone.utc).date()
-    month_start = date(filter_year, filter_month, 1)
-    month_end = _last_day_of_calendar_month(filter_year, filter_month)
+    if filter_month is None:
+        month_start = date(filter_year, 1, 1)
+        month_end = date(filter_year, 12, 31)
+        scope = "calendar_year"
+    else:
+        month_start = date(filter_year, filter_month, 1)
+        month_end = _last_day_of_calendar_month(filter_year, filter_month)
+        scope = "calendar_month"
     as_of = min(real_today, month_end)
 
     events: list[FirReportEvent] = (
@@ -329,26 +365,39 @@ def build_fir_intelligence(
 
     rhythm_summary = {k: rhythm_counts[k] for k in sorted(rhythm_counts.keys())}
 
-    fy_start = fy_april_start_year_for_date(month_start)
-    fy_series = build_fy_monthly_report_series(events, fy_start, use_invoice_date=True)
-    fy_label = f"{fy_start}-{str(fy_start + 1)[-2:]}"
+    fy_chart: dict[str, Any] | None = None
+    cal_chart: dict[str, Any] | None = None
+    if filter_month is None:
+        calendar_series = build_calendar_year_report_series(events, filter_year, use_invoice_date=True)
+        cal_chart = {
+            "calendar_year": filter_year,
+            "months": calendar_series,
+            "year_total": sum(m["count"] for m in calendar_series),
+        }
+    else:
+        fy_start = fy_april_start_year_for_date(month_start)
+        fy_series = build_fy_monthly_report_series(events, fy_start, use_invoice_date=True)
+        fy_label = f"{fy_start}-{str(fy_start + 1)[-2:]}"
+        fy_chart = {
+            "fy_start_year": fy_start,
+            "fy_label": fy_label,
+            "months": fy_series,
+            "fy_total": sum(m["count"] for m in fy_series),
+        }
 
     return {
         "as_of": as_of.isoformat(),
         "company_id": company_id,
         "view": {
+            "scope": scope,
             "year": filter_year,
             "month": filter_month,
             "month_start": month_start.isoformat(),
             "month_end": month_end.isoformat(),
             "qty_reliable_since": qty_reliable_since.isoformat() if qty_reliable_since else None,
         },
-        "fy_monthly_reports": {
-            "fy_start_year": fy_start,
-            "fy_label": fy_label,
-            "months": fy_series,
-            "fy_total": sum(m["count"] for m in fy_series),
-        },
+        "fy_monthly_reports": fy_chart,
+        "calendar_monthly_reports": cal_chart,
         "summary": {
             "total_report_events": len(filtered),
             "distinct_part_customer_pairs": len(by_key),

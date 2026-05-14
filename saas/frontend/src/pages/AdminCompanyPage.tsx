@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api";
 
@@ -38,8 +38,9 @@ type FirIntel = {
   as_of: string;
   company_id: number;
   view?: {
+    scope?: "calendar_month" | "calendar_year";
     year: number;
-    month: number;
+    month: number | null;
     month_start: string;
     month_end: string;
     qty_reliable_since: string | null;
@@ -54,7 +55,17 @@ type FirIntel = {
       label: string;
       count: number;
     }>;
-  };
+  } | null;
+  calendar_monthly_reports?: {
+    calendar_year: number;
+    year_total: number;
+    months: Array<{
+      year: number;
+      month: number;
+      label: string;
+      count: number;
+    }>;
+  } | null;
   summary: {
     total_report_events: number;
     distinct_part_customer_pairs: number;
@@ -276,31 +287,51 @@ function formatExpectedQty(medianQuantity: number | null | undefined): string {
   return String(rounded).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
 }
 
+function firIntelPeriodLabel(view: FirIntel["view"]): string {
+  if (!view) return "this period";
+  if (view.scope === "calendar_year") return `calendar year ${view.year}`;
+  const mo = view.month;
+  if (mo != null) {
+    return new Date(`${view.year}-${String(mo).padStart(2, "0")}-01`).toLocaleString("en-IN", {
+      month: "long",
+      year: "numeric",
+    });
+  }
+  return `calendar year ${view.year}`;
+}
+
 function FirFyReportsBarChart({
+  variant,
   fyLabel,
   months,
   fyTotal,
 }: {
+  variant: "fy" | "calendar";
   fyLabel: string;
   fyTotal: number;
   months: Array<{ label: string; count: number }>;
 }) {
   const max = Math.max(1, ...months.map((m) => m.count));
-  const subtitle = `April–March · ${fyTotal.toLocaleString()} FIR rows in this FY (by invoice date)`;
+  const title =
+    variant === "calendar"
+      ? `FIR reports by month — ${fyLabel}`
+      : `FIR reports by month — FY ${fyLabel}`;
+  const subtitle =
+    variant === "calendar"
+      ? `January–December · ${fyTotal.toLocaleString()} FIR rows in this calendar year (by invoice date)`
+      : `April–March · ${fyTotal.toLocaleString()} FIR rows in this FY (by invoice date)`;
   return (
     <div
       className="rounded-lg border border-slate-800 bg-slate-950/50 p-4"
       role="img"
-      aria-label={`FIR reports by month for financial year ${fyLabel}. ${subtitle}`}
+      aria-label={`${title}. ${subtitle}`}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-        FIR reports by month — FY {fyLabel}
-      </p>
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{title}</p>
       <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
       <div className="mt-6 flex items-end gap-1 sm:gap-2">
         {months.map((m, i) => (
           <div
-            key={`fy-${fyLabel}-${m.year}-${m.month}-${i}`}
+            key={`${variant}-${fyLabel}-${m.label}-${i}`}
             className="flex min-w-0 flex-1 flex-col items-center gap-1"
           >
             <span className="text-[10px] font-semibold tabular-nums text-slate-200 sm:text-xs">{m.count}</span>
@@ -333,6 +364,8 @@ export default function AdminCompanyPage() {
   const [intel, setIntel] = useState<FirIntel | null>(null);
   const [intelMonths, setIntelMonths] = useState<FirIntelMonthRow[] | null>(null);
   const [intelYm, setIntelYm] = useState("");
+  const [intelReportScope, setIntelReportScope] = useState<"single_month" | "full_year">("single_month");
+  const [intelPickerYear, setIntelPickerYear] = useState<number | "">("");
   const [intelErr, setIntelErr] = useState<string | null>(null);
   const [intelPartQuery, setIntelPartQuery] = useState("");
   const [intelDescQuery, setIntelDescQuery] = useState("");
@@ -341,6 +374,16 @@ export default function AdminCompanyPage() {
   const [intelSortPreset, setIntelSortPreset] = useState<IntelSortPreset>("part_asc");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
+
+  const intelYearOptions = useMemo(() => {
+    if (!intelMonths?.length) return [];
+    return [...new Set(intelMonths.map((r) => r.year))].sort((a, b) => b - a);
+  }, [intelMonths]);
+
+  const monthsInSelectedYear = useMemo(() => {
+    if (!intelMonths || intelPickerYear === "") return [];
+    return intelMonths.filter((r) => r.year === intelPickerYear).sort((a, b) => b.month - a.month);
+  }, [intelMonths, intelPickerYear]);
 
   const loadCore = useCallback(async () => {
     if (!id) return;
@@ -367,6 +410,10 @@ export default function AdminCompanyPage() {
       });
       setIntelMonths(rows);
       setIntelErr(null);
+      setIntelPickerYear((prev) => {
+        if (prev !== "" && rows.some((r) => r.year === prev)) return prev;
+        return rows[0]?.year ?? "";
+      });
       setIntelYm((prev) => {
         if (prev) {
           const ok = rows.some((r) => `${r.year}-${String(r.month).padStart(2, "0")}` === prev);
@@ -382,14 +429,31 @@ export default function AdminCompanyPage() {
   }, [id]);
 
   const loadIntel = useCallback(async () => {
-    if (!id || !intelYm) {
+    if (!id) return;
+    const cid = Number(id);
+    setIntelErr(null);
+    if (intelReportScope === "full_year") {
+      if (intelPickerYear === "") {
+        setIntel(null);
+        return;
+      }
       setIntel(null);
-      setIntelErr(null);
+      try {
+        const fi = await apiFetch<FirIntel>(`/admin/companies/${cid}/fir-intelligence?year=${intelPickerYear}`, {
+          token: "admin",
+        });
+        setIntel(fi);
+      } catch (e) {
+        setIntelErr(e instanceof Error ? e.message : "Failed to load FIR intelligence");
+        setIntel(null);
+      }
       return;
     }
-    const cid = Number(id);
+    if (!intelYm) {
+      setIntel(null);
+      return;
+    }
     const [y, m] = intelYm.split("-").map(Number);
-    setIntelErr(null);
     setIntel(null);
     try {
       const fi = await apiFetch<FirIntel>(`/admin/companies/${cid}/fir-intelligence?year=${y}&month=${m}`, {
@@ -400,11 +464,13 @@ export default function AdminCompanyPage() {
       setIntelErr(e instanceof Error ? e.message : "Failed to load FIR intelligence");
       setIntel(null);
     }
-  }, [id, intelYm]);
+  }, [id, intelReportScope, intelPickerYear, intelYm]);
 
   useEffect(() => {
     setIntelMonths(null);
     setIntelYm("");
+    setIntelPickerYear("");
+    setIntelReportScope("single_month");
     setIntel(null);
     setIntelErr(null);
     setIntelPartQuery("");
@@ -415,12 +481,22 @@ export default function AdminCompanyPage() {
   }, [id]);
 
   useEffect(() => {
+    if (intelReportScope !== "single_month" || !intelMonths?.length || intelPickerYear === "") return;
+    const inY = intelMonths.filter((r) => r.year === intelPickerYear).sort((a, b) => b.month - a.month);
+    const nextYm = inY.length ? `${inY[0].year}-${String(inY[0].month).padStart(2, "0")}` : "";
+    setIntelYm((cur) => {
+      if (cur && inY.some((r) => `${r.year}-${String(r.month).padStart(2, "0")}` === cur)) return cur;
+      return nextYm;
+    });
+  }, [intelReportScope, intelPickerYear, intelMonths]);
+
+  useEffect(() => {
     setIntelPartQuery("");
     setIntelDescQuery("");
     setIntelRhythmFilter("");
     setIntelRepeatFilter("all");
     setIntelSortPreset("part_asc");
-  }, [intelYm]);
+  }, [intelYm, intelReportScope, intelPickerYear]);
 
   useEffect(() => {
     const t = localStorage.getItem("fir_admin_token");
@@ -626,36 +702,91 @@ export default function AdminCompanyPage() {
           <div>
             <h2 className="text-lg font-semibold text-white">FIR intelligence (admin)</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Pick a month: the table and summary counts use <strong className="text-slate-400">invoice date</strong> in that
-              month only. Expected QTY respects <code className="rounded bg-slate-950 px-1 text-slate-400">FIR_INTELLIGENCE_QTY_RELIABLE_SINCE</code> on the API. The bar chart is the full FY (invoice dates).
+              Rollups use <strong className="text-slate-400">invoice date</strong> in the selected period.{" "}
+              <strong className="text-slate-400">Single month</strong> is one calendar month;{" "}
+              <strong className="text-slate-400">Full calendar year</strong> is January–December for year-level trends. Expected QTY still respects{" "}
+              <code className="rounded bg-slate-950 px-1 text-slate-400">FIR_INTELLIGENCE_QTY_RELIABLE_SINCE</code>.{" "}
+              <strong className="text-slate-400">Single month</strong> uses an April–March FY bar chart;{" "}
+              <strong className="text-slate-400">Full year</strong> uses a January–December chart for that year.
             </p>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-slate-500" htmlFor="intel-month-select">
-              Month <span className="text-slate-600">(from invoice dates in fir_events)</span>
-            </label>
-            <select
-              id="intel-month-select"
-              className="min-w-[16rem] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none ring-brand-600 focus:ring-2"
-              value={intelYm}
-              disabled={intelMonths === null || (intelMonths?.length ?? 0) === 0}
-              onChange={(e) => setIntelYm(e.target.value)}
-            >
-              {intelMonths === null ? (
-                <option value="">Loading months from database…</option>
-              ) : intelMonths.length === 0 ? (
-                <option value="">No FIR data by invoice month</option>
-              ) : (
-                intelMonths.map((r) => {
-                  const v = `${r.year}-${String(r.month).padStart(2, "0")}`;
-                  return (
-                    <option key={v} value={v}>
-                      {r.label}
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-500" htmlFor="intel-year-select">
+                Year <span className="text-slate-600">(invoice months in fir_events)</span>
+              </label>
+              <select
+                id="intel-year-select"
+                className="min-w-[7rem] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none ring-brand-600 focus:ring-2"
+                value={intelPickerYear === "" ? "" : String(intelPickerYear)}
+                disabled={intelMonths === null || intelYearOptions.length === 0}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setIntelPickerYear(v === "" ? "" : Number(v));
+                }}
+              >
+                {intelMonths === null ? (
+                  <option value="">Loading…</option>
+                ) : intelYearOptions.length === 0 ? (
+                  <option value="">No years</option>
+                ) : (
+                  intelYearOptions.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
                     </option>
-                  );
-                })
-              )}
-            </select>
+                  ))
+                )}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-slate-500" htmlFor="intel-scope-select">
+                View
+              </label>
+              <select
+                id="intel-scope-select"
+                className="min-w-[12rem] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none ring-brand-600 focus:ring-2"
+                value={intelReportScope}
+                disabled={intelMonths === null || (intelMonths?.length ?? 0) === 0}
+                onChange={(e) => setIntelReportScope(e.target.value as "single_month" | "full_year")}
+              >
+                <option value="single_month">Single month</option>
+                <option value="full_year">Full calendar year</option>
+              </select>
+            </div>
+            {intelReportScope === "single_month" ? (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-slate-500" htmlFor="intel-month-select">
+                  Month <span className="text-slate-600">(same year)</span>
+                </label>
+                <select
+                  id="intel-month-select"
+                  className="min-w-[16rem] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none ring-brand-600 focus:ring-2"
+                  value={intelYm}
+                  disabled={
+                    intelMonths === null ||
+                    (intelMonths?.length ?? 0) === 0 ||
+                    intelPickerYear === "" ||
+                    monthsInSelectedYear.length === 0
+                  }
+                  onChange={(e) => setIntelYm(e.target.value)}
+                >
+                  {intelMonths === null ? (
+                    <option value="">Loading months…</option>
+                  ) : intelPickerYear === "" || monthsInSelectedYear.length === 0 ? (
+                    <option value="">No months for this year</option>
+                  ) : (
+                    monthsInSelectedYear.map((r) => {
+                      const v = `${r.year}-${String(r.month).padStart(2, "0")}`;
+                      return (
+                        <option key={v} value={v}>
+                          {r.label}
+                        </option>
+                      );
+                    })
+                  )}
+                </select>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -666,21 +797,15 @@ export default function AdminCompanyPage() {
             No rows in <strong className="text-slate-400">fir_events</strong> for this tenant yet. Months appear here
             automatically once uploads are logged to intelligence.
           </p>
-        ) : !intelYm ? (
-          <p className="text-sm text-amber-200/90">Choose a month above.</p>
+        ) : intelReportScope === "full_year" && intelPickerYear === "" ? (
+          <p className="text-sm text-amber-200/90">Choose a year above.</p>
+        ) : intelReportScope === "single_month" && !intelYm ? (
+          <p className="text-sm text-amber-200/90">Choose a month for the selected year.</p>
         ) : intel ? (
           <>
             <div>
               <p className="mt-1 text-xs text-slate-500">
-                Cadence from logged FIR batches in{" "}
-                <strong className="text-slate-400">
-                  {intel.view
-                    ? new Date(`${intel.view.year}-${String(intel.view.month).padStart(2, "0")}-01`).toLocaleString(
-                        "en-IN",
-                        { month: "long", year: "numeric" },
-                      )
-                    : "this month"}
-                </strong>
+                Cadence from logged FIR batches in <strong className="text-slate-400">{firIntelPeriodLabel(intel.view)}</strong>
                 : <strong className="text-slate-400">running</strong> ≈ every 1–3 days,{" "}
                 <strong className="text-slate-400">regular</strong> 3–10 days,{" "}
                 <strong className="text-slate-400">occasional</strong> 11–30 days,{" "}
@@ -690,24 +815,42 @@ export default function AdminCompanyPage() {
                 {intel.view?.qty_reliable_since ? (
                   <>
                     Expected QTY uses invoice dates from <strong className="text-slate-400">{intel.view.qty_reliable_since}</strong>{" "}
-                    onward within the month.
+                    onward within the selected {intel.view?.scope === "calendar_year" ? "year" : "month"}.
                   </>
                 ) : null}
               </p>
             </div>
 
-            {intel.fy_monthly_reports && (
+            {intel.fy_monthly_reports ? (
               <FirFyReportsBarChart
+                variant="fy"
                 fyLabel={intel.fy_monthly_reports.fy_label}
                 months={intel.fy_monthly_reports.months}
                 fyTotal={intel.fy_monthly_reports.fy_total}
               />
-            )}
+            ) : null}
+            {intel.calendar_monthly_reports ? (
+              <FirFyReportsBarChart
+                variant="calendar"
+                fyLabel={String(intel.calendar_monthly_reports.calendar_year)}
+                months={intel.calendar_monthly_reports.months}
+                fyTotal={intel.calendar_monthly_reports.year_total}
+              />
+            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-              <IntelStat label="FIR events (this month)" value={intel.summary.total_report_events} />
-              <IntelStat label="Part × customer pairs (this month)" value={intel.summary.distinct_part_customer_pairs} />
-              <IntelStat label="Repeating pairs (2+) — month" value={intel.summary.repeated_part_pairs} />
+              <IntelStat
+                label={`FIR events (this ${intel.view?.scope === "calendar_year" ? "year" : "month"})`}
+                value={intel.summary.total_report_events}
+              />
+              <IntelStat
+                label={`Part × customer pairs (this ${intel.view?.scope === "calendar_year" ? "year" : "month"})`}
+                value={intel.summary.distinct_part_customer_pairs}
+              />
+              <IntelStat
+                label={`Repeating pairs (2+) — ${intel.view?.scope === "calendar_year" ? "year" : "month"}`}
+                value={intel.summary.repeated_part_pairs}
+              />
               <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
                 <p className="text-xs uppercase text-slate-500">By rhythm (pairs)</p>
                 <p className="mt-1 text-slate-300">
@@ -822,12 +965,15 @@ export default function AdminCompanyPage() {
                     <p className="text-xs text-slate-500">
                       {cust.vendor_code ? <span className="font-mono text-slate-400">{cust.vendor_code}</span> : null}
                       {cust.vendor_code ? " · " : null}
-                      avg {cust.avg_reports_per_day}/day · {cust.total_reports} FIR rows (month) · {cust.distinct_parts}{" "}
-                      parts
+                      avg {cust.avg_reports_per_day}/day · {cust.total_reports} FIR rows (
+                      {intel.view?.scope === "calendar_year" ? "year" : "month"}) · {cust.distinct_parts} parts
                     </p>
                   </div>
                   {cust.parts.length === 0 ? (
-                    <p className="mt-2 text-sm text-slate-500">No FIR intelligence rows for this customer in this month.</p>
+                    <p className="mt-2 text-sm text-slate-500">
+                      No FIR intelligence rows for this customer in this{" "}
+                      {intel.view?.scope === "calendar_year" ? "year" : "month"}.
+                    </p>
                   ) : (
                     <CustomerFirPartsTable
                       cust={cust}

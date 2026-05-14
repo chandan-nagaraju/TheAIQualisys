@@ -454,12 +454,13 @@ def company_fir_intelligence(
     c = db.get(Company, company_id)
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
-    if year is None or month is None:
+    if year is None:
         raise HTTPException(
             status_code=400,
             detail={
-                "code": "month_required",
-                "message": "Select a calendar month: pass year and month query parameters (e.g. ?year=2026&month=5).",
+                "code": "year_required",
+                "message": "Pass year (and optionally month). "
+                "Full calendar year: ?year=2026. Single month: ?year=2026&month=4.",
             },
         )
     settings = get_settings()
