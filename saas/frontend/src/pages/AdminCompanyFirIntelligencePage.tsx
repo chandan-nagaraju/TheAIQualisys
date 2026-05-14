@@ -273,19 +273,6 @@ function formatExpectedQty(medianQuantity: number | null | undefined): string {
   return String(rounded).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
 }
 
-function firIntelPeriodLabel(view: FirIntel["view"]): string {
-  if (!view) return "this period";
-  if (view.scope === "financial_year") return `FY ${view.year}-${view.year + 1}`;
-  const mo = view.month;
-  if (mo != null) {
-    return new Date(`${view.year}-${String(mo).padStart(2, "0")}-01`).toLocaleString("en-IN", {
-      month: "long",
-      year: "numeric",
-    });
-  }
-  return `FY ${view.year}-${view.year + 1}`;
-}
-
 function FirFyReportsBarChart({
   fyLabel,
   months,
@@ -520,20 +507,8 @@ export default function AdminCompanyFirIntelligencePage() {
       {intelErr ? <p className="text-sm text-red-400">{intelErr}</p> : null}
 
       <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-white">Cadence &amp; parts</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Rollups use <strong className="text-slate-400">invoice date</strong>. The financial year is{" "}
-              <strong className="text-slate-400">April–March</strong> (e.g. FY <strong className="text-slate-400">2026-2027</strong> is Apr
-              2026–Mar 2027). <strong className="text-slate-400">Single month</strong> is one calendar month within the FY you pick.{" "}
-              <strong className="text-slate-400">Full financial year</strong> aggregates that entire FY. Expected QTY respects{" "}
-              <code className="rounded bg-slate-950 px-1 text-slate-400">FIR_INTELLIGENCE_QTY_RELIABLE_SINCE</code>. The bar chart is always
-              April through March for the FY on screen.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-slate-500" htmlFor="intel-year-select">
                 Financial year <span className="text-slate-600">(Apr–Mar)</span>
               </label>
@@ -559,8 +534,8 @@ export default function AdminCompanyFirIntelligencePage() {
                   ))
                 )}
               </select>
-            </div>
-            <div className="flex flex-col gap-1">
+          </div>
+          <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-slate-500" htmlFor="intel-scope-select">
                 View
               </label>
@@ -609,40 +584,18 @@ export default function AdminCompanyFirIntelligencePage() {
                 </select>
               </div>
             ) : null}
-          </div>
         </div>
 
         {intelMonths === null ? (
-          <p className="text-sm text-slate-500">Loading which calendar months have FIR rows…</p>
+          <p className="text-sm text-slate-500">Loading months…</p>
         ) : intelMonths.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            No rows in <strong className="text-slate-400">fir_events</strong> for this tenant yet. Months appear here automatically once uploads
-            are logged to intelligence.
-          </p>
+          <p className="text-sm text-slate-500">No FIR intelligence data for this tenant yet.</p>
         ) : intelReportScope === "full_year" && intelPickerFyStart === "" ? (
           <p className="text-sm text-amber-200/90">Choose a financial year above.</p>
         ) : intelReportScope === "single_month" && !intelYm ? (
           <p className="text-sm text-amber-200/90">Choose a month for the selected financial year.</p>
         ) : intel ? (
           <>
-            <div>
-              <p className="mt-1 text-xs text-slate-500">
-                Cadence from logged FIR batches in <strong className="text-slate-400">{firIntelPeriodLabel(intel.view)}</strong>
-                : <strong className="text-slate-400">running</strong> ≈ every 1–3 days,{" "}
-                <strong className="text-slate-400">regular</strong> 3–10 days,{" "}
-                <strong className="text-slate-400">occasional</strong> 11–30 days,{" "}
-                <strong className="text-slate-400">stranger</strong> sparse or quiet &gt;30 days,{" "}
-                <strong className="text-slate-400">new</strong> first/only touch in the last 30 days (from slice end{" "}
-                {intel.as_of}).{" "}
-                {intel.view?.qty_reliable_since ? (
-                  <>
-                    Expected QTY uses invoice dates from <strong className="text-slate-400">{intel.view.qty_reliable_since}</strong> onward within
-                    the selected {intel.view?.scope === "financial_year" ? "financial year" : "month"}.
-                  </>
-                ) : null}
-              </p>
-            </div>
-
             {intel.fy_monthly_reports ? (
               <FirFyReportsBarChart
                 fyLabel={intel.fy_monthly_reports.fy_label}
@@ -675,7 +628,7 @@ export default function AdminCompanyFirIntelligencePage() {
             </div>
 
             <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Part table filters &amp; sort</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Filters &amp; sort</p>
               <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
                 <div className="min-w-[10rem] flex-1">
                   <label className="block text-xs text-slate-500" htmlFor="intel-filter-part">
