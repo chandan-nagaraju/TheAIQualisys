@@ -10,6 +10,12 @@ from decimal import Decimal, InvalidOperation
 from statistics import median
 from typing import Any
 
+from sqlalchemy import extract, func, select
+from sqlalchemy.orm import Session
+
+from app.models import Customer, FirReportEvent, PartV2
+
+
 def _utc_date(dt: datetime) -> date:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -171,6 +177,31 @@ def _classify_rhythm(
     if med <= 10:
         return "regular"
     return "occasional"
+
+
+def list_fir_invoice_months(db: Session, company_id: int) -> list[dict[str, Any]]:
+    """Distinct calendar months that have FIR intelligence rows, by invoice_date (newest first)."""
+    ycol = extract("year", FirReportEvent.invoice_date)
+    mcol = extract("month", FirReportEvent.invoice_date)
+    rows = db.execute(
+        select(ycol, mcol, func.count(FirReportEvent.id))
+        .where(FirReportEvent.company_id == company_id)
+        .group_by(ycol, mcol)
+        .order_by(ycol.desc(), mcol.desc())
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        yi, mi, cnt = int(row[0]), int(row[1]), int(row[2] or 0)
+        d = date(yi, mi, 1)
+        out.append(
+            {
+                "year": yi,
+                "month": mi,
+                "row_count": cnt,
+                "label": d.strftime("%B %Y"),
+            }
+        )
+    return out
 
 
 def build_fir_intelligence(

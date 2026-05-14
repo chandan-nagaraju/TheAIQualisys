@@ -27,6 +27,13 @@ type Usage = {
   subscription_status: string;
 };
 
+type FirIntelMonthRow = {
+  year: number;
+  month: number;
+  row_count: number;
+  label: string;
+};
+
 type FirIntel = {
   as_of: string;
   company_id: number;
@@ -84,20 +91,6 @@ function formatExpectedQty(medianQuantity: number | null | undefined): string {
   return String(rounded).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
 }
 
-function intelMonthOptions(): { value: string; label: string }[] {
-  const out: { value: string; label: string }[] = [];
-  const now = new Date();
-  for (let i = 0; i < 36; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const y = d.getFullYear();
-    const m = d.getMonth() + 1;
-    const value = `${y}-${String(m).padStart(2, "0")}`;
-    const label = d.toLocaleString("en-IN", { month: "long", year: "numeric" });
-    out.push({ value, label });
-  }
-  return out;
-}
-
 function FirFyReportsBarChart({
   fyLabel,
   months,
@@ -153,6 +146,7 @@ export default function AdminCompanyPage() {
   const [extendDays, setExtendDays] = useState(30);
   const [msg, setMsg] = useState<string | null>(null);
   const [intel, setIntel] = useState<FirIntel | null>(null);
+  const [intelMonths, setIntelMonths] = useState<FirIntelMonthRow[] | null>(null);
   const [intelYm, setIntelYm] = useState("");
   const [intelErr, setIntelErr] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -172,6 +166,29 @@ export default function AdminCompanyPage() {
     setUsage(u);
     setUsers(usr);
     setPlan(c.plan_type);
+  }, [id]);
+
+  const loadIntelMonths = useCallback(async () => {
+    if (!id) return;
+    const cid = Number(id);
+    try {
+      const rows = await apiFetch<FirIntelMonthRow[]>(`/admin/companies/${cid}/fir-intelligence-months`, {
+        token: "admin",
+      });
+      setIntelMonths(rows);
+      setIntelErr(null);
+      setIntelYm((prev) => {
+        if (prev) {
+          const ok = rows.some((r) => `${r.year}-${String(r.month).padStart(2, "0")}` === prev);
+          if (ok) return prev;
+        }
+        if (!rows.length) return "";
+        return `${rows[0].year}-${String(rows[0].month).padStart(2, "0")}`;
+      });
+    } catch (e) {
+      setIntelMonths([]);
+      setIntelErr(e instanceof Error ? e.message : "Failed to load FIR months");
+    }
   }, [id]);
 
   const loadIntel = useCallback(async () => {
@@ -196,13 +213,21 @@ export default function AdminCompanyPage() {
   }, [id, intelYm]);
 
   useEffect(() => {
+    setIntelMonths(null);
+    setIntelYm("");
+    setIntel(null);
+    setIntelErr(null);
+  }, [id]);
+
+  useEffect(() => {
     const t = localStorage.getItem("fir_admin_token");
     if (!t) {
       nav("/login");
       return;
     }
     loadCore().catch(() => nav("/login"));
-  }, [id, nav, loadCore]);
+    void loadIntelMonths();
+  }, [id, nav, loadCore, loadIntelMonths]);
 
   useEffect(() => {
     void loadIntel();
@@ -210,6 +235,7 @@ export default function AdminCompanyPage() {
 
   async function load() {
     await loadCore();
+    await loadIntelMonths();
     await loadIntel();
   }
 
@@ -403,26 +429,42 @@ export default function AdminCompanyPage() {
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-slate-500" htmlFor="intel-month-select">
-              Report month (required)
+              Month <span className="text-slate-600">(from invoice dates in fir_events)</span>
             </label>
             <select
               id="intel-month-select"
-              className="min-w-[14rem] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none ring-brand-600 focus:ring-2"
+              className="min-w-[16rem] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none ring-brand-600 focus:ring-2"
               value={intelYm}
+              disabled={intelMonths === null || (intelMonths?.length ?? 0) === 0}
               onChange={(e) => setIntelYm(e.target.value)}
             >
-              <option value="">Select month…</option>
-              {intelMonthOptions().map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
+              {intelMonths === null ? (
+                <option value="">Loading months from database…</option>
+              ) : intelMonths.length === 0 ? (
+                <option value="">No FIR data by invoice month</option>
+              ) : (
+                intelMonths.map((r) => {
+                  const v = `${r.year}-${String(r.month).padStart(2, "0")}`;
+                  return (
+                    <option key={v} value={v}>
+                      {r.label} · {r.row_count.toLocaleString()} rows
+                    </option>
+                  );
+                })
+              )}
             </select>
           </div>
         </div>
 
-        {!intelYm ? (
-          <p className="text-sm text-amber-200/90">Choose a calendar month to load FIR intelligence for this tenant.</p>
+        {intelMonths === null ? (
+          <p className="text-sm text-slate-500">Loading which calendar months have FIR rows…</p>
+        ) : intelMonths.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            No rows in <strong className="text-slate-400">fir_events</strong> for this tenant yet. Months appear here
+            automatically once uploads are logged to intelligence.
+          </p>
+        ) : !intelYm ? (
+          <p className="text-sm text-amber-200/90">Choose a month above.</p>
         ) : intel ? (
           <>
             <div>

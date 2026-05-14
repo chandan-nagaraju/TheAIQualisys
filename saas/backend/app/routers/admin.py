@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.deps import get_db_session, get_platform_admin
-from app.fir_analytics import build_fir_intelligence
+from app.fir_analytics import build_fir_intelligence, list_fir_invoice_months
 from app.models import (
     Company,
     CompanySettings,
@@ -428,6 +428,19 @@ def company_usage(
         "plan_type": c.plan_type,
         "subscription_status": c.subscription_status,
     }
+
+
+@router.get("/companies/{company_id}/fir-intelligence-months")
+def company_fir_intelligence_months(
+    company_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Months that have at least one fir_events row (by invoice_date), for the admin month picker."""
+    c = db.get(Company, company_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return list_fir_invoice_months(db, company_id)
 
 
 @router.get("/companies/{company_id}/fir-intelligence")
