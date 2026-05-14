@@ -48,9 +48,28 @@ def _parse_quantity_numeric(qty: str | None) -> float | None:
 
 
 def _median_quantity_from_event_qty_strings(qty_strings: list[str]) -> float | None:
-    nums = [n for s in qty_strings if (n := _parse_quantity_numeric(s)) is not None]
+    """Median order qty for admin \"Expected QTY\".
+
+    Historical migrations and merge-010 stored placeholder ``0`` when quantity was unknown, so an
+    all-zero series is treated as *no data* (None → UI em dash).
+
+    When there is a mix of zeros and positive quantities (typical: legacy placeholders + newer
+    ingests with real qty), median is taken over **positive** values only so placeholders do not
+    drown out real orders. Genuine zero-qty lines are rare in this domain; if you need strict
+    median including zeros, revisit this heuristic.
+    """
+    nums: list[float] = []
+    for s in qty_strings:
+        n = _parse_quantity_numeric(s)
+        if n is not None:
+            nums.append(n)
     if not nums:
         return None
+    if all(n == 0.0 for n in nums):
+        return None
+    positive = [n for n in nums if n > 0]
+    if positive:
+        return float(median(positive))
     return float(median(nums))
 
 

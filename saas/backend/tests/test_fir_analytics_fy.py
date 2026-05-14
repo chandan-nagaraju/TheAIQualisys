@@ -47,3 +47,5 @@ def test_median_quantity_from_strings() -> None:
     assert _median_quantity_from_event_qty_strings(["1", "x", "3"]) == 2.0
     assert _median_quantity_from_event_qty_strings(["1", "2", "3", "4"]) == 2.5
     assert _median_quantity_from_event_qty_strings(["", "bad"]) is None
+    assert _median_quantity_from_event_qty_strings(["0", "0.0", ""]) is None
+    assert _median_quantity_from_event_qty_strings(["0", "0", "10", "20"]) == 15.0

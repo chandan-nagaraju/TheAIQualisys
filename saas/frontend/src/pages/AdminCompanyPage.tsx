@@ -394,7 +394,9 @@ export default function AdminCompanyPage() {
                           <th className="py-2 pr-3">Part</th>
                           <th className="py-2 pr-3">Description</th>
                           <th className="py-2 pr-2">Reports</th>
-                          <th className="py-2 pr-2">Expected QTY</th>
+                          <th className="py-2 pr-2" title="Median of quantities stored on FIR intelligence rows. Legacy rows may show — until new batches are logged with real qty.">
+                            Expected QTY
+                          </th>
                           <th className="py-2 pr-2">Repeat</th>
                           <th className="py-2 pr-2">Median gap (d)</th>
                           <th className="py-2 pr-2">Since last</th>
