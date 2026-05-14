@@ -5,6 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import PublicPricingGate from "./components/PublicPricingGate";
 import WorkspaceSubscriptionGate from "./components/WorkspaceSubscriptionGate";
 import WorkspaceLayout from "./layouts/WorkspaceLayout";
+import AdminCompanyFirIntelligencePage from "./pages/AdminCompanyFirIntelligencePage";
 import AdminCompanyPage from "./pages/AdminCompanyPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import AdminPricingPage from "./pages/AdminPricingPage";
@@ -135,6 +136,14 @@ export default function App() {
           element={
             <AdminRoute>
               <AdminPricingPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/companies/:id/fir-intelligence"
+          element={
+            <AdminRoute>
+              <AdminCompanyFirIntelligencePage />
             </AdminRoute>
           }
         />
