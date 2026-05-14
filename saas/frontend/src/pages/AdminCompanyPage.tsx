@@ -91,8 +91,11 @@ function FirFyReportsBarChart({
       </p>
       <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
       <div className="mt-6 flex items-end gap-1 sm:gap-2">
-        {months.map((m) => (
-          <div key={`${m.label}-${m.count}`} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+        {months.map((m, i) => (
+          <div
+            key={`fy-${fyLabel}-${m.year}-${m.month}-${i}`}
+            className="flex min-w-0 flex-1 flex-col items-center gap-1"
+          >
             <span className="text-[10px] font-semibold tabular-nums text-slate-200 sm:text-xs">{m.count}</span>
             <div className="flex h-36 w-full items-end justify-center">
               <div
