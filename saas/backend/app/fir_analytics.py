@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date, datetime, timezone
 from statistics import median
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,10 +14,63 @@ from sqlalchemy.orm import Session
 from app.models import Customer, FirReportEvent, PartV2
 
 
+class _HasCreatedAt(Protocol):
+    created_at: datetime
+
+
 def _utc_date(dt: datetime) -> date:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).date()
+
+
+def fy_april_start_year_for_date(d: date) -> int:
+    """Indian financial year begins in April: return the calendar year of that April 1."""
+    return d.year if d.month >= 4 else d.year - 1
+
+
+def build_fy_monthly_report_series(
+    events: Iterable[_HasCreatedAt],
+    fy_start_year: int,
+) -> list[dict[str, Any]]:
+    """Count FIR rows by calendar month for Apr (Y) through Mar (Y+1). Uses created_at (generation time)."""
+    start = date(fy_start_year, 4, 1)
+    end_excl = date(fy_start_year + 1, 4, 1)
+    counts = [0] * 12
+    for ev in events:
+        d = _utc_date(ev.created_at)
+        if d < start or d >= end_excl:
+            continue
+        idx = (d.month - 4) % 12
+        counts[idx] += 1
+
+    month_nums = [
+        (4, fy_start_year),
+        (5, fy_start_year),
+        (6, fy_start_year),
+        (7, fy_start_year),
+        (8, fy_start_year),
+        (9, fy_start_year),
+        (10, fy_start_year),
+        (11, fy_start_year),
+        (12, fy_start_year),
+        (1, fy_start_year + 1),
+        (2, fy_start_year + 1),
+        (3, fy_start_year + 1),
+    ]
+    month_abbr = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
+    out: list[dict[str, Any]] = []
+    for i, (m, y) in enumerate(month_nums):
+        yy = y % 100
+        out.append(
+            {
+                "year": y,
+                "month": m,
+                "label": f"{month_abbr[i]} '{yy:02d}",
+                "count": counts[i],
+            }
+        )
+    return out
 
 
 def _classify_rhythm(
@@ -164,9 +217,19 @@ def build_fir_intelligence(db: Session, company_id: int, today: date | None = No
 
     rhythm_summary = {k: rhythm_counts[k] for k in sorted(rhythm_counts.keys())}
 
+    fy_start = fy_april_start_year_for_date(today)
+    fy_series = build_fy_monthly_report_series(events, fy_start)
+    fy_label = f"{fy_start}-{str(fy_start + 1)[-2:]}"
+
     return {
         "as_of": today.isoformat(),
         "company_id": company_id,
+        "fy_monthly_reports": {
+            "fy_start_year": fy_start,
+            "fy_label": fy_label,
+            "months": fy_series,
+            "fy_total": sum(m["count"] for m in fy_series),
+        },
         "summary": {
             "total_report_events": len(events),
             "distinct_part_customer_pairs": len(by_key),

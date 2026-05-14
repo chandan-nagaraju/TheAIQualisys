@@ -30,6 +30,17 @@ type Usage = {
 type FirIntel = {
   as_of: string;
   company_id: number;
+  fy_monthly_reports?: {
+    fy_start_year: number;
+    fy_label: string;
+    fy_total: number;
+    months: Array<{
+      year: number;
+      month: number;
+      label: string;
+      count: number;
+    }>;
+  };
   summary: {
     total_report_events: number;
     distinct_part_customer_pairs: number;
@@ -57,6 +68,48 @@ type FirIntel = {
     }>;
   }>;
 };
+
+function FirFyReportsBarChart({
+  fyLabel,
+  months,
+  fyTotal,
+}: {
+  fyLabel: string;
+  fyTotal: number;
+  months: Array<{ label: string; count: number }>;
+}) {
+  const max = Math.max(1, ...months.map((m) => m.count));
+  const subtitle = `April–March · ${fyTotal.toLocaleString()} FIR rows logged this FY (by generation date)`;
+  return (
+    <div
+      className="rounded-lg border border-slate-800 bg-slate-950/50 p-4"
+      role="img"
+      aria-label={`FIR reports by month for financial year ${fyLabel}. ${subtitle}`}
+    >
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        FIR reports by month — FY {fyLabel}
+      </p>
+      <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+      <div className="mt-6 flex items-end gap-1 sm:gap-2">
+        {months.map((m) => (
+          <div key={`${m.label}-${m.count}`} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+            <span className="text-[10px] font-semibold tabular-nums text-slate-200 sm:text-xs">{m.count}</span>
+            <div className="flex h-36 w-full items-end justify-center">
+              <div
+                className="w-[85%] max-w-10 rounded-t bg-blue-600/90 transition-[height] duration-150"
+                style={{
+                  height: `${m.count === 0 ? 0 : Math.max(8, (m.count / max) * 100)}%`,
+                }}
+                title={`${m.label}: ${m.count}`}
+              />
+            </div>
+            <span className="w-full truncate text-center text-[9px] text-slate-500 sm:text-[10px]">{m.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminCompanyPage() {
   const { id } = useParams();
@@ -286,6 +339,15 @@ export default function AdminCompanyPage() {
               <strong className="text-slate-400">new</strong> first/only touch in the last 30 days. Data as of {intel.as_of}.
             </p>
           </div>
+
+          {intel.fy_monthly_reports && (
+            <FirFyReportsBarChart
+              fyLabel={intel.fy_monthly_reports.fy_label}
+              months={intel.fy_monthly_reports.months}
+              fyTotal={intel.fy_monthly_reports.fy_total}
+            />
+          )}
+
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
             <IntelStat label="FIR events (all time)" value={intel.summary.total_report_events} />
             <IntelStat label="Part × customer pairs" value={intel.summary.distinct_part_customer_pairs} />
