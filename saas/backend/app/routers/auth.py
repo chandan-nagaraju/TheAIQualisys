@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import secrets
 from datetime import date, datetime, timedelta, timezone
 
@@ -51,6 +52,7 @@ from app.subscription_logic import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -238,6 +240,10 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db_se
     if not user:
         admin = db.execute(select(PlatformAdmin).where(PlatformAdmin.email == email)).scalar_one_or_none()
     if not user and not admin:
+        logger.info(
+            "forgot_password: no company user or platform admin for this address; "
+            "returning generic ok without sending mail"
+        )
         return {"ok": True}
     raw = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw.encode()).hexdigest()
@@ -256,10 +262,12 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db_se
     try:
         send_password_reset_email(settings, to_email, link)
     except Exception as exc:
+        logger.warning("forgot_password: SMTP send failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Could not send email: {exc!s}",
         ) from exc
+    logger.info("forgot_password: reset email sent successfully via SMTP")
     return {"ok": True}
 
 
