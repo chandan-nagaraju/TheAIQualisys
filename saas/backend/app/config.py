@@ -86,6 +86,8 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("SMTP_FORCE_IPV4", "smtp_force_ipv4"),
     )
+    # When set, password-reset uses Resend over HTTPS (port 443) instead of SMTP — works when the host blocks 587/465.
+    resend_api_key: str | None = Field(default=None, validation_alias=AliasChoices("RESEND_API_KEY", "resend_api_key"))
 
     # S3 direct uploads for workspace company assets (optional — when unset, settings use DB blobs / local files).
     aws_access_key_id: str | None = Field(default=None, validation_alias=AliasChoices("AWS_ACCESS_KEY_ID"))
@@ -113,6 +115,7 @@ class Settings(BaseSettings):
         "email_from",
         "bootstrap_admin_email",
         "bootstrap_admin_password",
+        "resend_api_key",
         mode="before",
     )
     @classmethod

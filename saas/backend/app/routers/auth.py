@@ -234,7 +234,10 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db_se
     if not is_email_configured(settings):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Password reset email is not configured. Set EMAIL_FROM, SMTP_HOST and SMTP_PORT.",
+            detail=(
+                "Password reset email is not configured. Set EMAIL_FROM and either "
+                "RESEND_API_KEY (HTTPS, recommended on Railway) or SMTP_HOST and SMTP_PORT."
+            ),
         )
     user = db.execute(select(CompanyUser).where(CompanyUser.email == email)).scalar_one_or_none()
     admin: PlatformAdmin | None = None
@@ -263,22 +266,27 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db_se
     try:
         send_password_reset_email(settings, to_email, link)
     except Exception as exc:
-        logger.warning("forgot_password: SMTP send failed", exc_info=True)
+        logger.warning("forgot_password: send failed", exc_info=True)
         detail = f"Could not send email: {exc!s}"
-        if isinstance(exc, OSError) and exc.errno in (
+        if isinstance(exc, TimeoutError):
+            detail += (
+                " SMTP timed out — many hosts block outbound port 587. "
+                "Use RESEND_API_KEY (Resend) with EMAIL_FROM verified there, or another HTTPS email API."
+            )
+        elif isinstance(exc, OSError) and exc.errno in (
             errno.ENETUNREACH,
             errno.EHOSTUNREACH,
             errno.ENETDOWN,
         ):
             detail += (
                 " If you deploy on Railway or similar, set SMTP_FORCE_IPV4=true (Gmail over IPv4), "
-                "or use a transactional email provider (HTTPS API)."
+                "or set RESEND_API_KEY instead of SMTP."
             )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=detail,
         ) from exc
-    logger.info("forgot_password: reset email sent successfully via SMTP")
+    logger.info("forgot_password: reset email sent")
     return {"ok": True}
 
 

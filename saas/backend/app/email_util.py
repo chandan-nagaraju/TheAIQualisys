@@ -2,15 +2,45 @@
 
 from __future__ import annotations
 
+import json
 import smtplib
 import socket
+import urllib.error
+import urllib.request
 from email.message import EmailMessage
 
 from app.config import Settings
 
 
 def is_email_configured(settings: Settings) -> bool:
+    if settings.email_from and settings.resend_api_key:
+        return True
     return bool(settings.email_from and settings.smtp_host and settings.smtp_port)
+
+
+def _send_via_resend(settings: Settings, to_email: str, subject: str, text: str) -> None:
+    key = settings.resend_api_key
+    sender = settings.email_from
+    if not key or not sender:
+        raise RuntimeError("Resend requires RESEND_API_KEY and EMAIL_FROM")
+
+    payload = {"from": sender, "to": [to_email], "subject": subject, "text": text}
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=data,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            resp.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Resend API HTTP {exc.code}: {body}") from exc
 
 
 def _ipv4_tcp_connection(
@@ -60,17 +90,24 @@ class _SMTP_SSLPreferIPv4(smtplib.SMTP_SSL):
 
 
 def send_password_reset_email(settings: Settings, to_email: str, reset_link: str) -> None:
-    if not is_email_configured(settings):
-        raise RuntimeError("SMTP is not configured")
-
-    msg = EmailMessage()
-    msg["Subject"] = "Reset your FIR Automation password"
-    msg["From"] = settings.email_from
-    msg["To"] = to_email
-    msg.set_content(
+    subject = "Reset your FIR Automation password"
+    text = (
         f"You requested a password reset.\n\nOpen this link to choose a new password (expires in 1 hour):\n{reset_link}\n\n"
         "If you did not request this, you can ignore this email."
     )
+
+    if settings.resend_api_key:
+        _send_via_resend(settings, to_email, subject, text)
+        return
+
+    if not (settings.email_from and settings.smtp_host and settings.smtp_port):
+        raise RuntimeError("SMTP is not configured")
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = settings.email_from
+    msg["To"] = to_email
+    msg.set_content(text)
 
     # Envelope sender should match the authenticated SMTP user when set (Gmail/Workspace often reject or drop otherwise).
     envelope_from = (settings.smtp_user or settings.email_from or "").strip()
