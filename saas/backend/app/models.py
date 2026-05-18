@@ -44,6 +44,8 @@ class Company(Base):
     subscription_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     subscription_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     subscription_expiry_reminder_sent_for_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Bit 1 = 9:00 reminder sent; bit 2 = 17:00 reminder sent (for subscription_expiry_reminder_sent_for_end period).
+    subscription_expiry_reminder_mask: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     plan_type: Mapped[str] = mapped_column(String(32), nullable=False, default=PlanType.basic.value)
     subscription_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=SubscriptionStatus.trial.value

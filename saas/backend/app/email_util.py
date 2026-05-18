@@ -147,11 +147,21 @@ def send_subscription_expiring_email(
     reports_in_period: int,
     period_started_on: str,
     billing_url: str,
+    reminder_slot: str,
+    morning_hour: int,
+    evening_hour: int,
 ) -> None:
     """Gentle renewal reminder with FIR report count since period start (invoice_date basis)."""
-    subject = f"Your {company_name} subscription ends soon"
+    h = morning_hour if reminder_slot == "morning" else evening_hour
+    subject = f"Reminder: {company_name} — subscription ends today ({h:02d}:00)"
+    slot_line = (
+        f"This is your scheduled {morning_hour:02d}:00 reminder on the last day of your current period.\n\n"
+        if reminder_slot == "morning"
+        else f"This is your scheduled {evening_hour:02d}:00 reminder on the last day of your current period.\n\n"
+    )
     text = (
         f"Hello,\n\n"
+        f"{slot_line}"
         f"We wanted to give you a gentle heads-up: your subscription for {company_name} is scheduled to end on "
         f"{subscription_end} (the date we have on file).\n\n"
         "To keep using FIR Automation without interruption, please renew at your convenience — "

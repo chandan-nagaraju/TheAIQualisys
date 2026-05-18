@@ -90,12 +90,30 @@ class Settings(BaseSettings):
     resend_api_key: str | None = Field(default=None, validation_alias=AliasChoices("RESEND_API_KEY", "resend_api_key"))
     # POST /api/cron/send-subscription-expiry-reminders with header X-Cron-Secret: <value>
     cron_secret: str | None = Field(default=None, validation_alias=AliasChoices("CRON_SECRET", "cron_secret"))
-    # 0 = email on the last day (subscription_end == today). 1 = email when subscription ends tomorrow, etc.
-    subscription_expiry_reminder_days_before: int = Field(
-        default=0,
+    # Last-day reminders at morning_hour and evening_hour in this timezone (IANA e.g. Asia/Kolkata, America/New_York).
+    subscription_reminder_timezone: str = Field(
+        default="Asia/Kolkata",
         validation_alias=AliasChoices(
-            "SUBSCRIPTION_EXPIRY_REMINDER_DAYS_BEFORE",
-            "subscription_expiry_reminder_days_before",
+            "SUBSCRIPTION_REMINDER_TIMEZONE",
+            "subscription_reminder_timezone",
+        ),
+    )
+    subscription_reminder_morning_hour: int = Field(
+        default=9,
+        ge=0,
+        le=23,
+        validation_alias=AliasChoices(
+            "SUBSCRIPTION_REMINDER_MORNING_HOUR",
+            "subscription_reminder_morning_hour",
+        ),
+    )
+    subscription_reminder_evening_hour: int = Field(
+        default=17,
+        ge=0,
+        le=23,
+        validation_alias=AliasChoices(
+            "SUBSCRIPTION_REMINDER_EVENING_HOUR",
+            "subscription_reminder_evening_hour",
         ),
     )
 
@@ -142,6 +160,13 @@ class Settings(BaseSettings):
     @field_validator("public_app_url", mode="before")
     @classmethod
     def strip_public_app_url(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("subscription_reminder_timezone", mode="before")
+    @classmethod
+    def strip_subscription_reminder_timezone(cls, v: object) -> object:
         if isinstance(v, str):
             return v.strip()
         return v
