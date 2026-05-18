@@ -101,6 +101,20 @@ class PasswordResetToken(Base):
     user: Mapped[CompanyUser] = relationship("CompanyUser")
 
 
+class AdminPasswordResetToken(Base):
+    __tablename__ = "admin_password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    admin_id: Mapped[int] = mapped_column(
+        ForeignKey("platform_admins.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    admin: Mapped[PlatformAdmin] = relationship("PlatformAdmin")
+
+
 class InvoiceV2(Base):
     __tablename__ = "invoices_v2"
 
