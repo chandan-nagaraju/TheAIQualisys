@@ -43,8 +43,9 @@ class Company(Base):
     trial_end_date: Mapped[date] = mapped_column(Date, nullable=False)
     subscription_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     subscription_end: Mapped[date | None] = mapped_column(Date, nullable=True)
-    subscription_expiry_reminder_sent_for_end: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # Bit 1 = 9:00 reminder sent; bit 2 = 17:00 reminder sent (for subscription_expiry_reminder_sent_for_end period).
+    # Local calendar day (SUBSCRIPTION_REMINDER_TIMEZONE) for which subscription_expiry_reminder_mask applies.
+    subscription_expiry_reminder_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Bit 1 = morning reminder sent; bit 2 = evening reminder sent (reset when reminder_date != today_local).
     subscription_expiry_reminder_mask: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     plan_type: Mapped[str] = mapped_column(String(32), nullable=False, default=PlanType.basic.value)
     subscription_status: Mapped[str] = mapped_column(

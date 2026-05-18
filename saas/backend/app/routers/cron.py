@@ -14,16 +14,42 @@ from app.config import get_settings
 from app.deps import get_db_session
 from app.email_util import is_email_configured, send_subscription_expiring_email
 from app.models import Company, CompanyUser
-from app.subscription_logic import count_fir_reports_this_month, subscription_is_active
+from app.subscription_logic import count_fir_reports_this_month
 
 router = APIRouter(prefix="/cron", tags=["cron"])
 logger = logging.getLogger(__name__)
 
-# Bit 0 = morning hour slot sent; bit 1 = evening hour slot sent.
+# Bit 1 = morning reminder sent; bit 2 = evening reminder sent.
 _MASK_MORNING = 1
 _MASK_EVENING = 2
-# Treat "9:00" / "17:00" as the first N minutes of that local hour (cron should run at least once in each window).
+# First N minutes of each scheduled local hour (cron should hit at least once inside each window).
 _SLOT_GRACE_MINUTES = 5
+
+
+def _build_reminder_slots(
+    *,
+    force: bool,
+    in_morning_slot: bool,
+    in_evening_slot: bool,
+    mask: int,
+    expires_today: bool,
+    expired: bool,
+    morning_hour: int,
+    evening_hour: int,
+) -> list[tuple[str, int]]:
+    slots: list[tuple[str, int]] = []
+    if force:
+        if (mask & _MASK_MORNING) == 0 and (expires_today or expired):
+            slots.append(("morning", _MASK_MORNING))
+        if (mask & _MASK_EVENING) == 0 and expires_today and evening_hour != morning_hour:
+            slots.append(("evening", _MASK_EVENING))
+        return slots
+
+    if in_morning_slot and (mask & _MASK_MORNING) == 0 and (expires_today or expired):
+        slots.append(("morning", _MASK_MORNING))
+    if in_evening_slot and (mask & _MASK_EVENING) == 0 and expires_today and evening_hour != morning_hour:
+        slots.append(("evening", _MASK_EVENING))
+    return slots
 
 
 @router.post("/send-subscription-expiry-reminders")
@@ -32,19 +58,18 @@ def send_subscription_expiry_reminders(
     x_cron_secret: str | None = Header(None, alias="X-Cron-Secret"),
     force: bool = Query(
         False,
-        description="If true, send any pending slots now (still requires X-Cron-Secret). For manual catch-up.",
+        description="If true, send pending allowed slots now (still requires X-Cron-Secret).",
     ),
 ):
     """
-    On the last calendar day of ``subscription_end`` (in ``SUBSCRIPTION_REMINDER_TIMEZONE``), send email
-    at **morning_hour** and **evening_hour**: first successful cron invocation in minutes **0–4** of
-    each of those hours (defaults **9** and **17**).
+    **Last day** (`subscription_end == today` in ``SUBSCRIPTION_REMINDER_TIMEZONE``): morning + evening slots.
 
-    Schedule HTTP **every 1–5 minutes** so a call lands inside **09:00–09:04** and **17:00–17:04**
-    (local). Set ``SUBSCRIPTION_REMINDER_TIMEZONE`` (e.g. ``Asia/Kolkata``).
+    **After expiry** (`subscription_end < today_local`): morning only, once per local day, until renewal.
 
-    **Manual catch-up:** ``POST ...?force=true`` with the same secret sends **pending** morning and/or
-    evening emails for today's expiries (no clock window).
+    **Renewed** (`subscription_end > today_local`): excluded — no emails.
+
+    Same email template for all cases. Schedule HTTP often enough to hit minutes 0–4 of morning/evening hours,
+    or use ``?force=true`` for catch-up.
 
         curl -X POST "$API/api/cron/send-subscription-expiry-reminders" -H "X-Cron-Secret: $CRON_SECRET"
         curl -X POST "$API/api/cron/send-subscription-expiry-reminders?force=true" -H "X-Cron-Secret: $CRON_SECRET"
@@ -94,7 +119,12 @@ def send_subscription_expiry_reminders(
 
     companies = (
         db.execute(
-            select(Company).where(Company.subscription_end == today_local).order_by(Company.id),
+            select(Company)
+            .where(
+                Company.subscription_end.is_not(None),
+                Company.subscription_end <= today_local,
+            )
+            .order_by(Company.id),
         )
         .scalars()
         .all()
@@ -105,36 +135,39 @@ def send_subscription_expiry_reminders(
     errors: list[str] = []
 
     for company in companies:
-        if not subscription_is_active(company, today_local):
-            continue
+        sub_end = company.subscription_end
+        assert sub_end is not None
 
-        if company.subscription_expiry_reminder_sent_for_end != company.subscription_end:
+        expires_today = sub_end == today_local
+        expired = sub_end < today_local
+
+        company_dirty = False
+        if company.subscription_expiry_reminder_date != today_local:
             company.subscription_expiry_reminder_mask = 0
-            company.subscription_expiry_reminder_sent_for_end = company.subscription_end
+            company.subscription_expiry_reminder_date = today_local
+            company_dirty = True
 
         mask = company.subscription_expiry_reminder_mask
-        slots: list[tuple[str, int]] = []
-        if force:
-            if eh == mh:
-                if (mask & _MASK_MORNING) == 0:
-                    slots.append(("morning", _MASK_MORNING))
-            else:
-                if (mask & _MASK_MORNING) == 0:
-                    slots.append(("morning", _MASK_MORNING))
-                if (mask & _MASK_EVENING) == 0:
-                    slots.append(("evening", _MASK_EVENING))
-        else:
-            if in_morning_slot and (mask & _MASK_MORNING) == 0:
-                slots.append(("morning", _MASK_MORNING))
-            elif in_evening_slot and (mask & _MASK_EVENING) == 0:
-                slots.append(("evening", _MASK_EVENING))
+        mask_before = mask
+
+        slots = _build_reminder_slots(
+            force=force,
+            in_morning_slot=in_morning_slot,
+            in_evening_slot=in_evening_slot,
+            mask=mask,
+            expires_today=expires_today,
+            expired=expired,
+            morning_hour=mh,
+            evening_hour=eh,
+        )
 
         if not slots:
+            if company_dirty:
+                db.add(company)
+                companies_touched += 1
             continue
 
         fir_count = count_fir_reports_this_month(db, company.id, today_local)
-        sub_end = company.subscription_end
-        assert sub_end is not None
         users = (
             db.execute(
                 select(CompanyUser)
@@ -145,9 +178,10 @@ def send_subscription_expiry_reminders(
             .all()
         )
         if not users:
+            if company_dirty:
+                db.add(company)
+                companies_touched += 1
             continue
-
-        mask_before = mask
 
         for slot, bit in slots:
             slot_ok = True
@@ -171,8 +205,9 @@ def send_subscription_expiry_reminders(
             if slot_ok:
                 mask |= bit
                 company.subscription_expiry_reminder_mask = mask
+                company_dirty = True
 
-        if mask != mask_before:
+        if company_dirty or mask != mask_before:
             db.add(company)
             companies_touched += 1
 
