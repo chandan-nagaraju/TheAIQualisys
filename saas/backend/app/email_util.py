@@ -33,6 +33,9 @@ def _send_via_resend(settings: Settings, to_email: str, subject: str, text: str)
         headers={
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
+            # Required by Resend / Cloudflare — missing or blocked default urllib UA yields HTTP 403 / error 1010.
+            "User-Agent": "TheAIQualisys-Backend/1.0 (+https://www.theaiqualisys.com)",
+            "Accept": "application/json",
         },
     )
     try:
