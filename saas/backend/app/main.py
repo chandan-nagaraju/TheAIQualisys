@@ -21,10 +21,9 @@ from app.security import hash_password, verify_password
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
-    Base.metadata.create_all(bind=engine)
-    # Ensure incremental SQL migrations are applied in hosted environments
-    # (e.g. Supabase/Render) after base tables exist.
+    # Run SQL migrations before create_all so rename/backfill migrations (e.g. 009) run first.
     apply_sql_migrations(engine, settings.backend_root)
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         ensure_module_pricing_seeded(db)
