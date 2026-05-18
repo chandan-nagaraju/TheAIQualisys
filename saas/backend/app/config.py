@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     smtp_user: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_USER", "smtp_user"))
     smtp_password: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_PASSWORD", "smtp_password"))
     email_from: str | None = Field(default=None, validation_alias=AliasChoices("EMAIL_FROM", "email_from"))
+    resend_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("RESEND_API_KEY", "resend_api_key"),
+    )
 
     # S3 direct uploads for workspace company assets (optional — when unset, settings use DB blobs / local files).
     aws_access_key_id: str | None = Field(default=None, validation_alias=AliasChoices("AWS_ACCESS_KEY_ID"))
