@@ -230,10 +230,8 @@ def _subscription_expiry_text_body(
         "If you need any assistance, have questions, or would like to discuss your plan, simply reply to this email. "
         "We are always happy to help.\n\n"
         "Thank you for placing your trust in us.\n\n"
-        "Warm regards,\n\n"
-        "Chandan N\n"
-        "Founder, The AI Qualisys\n"
-        "admin@theaiqualisys.com\n"
+        "Team,\n"
+        "TheAIQualisys\n"
     )
 
 
@@ -262,8 +260,7 @@ def _subscription_expiry_html_body(
     </div>
     <p style="margin:0 0 16px;font-size:15px;">If you need any assistance, have questions, or would like to discuss your plan, simply reply to this email. We are always happy to help.</p>
     <p style="margin:24px 0 8px;">Thank you for placing your trust in us.</p>
-    <p style="margin:16px 0 4px;">Warm regards,</p>
-    <p style="margin:0;line-height:1.5;">Chandan N<br />Founder, The AI Qualisys<br /><a href="mailto:admin@theaiqualisys.com" style="color:#2563eb;">admin@theaiqualisys.com</a></p>
+    <p style="margin:16px 0 4px;">Team,<br />TheAIQualisys</p>
   </div>
 </body>
 </html>"""
