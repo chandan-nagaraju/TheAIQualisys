@@ -101,6 +101,32 @@ class Settings(BaseSettings):
         ),
     )
 
+    @field_validator(
+        "smtp_host",
+        "smtp_user",
+        "smtp_password",
+        "email_from",
+        "bootstrap_admin_email",
+        "bootstrap_admin_password",
+        mode="before",
+    )
+    @classmethod
+    def strip_optional_secrets(cls, v: object) -> object:
+        """Railway/UI paste often adds trailing newlines or spaces, which breaks SMTP AUTH."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s if s else None
+        return v
+
+    @field_validator("public_app_url", mode="before")
+    @classmethod
+    def strip_public_app_url(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
 
 @lru_cache
 def get_settings() -> Settings:
