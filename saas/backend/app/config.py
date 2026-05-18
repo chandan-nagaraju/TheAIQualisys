@@ -73,14 +73,46 @@ class Settings(BaseSettings):
 
     smtp_host: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_HOST", "smtp_host"))
     smtp_port: int = Field(default=587, validation_alias=AliasChoices("SMTP_PORT", "smtp_port"))
-    smtp_use_tls: bool = Field(default=True, validation_alias=AliasChoices("SMTP_USE_TLS", "smtp_use_tls"))
+    smtp_use_tls: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("SMTP_USE_TLS", "SMTP_TLS", "smtp_use_tls"),
+    )
     smtp_use_ssl: bool = Field(default=False, validation_alias=AliasChoices("SMTP_USE_SSL", "smtp_use_ssl"))
     smtp_user: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_USER", "smtp_user"))
     smtp_password: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_PASSWORD", "smtp_password"))
     email_from: str | None = Field(default=None, validation_alias=AliasChoices("EMAIL_FROM", "email_from"))
-    resend_api_key: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("RESEND_API_KEY", "resend_api_key"),
+    # Many hosts (e.g. Railway) resolve smtp.gmail.com to IPv6 first; outbound IPv6 may be broken → Errno 101.
+    smtp_force_ipv4: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("SMTP_FORCE_IPV4", "smtp_force_ipv4"),
+    )
+    resend_api_key: str | None = Field(default=None, validation_alias=AliasChoices("RESEND_API_KEY", "resend_api_key"))
+    # POST /api/cron/send-subscription-expiry-reminders with header X-Cron-Secret: <value>
+    cron_secret: str | None = Field(default=None, validation_alias=AliasChoices("CRON_SECRET", "cron_secret"))
+    subscription_reminder_timezone: str = Field(
+        default="Asia/Kolkata",
+        validation_alias=AliasChoices(
+            "SUBSCRIPTION_REMINDER_TIMEZONE",
+            "subscription_reminder_timezone",
+        ),
+    )
+    subscription_reminder_morning_hour: int = Field(
+        default=9,
+        ge=0,
+        le=23,
+        validation_alias=AliasChoices(
+            "SUBSCRIPTION_REMINDER_MORNING_HOUR",
+            "subscription_reminder_morning_hour",
+        ),
+    )
+    subscription_reminder_evening_hour: int = Field(
+        default=17,
+        ge=0,
+        le=23,
+        validation_alias=AliasChoices(
+            "SUBSCRIPTION_REMINDER_EVENING_HOUR",
+            "subscription_reminder_evening_hour",
+        ),
     )
 
     # S3 direct uploads for workspace company assets (optional — when unset, settings use DB blobs / local files).
@@ -101,6 +133,41 @@ class Settings(BaseSettings):
             "fir_intelligence_qty_reliable_since",
         ),
     )
+
+    @field_validator(
+        "smtp_host",
+        "smtp_user",
+        "smtp_password",
+        "email_from",
+        "bootstrap_admin_email",
+        "bootstrap_admin_password",
+        "resend_api_key",
+        "cron_secret",
+        mode="before",
+    )
+    @classmethod
+    def strip_optional_secrets(cls, v: object) -> object:
+        """Railway/UI paste often adds trailing newlines or spaces, which breaks SMTP AUTH."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s if s else None
+        return v
+
+    @field_validator("public_app_url", mode="before")
+    @classmethod
+    def strip_public_app_url(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("subscription_reminder_timezone", mode="before")
+    @classmethod
+    def strip_subscription_reminder_timezone(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
 
 @lru_cache
