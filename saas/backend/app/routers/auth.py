@@ -268,10 +268,16 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db_se
     except Exception as exc:
         logger.warning("forgot_password: send failed", exc_info=True)
         detail = f"Could not send email: {exc!s}"
-        if isinstance(exc, TimeoutError):
+        timed_out = isinstance(exc, TimeoutError) or (
+            isinstance(exc, OSError) and exc.errno == errno.ETIMEDOUT
+        )
+        if not timed_out and "timed out" in str(exc).lower():
+            timed_out = True
+        if timed_out:
             detail += (
-                " SMTP timed out — many hosts block outbound port 587. "
-                "Use RESEND_API_KEY (Resend) with EMAIL_FROM verified there, or another HTTPS email API."
+                " SMTP timed out — many hosts (including Railway) block or stall outbound port 587. "
+                "Set RESEND_API_KEY on the API and verify EMAIL_FROM at resend.com (email over HTTPS), "
+                "or use another transactional email HTTP API."
             )
         elif isinstance(exc, OSError) and exc.errno in (
             errno.ENETUNREACH,
