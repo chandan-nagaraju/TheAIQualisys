@@ -18,6 +18,7 @@ import ModuleWorkbenchPage from "./pages/ModuleWorkbenchPage";
 import ModulesDashboardPage from "./pages/ModulesDashboardPage";
 import PricingPage from "./pages/PricingPage";
 import SignupPage from "./pages/SignupPage";
+import SignupCompletePage from "./pages/SignupCompletePage";
 import UpgradePage from "./pages/UpgradePage";
 import CustomersPage from "./pages/workspace/CustomersPage";
 import ExtractedPage from "./pages/workspace/ExtractedPage";
@@ -65,6 +66,7 @@ export default function App() {
 
       <Route element={<Layout />}>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/signup/complete" element={<SignupCompletePage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
