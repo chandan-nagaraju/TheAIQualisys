@@ -12,4 +12,6 @@ cmds = [
 ]
 
 [start]
-cmd = "cd saas/backend && gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
+# Run SQL migrations before workers start so deploy fails fast if a migration errors.
+# Single worker: avoids parallel migration races if start is ever scaled up.
+cmd = "cd saas/backend && python -m scripts.run_migrations && gunicorn app.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
