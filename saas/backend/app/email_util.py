@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 import smtplib
 import urllib.error
@@ -64,15 +65,29 @@ This link will allow you to set your password and complete your account setup.
 
 If you did not request this, you can safely ignore this email.
 
-Warm regards,
-Chandan N
-Founder, The AI Qualisys"""
+Team,
+TheAIQualisys"""
+    safe_href = html.escape(verification_link, quote=True)
+    safe_display = html.escape(verification_link, quote=False)
+    body_html = f"""<!DOCTYPE html>
+<html>
+<body>
+<p>Hello,</p>
+<p>Thank you for your interest in The AI Qualisys.</p>
+<p>Please verify your email address by clicking the link below:</p>
+<p><a href="{safe_href}">{safe_display}</a></p>
+<p>This link will allow you to set your password and complete your account setup.</p>
+<p>If you did not request this, you can safely ignore this email.</p>
+<p>Team,<br>TheAIQualisys</p>
+</body>
+</html>"""
     payload = json.dumps(
         {
             "from": settings.email_from,
             "to": [to_email],
             "subject": "Verify your email to create your The AI Qualisys account",
             "text": body,
+            "html": body_html,
         }
     ).encode("utf-8")
     req = urllib.request.Request(
