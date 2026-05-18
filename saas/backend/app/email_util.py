@@ -308,3 +308,45 @@ def send_subscription_expiring_email(
         html,
         reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO,
     )
+
+
+SIGNUP_VERIFY_SUBJECT = "Verify your email to create your The AI Qualisys account"
+
+
+def is_signup_email_configured(settings: Settings) -> bool:
+    return bool(settings.resend_api_key and settings.email_from)
+
+
+def send_signup_verification_email(settings: Settings, to_email: str, verification_link: str) -> None:
+    """Signup verification: multipart text + HTML via Resend (required — see is_signup_email_configured)."""
+    if not is_signup_email_configured(settings):
+        raise RuntimeError("Resend is not configured (RESEND_API_KEY and EMAIL_FROM required)")
+    text = f"""Hello,
+
+Thank you for your interest in The AI Qualisys.
+
+Please verify your email address by clicking the link below:
+
+{verification_link}
+
+This link will allow you to set your password and complete your account setup.
+
+If you did not request this, you can safely ignore this email.
+
+Team,
+TheAIQualisys"""
+    safe_href = escape(verification_link, quote=True)
+    safe_display = escape(verification_link, quote=False)
+    html = f"""<!DOCTYPE html>
+<html>
+<body>
+<p>Hello,</p>
+<p>Thank you for your interest in The AI Qualisys.</p>
+<p>Please verify your email address by clicking the link below:</p>
+<p><a href="{safe_href}">{safe_display}</a></p>
+<p>This link will allow you to set your password and complete your account setup.</p>
+<p>If you did not request this, you can safely ignore this email.</p>
+<p>Team,<br>TheAIQualisys</p>
+</body>
+</html>"""
+    _send_text_and_html_email(settings, to_email, SIGNUP_VERIFY_SUBJECT, text, html)

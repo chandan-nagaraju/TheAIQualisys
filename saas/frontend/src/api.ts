@@ -91,6 +91,22 @@ export async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+/** GET JSON without Content-Type (some stacks reject GET + application/json). */
+export async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(apiUrl(path));
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const j = await res.json();
+      if (j?.detail != null) detail = formatApiErrorDetail(j.detail);
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  return res.json() as Promise<T>;
+}
+
 export async function apiUpload(path: string, file: File, tokenKind: TokenKind = "company") {
   const key = tokenKind === "admin" ? "fir_admin_token" : "fir_token";
   const t = localStorage.getItem(key);

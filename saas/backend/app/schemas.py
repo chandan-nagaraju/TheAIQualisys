@@ -5,11 +5,27 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.part_field_validation import sanitize_part_master_alnum_upper
 
 
-class SignupRequest(BaseModel):
+class RequestSignupVerificationBody(BaseModel):
     company_name: str = Field(min_length=1, max_length=255)
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
     vendor_code: str = Field(min_length=2, max_length=64)
+
+
+class VerifySignupSuccessResponse(BaseModel):
+    ok: bool = True
+    company_name: str
+    email: str
+    vendor_code: str
+
+
+class CompleteSignupBody(BaseModel):
+    token: str = Field(min_length=1, max_length=512)
+    password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
+
+
+class SignupVerificationSentResponse(BaseModel):
+    message: str
 
 
 class LoginRequest(BaseModel):
