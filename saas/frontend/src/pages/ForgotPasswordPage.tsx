@@ -30,7 +30,8 @@ export default function ForgotPasswordPage() {
     <div className="mx-auto max-w-md rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
       <h1 className="text-2xl font-semibold text-white">Forgot password</h1>
       <p className="mt-2 text-sm text-slate-400">
-        Enter your company account email. If it exists, we will send a reset link (when SMTP is configured on the server).
+        Enter the email for your company account or platform admin login. If it exists, we will send a reset link (when
+        SMTP is configured on the server).
       </p>
       <form className="mt-8 space-y-4" onSubmit={onSubmit}>
         <div>

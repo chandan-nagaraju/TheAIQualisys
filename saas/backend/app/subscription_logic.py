@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -127,6 +127,30 @@ def subscription_days_remaining_company(company: Company, today: date | None = N
     if company.subscription_end is None:
         return None
     return max(0, (company.subscription_end - today).days)
+
+
+def subscription_period_start_for_reports(company: Company) -> date:
+    """
+    First calendar day of the current paid window for "since subscription started" copy.
+    Uses subscription_start when set; otherwise the day after trial end if a paid end date exists.
+    """
+    if company.subscription_start is not None:
+        return company.subscription_start
+    if company.subscription_end is not None:
+        return company.trial_end_date + timedelta(days=1)
+    return company.trial_start_date
+
+
+def count_fir_reports_in_subscription_window(
+    db: Session, company_id: int, period_start: date, until: date
+) -> int:
+    """Count FIR intelligence rows with invoice_date in [period_start, until] inclusive."""
+    q = select(func.count()).select_from(FirReportEvent).where(
+        FirReportEvent.company_id == company_id,
+        FirReportEvent.invoice_date >= period_start,
+        FirReportEvent.invoice_date <= until,
+    )
+    return int(db.execute(q).scalar_one())
 
 
 def can_create_invoice(

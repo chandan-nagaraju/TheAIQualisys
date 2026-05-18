@@ -1,4 +1,6 @@
+import errno
 import hashlib
+import logging
 import secrets
 from datetime import date, datetime, timedelta, timezone
 
@@ -10,7 +12,15 @@ from app.config import get_settings
 from app.dates import billing_today
 from app.deps import company_impersonated_by_admin, get_current_company_user, get_db_session, get_company_for_user
 from app.email_util import is_email_configured, send_password_reset_email
-from app.models import Company, CompanyUser, PasswordResetToken, PlanType, PlatformAdmin, SubscriptionStatus
+from app.models import (
+    AdminPasswordResetToken,
+    Company,
+    CompanyUser,
+    PasswordResetToken,
+    PlanType,
+    PlatformAdmin,
+    SubscriptionStatus,
+)
 from app.schemas import (
     ChangePasswordRequest,
     CompanyOut,
@@ -43,6 +53,7 @@ from app.subscription_logic import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -223,47 +234,106 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db_se
     if not is_email_configured(settings):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Password reset email is not configured. Set EMAIL_FROM, SMTP_HOST and SMTP_PORT.",
+            detail=(
+                "Password reset email is not configured. Set EMAIL_FROM and either "
+                "RESEND_API_KEY (HTTPS, recommended on Railway) or SMTP_HOST and SMTP_PORT."
+            ),
         )
     user = db.execute(select(CompanyUser).where(CompanyUser.email == email)).scalar_one_or_none()
+    admin: PlatformAdmin | None = None
     if not user:
+        admin = db.execute(select(PlatformAdmin).where(PlatformAdmin.email == email)).scalar_one_or_none()
+    if not user and not admin:
+        logger.info(
+            "forgot_password: no company user or platform admin for this address; "
+            "returning generic ok without sending mail"
+        )
         return {"ok": True}
     raw = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw.encode()).hexdigest()
     expires = datetime.now(timezone.utc) + timedelta(hours=1)
-    db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
-    db.add(PasswordResetToken(user_id=user.id, token_hash=token_hash, expires_at=expires))
+    if user:
+        db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
+        db.add(PasswordResetToken(user_id=user.id, token_hash=token_hash, expires_at=expires))
+        to_email = user.email
+    else:
+        assert admin is not None
+        db.execute(delete(AdminPasswordResetToken).where(AdminPasswordResetToken.admin_id == admin.id))
+        db.add(AdminPasswordResetToken(admin_id=admin.id, token_hash=token_hash, expires_at=expires))
+        to_email = admin.email
     db.commit()
     link = f"{settings.public_app_url.rstrip('/')}/reset-password?token={raw}"
     try:
-        send_password_reset_email(settings, user.email, link)
+        send_password_reset_email(settings, to_email, link)
     except Exception as exc:
+        logger.warning("forgot_password: send failed", exc_info=True)
+        detail = f"Could not send email: {exc!s}"
+        timed_out = isinstance(exc, TimeoutError) or (
+            isinstance(exc, OSError) and exc.errno == errno.ETIMEDOUT
+        )
+        if not timed_out and "timed out" in str(exc).lower():
+            timed_out = True
+        if timed_out:
+            detail += (
+                " SMTP timed out — many hosts (including Railway) block or stall outbound port 587. "
+                "Set RESEND_API_KEY on the API and verify EMAIL_FROM at resend.com (email over HTTPS), "
+                "or use another transactional email HTTP API."
+            )
+        elif isinstance(exc, OSError) and exc.errno in (
+            errno.ENETUNREACH,
+            errno.EHOSTUNREACH,
+            errno.ENETDOWN,
+        ):
+            detail += (
+                " If you deploy on Railway or similar, set SMTP_FORCE_IPV4=true (Gmail over IPv4), "
+                "or set RESEND_API_KEY instead of SMTP."
+            )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not send email: {exc!s}",
+            detail=detail,
         ) from exc
+    logger.info("forgot_password: reset email sent")
     return {"ok": True}
+
+
+def _password_reset_expired(exp: datetime, now: datetime) -> bool:
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    return exp < now
 
 
 @router.post("/reset-password")
 def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db_session)):
     token_hash = hashlib.sha256(body.token.encode()).hexdigest()
-    row = db.execute(select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)).scalar_one_or_none()
     now = datetime.now(timezone.utc)
-    if not row:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
-    exp = row.expires_at
-    if exp.tzinfo is None:
-        exp = exp.replace(tzinfo=timezone.utc)
-    if exp < now:
+    row = db.execute(select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)).scalar_one_or_none()
+    if row:
+        if _password_reset_expired(row.expires_at, now):
+            db.delete(row)
+            db.commit()
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+        user = db.get(CompanyUser, row.user_id)
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid reset link")
+        user.password_hash = hash_password(body.new_password)
         db.delete(row)
         db.commit()
+        return {"ok": True}
+
+    admin_row = db.execute(
+        select(AdminPasswordResetToken).where(AdminPasswordResetToken.token_hash == token_hash)
+    ).scalar_one_or_none()
+    if not admin_row:
         raise HTTPException(status_code=400, detail="Invalid or expired reset link")
-    user = db.get(CompanyUser, row.user_id)
-    if not user:
+    if _password_reset_expired(admin_row.expires_at, now):
+        db.delete(admin_row)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    admin = db.get(PlatformAdmin, admin_row.admin_id)
+    if not admin:
         raise HTTPException(status_code=400, detail="Invalid reset link")
-    user.password_hash = hash_password(body.new_password)
-    db.delete(row)
+    admin.password_hash = hash_password(body.new_password)
+    db.delete(admin_row)
     db.commit()
     return {"ok": True}
 

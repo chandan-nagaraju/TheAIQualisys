@@ -15,7 +15,7 @@ from app.s3_assets import s3_assets_configured
 from app.migration_runner import apply_sql_migrations
 from app.models import PlatformAdmin
 from app.pricing_seed import ensure_module_pricing_seeded
-from app.routers import admin, auth, billing, modules, pricing_public, subscription
+from app.routers import admin, auth, billing, cron, modules, pricing_public, subscription
 from app.routers.v2.endpoints import router as v2_router
 from app.routers.workspace import fir_preview as legacy_fir_preview_alias, router as workspace_router
 from app.security import hash_password, verify_password
@@ -110,6 +110,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(cron.router)
+    app.include_router(cron.router, prefix="/api")
     app.include_router(auth.router)
     app.include_router(auth.router, prefix="/api")
     app.include_router(pricing_public.router)

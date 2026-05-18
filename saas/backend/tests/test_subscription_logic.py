@@ -4,7 +4,13 @@ from datetime import date
 from unittest.mock import MagicMock
 
 from app.models import Company, SubscriptionStatus
-from app.subscription_logic import can_create_invoice, can_access_fir_workspace, count_fir_reports_this_month, subscription_is_active
+from app.subscription_logic import (
+    can_access_fir_workspace,
+    can_create_invoice,
+    count_fir_reports_this_month,
+    subscription_is_active,
+    subscription_period_start_for_reports,
+)
 
 
 def _company_expired_trial() -> Company:
@@ -44,6 +50,15 @@ def test_count_fir_reports_this_month_calls_db() -> None:
     db.execute.return_value.scalar_one.return_value = 42
     assert count_fir_reports_this_month(db, 99, today=date(2026, 5, 7)) == 42
     db.execute.assert_called_once()
+
+
+def test_subscription_period_start_for_reports() -> None:
+    c = _company_expired_trial()
+    c.subscription_end = date(2026, 6, 30)
+    c.subscription_start = date(2026, 2, 1)
+    assert subscription_period_start_for_reports(c) == date(2026, 2, 1)
+    c.subscription_start = None
+    assert subscription_period_start_for_reports(c) == date(2020, 2, 1)
 
 
 def test_fir_workspace_requires_trial_or_subscription() -> None:
