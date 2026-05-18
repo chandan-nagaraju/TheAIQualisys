@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -34,6 +34,10 @@ _SLOT_GRACE_MINUTES = 5
 def send_subscription_expiry_reminders(
     db: Session = Depends(get_db_session),
     x_cron_secret: str | None = Header(None, alias="X-Cron-Secret"),
+    force: bool = Query(
+        False,
+        description="If true, send any pending slots now (still requires X-Cron-Secret). For manual catch-up.",
+    ),
 ):
     """
     On the last calendar day of ``subscription_end`` (in ``SUBSCRIPTION_REMINDER_TIMEZONE``), send email
@@ -43,7 +47,11 @@ def send_subscription_expiry_reminders(
     Schedule HTTP **every 1–5 minutes** so a call lands inside **09:00–09:04** and **17:00–17:04**
     (local). Set ``SUBSCRIPTION_REMINDER_TIMEZONE`` (e.g. ``Asia/Kolkata``).
 
+    **Manual catch-up:** ``POST ...?force=true`` with the same secret sends **pending** morning and/or
+    evening emails for today's expiries (no clock window).
+
         curl -X POST "$API/api/cron/send-subscription-expiry-reminders" -H "X-Cron-Secret: $CRON_SECRET"
+        curl -X POST "$API/api/cron/send-subscription-expiry-reminders?force=true" -H "X-Cron-Secret: $CRON_SECRET"
     """
     settings = get_settings()
     if not settings.cron_secret or (x_cron_secret or "").strip() != settings.cron_secret.strip():
@@ -71,14 +79,15 @@ def send_subscription_expiry_reminders(
     in_morning_slot = h == mh and m < _SLOT_GRACE_MINUTES
     in_evening_slot = h == eh and m < _SLOT_GRACE_MINUTES and eh != mh
 
-    if not in_morning_slot and not in_evening_slot:
+    if not force and not in_morning_slot and not in_evening_slot:
         db.commit()
         return {
             "ok": True,
             "skipped": True,
+            "forced": False,
             "reason": (
                 f"No send window: need a cron hit in minutes 0–{_SLOT_GRACE_MINUTES - 1} of hour {mh} or {eh} "
-                f"({settings.subscription_reminder_timezone})"
+                f"({settings.subscription_reminder_timezone}), or use ?force=true for catch-up."
             ),
             "local_time": now_local.isoformat(),
             "today_local": today_local.isoformat(),
@@ -108,16 +117,23 @@ def send_subscription_expiry_reminders(
             company.subscription_expiry_reminder_sent_for_end = company.subscription_end
 
         mask = company.subscription_expiry_reminder_mask
-        slot: str | None = None
-        bit = 0
-        if in_morning_slot and (mask & _MASK_MORNING) == 0:
-            slot = "morning"
-            bit = _MASK_MORNING
-        elif in_evening_slot and (mask & _MASK_EVENING) == 0:
-            slot = "evening"
-            bit = _MASK_EVENING
+        slots: list[tuple[str, int]] = []
+        if force:
+            if eh == mh:
+                if (mask & _MASK_MORNING) == 0:
+                    slots.append(("morning", _MASK_MORNING))
+            else:
+                if (mask & _MASK_MORNING) == 0:
+                    slots.append(("morning", _MASK_MORNING))
+                if (mask & _MASK_EVENING) == 0:
+                    slots.append(("evening", _MASK_EVENING))
+        else:
+            if in_morning_slot and (mask & _MASK_MORNING) == 0:
+                slots.append(("morning", _MASK_MORNING))
+            elif in_evening_slot and (mask & _MASK_EVENING) == 0:
+                slots.append(("evening", _MASK_EVENING))
 
-        if slot is None:
+        if not slots:
             continue
 
         period_start = subscription_period_start_for_reports(company)
@@ -136,30 +152,36 @@ def send_subscription_expiry_reminders(
 
         sub_end_s = company.subscription_end.isoformat() if company.subscription_end else ""
         period_s = period_start.isoformat()
-        company_ok = True
-        for u in users:
-            try:
-                send_subscription_expiring_email(
-                    settings,
-                    u.email,
-                    company_name=company.company_name,
-                    subscription_end=sub_end_s,
-                    reports_in_period=report_count,
-                    period_started_on=period_s,
-                    billing_url=billing_url,
-                    reminder_slot=slot,
-                    morning_hour=mh,
-                    evening_hour=eh,
-                )
-                emails_sent += 1
-            except Exception as exc:
-                company_ok = False
-                msg = f"company_id={company.id} user={u.email!s}: {exc!s}"
-                errors.append(msg)
-                logger.warning("subscription expiry email failed: %s", msg, exc_info=True)
+        mask_before = mask
 
-        if company_ok:
-            company.subscription_expiry_reminder_mask = mask | bit
+        for slot, bit in slots:
+            slot_ok = True
+            for u in users:
+                try:
+                    send_subscription_expiring_email(
+                        settings,
+                        u.email,
+                        company_name=company.company_name,
+                        subscription_end=sub_end_s,
+                        reports_in_period=report_count,
+                        period_started_on=period_s,
+                        billing_url=billing_url,
+                        reminder_slot=slot,
+                        morning_hour=mh,
+                        evening_hour=eh,
+                    )
+                    emails_sent += 1
+                except Exception as exc:
+                    slot_ok = False
+                    msg = f"company_id={company.id} user={u.email!s} slot={slot}: {exc!s}"
+                    errors.append(msg)
+                    logger.warning("subscription expiry email failed: %s", msg, exc_info=True)
+
+            if slot_ok:
+                mask |= bit
+                company.subscription_expiry_reminder_mask = mask
+
+        if mask != mask_before:
             db.add(company)
             companies_touched += 1
 
@@ -167,6 +189,7 @@ def send_subscription_expiry_reminders(
     return {
         "ok": True,
         "skipped": False,
+        "forced": force,
         "timezone": settings.subscription_reminder_timezone,
         "local_time": now_local.isoformat(),
         "today_local": today_local.isoformat(),
