@@ -96,6 +96,9 @@ TheAIQualisys"""
         headers={
             "Authorization": f"Bearer {settings.resend_api_key}",
             "Content-Type": "application/json",
+            # Resend blocks requests without User-Agent (HTTP 403, error code 1010).
+            "User-Agent": "TheAIQualisys-Backend/1.0 (+https://www.theaiqualisys.com)",
+            "Accept": "application/json",
         },
         method="POST",
     )
