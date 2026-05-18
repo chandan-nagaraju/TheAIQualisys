@@ -24,10 +24,10 @@ def _ipv4_tcp_connection(
     if not infos:
         raise OSError(f"No IPv4 address found for {host!r}")
     last_exc: OSError | None = None
-    for _fam, kind, proto, _canon, sockaddr in infos:
+    for fam, socktype, proto, _canon, sockaddr in infos:
         sock: socket.socket | None = None
         try:
-            sock = socket.socket(kind, socket.SOCK_STREAM, proto)
+            sock = socket.socket(fam, socktype, proto)
             if timeout is not None:
                 sock.settimeout(timeout)
             if source_address is not None:
