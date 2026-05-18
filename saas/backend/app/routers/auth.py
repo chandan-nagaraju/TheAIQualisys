@@ -1,3 +1,4 @@
+import errno
 import hashlib
 import logging
 import secrets
@@ -263,9 +264,19 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db_se
         send_password_reset_email(settings, to_email, link)
     except Exception as exc:
         logger.warning("forgot_password: SMTP send failed", exc_info=True)
+        detail = f"Could not send email: {exc!s}"
+        if isinstance(exc, OSError) and exc.errno in (
+            errno.ENETUNREACH,
+            errno.EHOSTUNREACH,
+            errno.ENETDOWN,
+        ):
+            detail += (
+                " If you deploy on Railway or similar, set SMTP_FORCE_IPV4=true (Gmail over IPv4), "
+                "or use a transactional email provider (HTTPS API)."
+            )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not send email: {exc!s}",
+            detail=detail,
         ) from exc
     logger.info("forgot_password: reset email sent successfully via SMTP")
     return {"ok": True}

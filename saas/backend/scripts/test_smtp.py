@@ -37,7 +37,10 @@ def main() -> None:
         sys.exit(1)
 
     link = "https://example.com/reset-password?token=diagnostic-not-real"
-    print(f"Host={settings.smtp_host!r} port={settings.smtp_port} tls={settings.smtp_use_tls} ssl={settings.smtp_use_ssl}")
+    print(
+        f"Host={settings.smtp_host!r} port={settings.smtp_port} tls={settings.smtp_use_tls} "
+        f"ssl={settings.smtp_use_ssl} force_ipv4={settings.smtp_force_ipv4}"
+    )
     print(f"From={settings.email_from!r} user={settings.smtp_user!r} to={args.to_email!r}")
     send_password_reset_email(settings, args.to_email.strip(), link)
     print("Send finished without exception (check inbox and spam).")

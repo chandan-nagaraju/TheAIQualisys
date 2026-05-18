@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     smtp_user: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_USER", "smtp_user"))
     smtp_password: str | None = Field(default=None, validation_alias=AliasChoices("SMTP_PASSWORD", "smtp_password"))
     email_from: str | None = Field(default=None, validation_alias=AliasChoices("EMAIL_FROM", "email_from"))
+    # Many hosts (e.g. Railway) resolve smtp.gmail.com to IPv6 first; outbound IPv6 may be broken → Errno 101.
+    smtp_force_ipv4: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("SMTP_FORCE_IPV4", "smtp_force_ipv4"),
+    )
 
     # S3 direct uploads for workspace company assets (optional — when unset, settings use DB blobs / local files).
     aws_access_key_id: str | None = Field(default=None, validation_alias=AliasChoices("AWS_ACCESS_KEY_ID"))
