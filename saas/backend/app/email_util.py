@@ -1,4 +1,4 @@
-"""SMTP helpers for password reset (sync, runs in FastAPI threadpool)."""
+"""Transactional email: password reset, subscription reminders (Resend or SMTP)."""
 
 from __future__ import annotations
 
@@ -92,13 +92,8 @@ class _SMTP_SSLPreferIPv4(smtplib.SMTP_SSL):
         return self.context.wrap_socket(new_socket, server_hostname=self._host)
 
 
-def send_password_reset_email(settings: Settings, to_email: str, reset_link: str) -> None:
-    subject = "Reset your FIR Automation password"
-    text = (
-        f"You requested a password reset.\n\nOpen this link to choose a new password (expires in 1 hour):\n{reset_link}\n\n"
-        "If you did not request this, you can ignore this email."
-    )
-
+def send_plain_text_email(settings: Settings, to_email: str, subject: str, text: str) -> None:
+    """Send a single plain-text email via Resend (if configured) or SMTP."""
     if settings.resend_api_key:
         _send_via_resend(settings, to_email, subject, text)
         return
@@ -112,7 +107,6 @@ def send_password_reset_email(settings: Settings, to_email: str, reset_link: str
     msg["To"] = to_email
     msg.set_content(text)
 
-    # Envelope sender should match the authenticated SMTP user when set (Gmail/Workspace often reject or drop otherwise).
     envelope_from = (settings.smtp_user or settings.email_from or "").strip()
     timeout = 20
     host = settings.smtp_host
@@ -133,3 +127,39 @@ def send_password_reset_email(settings: Settings, to_email: str, reset_link: str
         if settings.smtp_user and settings.smtp_password is not None:
             smtp.login(settings.smtp_user, settings.smtp_password)
         smtp.send_message(msg, from_addr=envelope_from, to_addrs=[to_email])
+
+
+def send_password_reset_email(settings: Settings, to_email: str, reset_link: str) -> None:
+    subject = "Reset your FIR Automation password"
+    text = (
+        f"You requested a password reset.\n\nOpen this link to choose a new password (expires in 1 hour):\n{reset_link}\n\n"
+        "If you did not request this, you can ignore this email."
+    )
+    send_plain_text_email(settings, to_email, subject, text)
+
+
+def send_subscription_expiring_email(
+    settings: Settings,
+    to_email: str,
+    *,
+    company_name: str,
+    subscription_end: str,
+    reports_in_period: int,
+    period_started_on: str,
+    billing_url: str,
+) -> None:
+    """Gentle renewal reminder with FIR report count since period start (invoice_date basis)."""
+    subject = f"Your {company_name} subscription ends soon"
+    text = (
+        f"Hello,\n\n"
+        f"We wanted to give you a gentle heads-up: your subscription for {company_name} is scheduled to end on "
+        f"{subscription_end} (the date we have on file).\n\n"
+        "To keep using FIR Automation without interruption, please renew at your convenience — "
+        "we would love to continue supporting your team.\n\n"
+        f"Since {period_started_on}, your workspace has {reports_in_period} FIR report line(s) recorded "
+        "(invoice-based rows used in your analytics).\n\n"
+        f"You can manage billing here:\n{billing_url}\n\n"
+        "Thank you for being with us.\n\n"
+        "— FIR Automation"
+    )
+    send_plain_text_email(settings, to_email, subject, text)

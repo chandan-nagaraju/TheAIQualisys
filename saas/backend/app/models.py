@@ -43,6 +43,7 @@ class Company(Base):
     trial_end_date: Mapped[date] = mapped_column(Date, nullable=False)
     subscription_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     subscription_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    subscription_expiry_reminder_sent_for_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     plan_type: Mapped[str] = mapped_column(String(32), nullable=False, default=PlanType.basic.value)
     subscription_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=SubscriptionStatus.trial.value

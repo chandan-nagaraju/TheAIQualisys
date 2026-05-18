@@ -88,6 +88,16 @@ class Settings(BaseSettings):
     )
     # When set, password-reset uses Resend over HTTPS (port 443) instead of SMTP — works when the host blocks 587/465.
     resend_api_key: str | None = Field(default=None, validation_alias=AliasChoices("RESEND_API_KEY", "resend_api_key"))
+    # POST /api/cron/send-subscription-expiry-reminders with header X-Cron-Secret: <value>
+    cron_secret: str | None = Field(default=None, validation_alias=AliasChoices("CRON_SECRET", "cron_secret"))
+    # 0 = email on the last day (subscription_end == today). 1 = email when subscription ends tomorrow, etc.
+    subscription_expiry_reminder_days_before: int = Field(
+        default=0,
+        validation_alias=AliasChoices(
+            "SUBSCRIPTION_EXPIRY_REMINDER_DAYS_BEFORE",
+            "subscription_expiry_reminder_days_before",
+        ),
+    )
 
     # S3 direct uploads for workspace company assets (optional — when unset, settings use DB blobs / local files).
     aws_access_key_id: str | None = Field(default=None, validation_alias=AliasChoices("AWS_ACCESS_KEY_ID"))
@@ -116,6 +126,7 @@ class Settings(BaseSettings):
         "bootstrap_admin_email",
         "bootstrap_admin_password",
         "resend_api_key",
+        "cron_secret",
         mode="before",
     )
     @classmethod
