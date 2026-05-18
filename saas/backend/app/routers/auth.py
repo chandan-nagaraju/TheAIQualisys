@@ -8,19 +8,27 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.deps import get_current_company_user, get_db_session, get_company_for_user
-from app.email_util import is_email_configured, send_password_reset_email
-from app.models import Company, CompanyUser, PasswordResetToken, PlanType, PlatformAdmin, SubscriptionStatus
+from app.email_util import (
+    is_email_configured,
+    is_signup_email_configured,
+    send_password_reset_email,
+    send_signup_verification_email,
+)
+from app.models import Company, CompanyUser, PasswordResetToken, PendingSignup, PlanType, PlatformAdmin, SubscriptionStatus
 from app.schemas import (
     ChangePasswordRequest,
     CompanyOut,
     CompanyUserOut,
+    CompleteSignupBody,
     ForgotPasswordRequest,
     LoginRequest,
     MeResponse,
+    RequestSignupVerificationBody,
     ResetPasswordRequest,
-    SignupRequest,
+    SignupVerificationSentResponse,
     TokenResponse,
     UnifiedLoginResponse,
+    VerifySignupSuccessResponse,
 )
 from app.security import (
     create_access_token,
@@ -42,22 +50,131 @@ from app.subscription_logic import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def signup(body: SignupRequest, db: Session = Depends(get_db_session)):
-    existing = db.execute(select(CompanyUser).where(CompanyUser.email == body.email)).scalar_one_or_none()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
+def _verification_token_hash(raw: str) -> str:
+    return hashlib.sha256(raw.strip().encode()).hexdigest()
 
+
+@router.post("/request-signup-verification", response_model=SignupVerificationSentResponse)
+def request_signup_verification(body: RequestSignupVerificationBody, db: Session = Depends(get_db_session)):
+    settings = get_settings()
+    if not is_signup_email_configured(settings):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Signup email is not configured. Set RESEND_API_KEY and EMAIL_FROM.",
+        )
+
+    email_norm = str(body.email).lower().strip()
+    company_name = body.company_name.strip()
     vc = body.vendor_code.strip()
-    exists_vc = db.execute(select(Company).where(Company.vendor_code == vc)).scalar_one_or_none()
-    if exists_vc:
+
+    if db.execute(select(CompanyUser).where(CompanyUser.email == email_norm)).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    if db.execute(select(Company).where(Company.vendor_code == vc)).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Vendor code already in use")
+
+    conflicting_vc = db.execute(
+        select(PendingSignup).where(PendingSignup.vendor_code == vc, PendingSignup.email != email_norm)
+    ).scalar_one_or_none()
+    if conflicting_vc:
+        raise HTTPException(status_code=400, detail="Vendor code already pending registration")
+
+    raw = secrets.token_urlsafe(32)
+    token_hash = _verification_token_hash(raw)
+    expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    link = f"{settings.public_app_url.rstrip('/')}/signup/complete?token={raw}"
+
+    existing = db.execute(select(PendingSignup).where(PendingSignup.email == email_norm)).scalar_one_or_none()
+    if existing:
+        existing.company_name = company_name
+        existing.vendor_code = vc
+        existing.verification_token = token_hash
+        existing.expires_at = expires
+        existing.verified_at = None
+    else:
+        db.add(
+            PendingSignup(
+                company_name=company_name,
+                email=email_norm,
+                vendor_code=vc,
+                verification_token=token_hash,
+                expires_at=expires,
+            )
+        )
+    db.commit()
+
+    try:
+        send_signup_verification_email(settings, email_norm, link)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not send email: {exc!s}",
+        ) from exc
+
+    return SignupVerificationSentResponse(
+        message="Check your email for a verification link to continue signup."
+    )
+
+
+@router.get("/verify-signup", response_model=VerifySignupSuccessResponse)
+def verify_signup(token: str, db: Session = Depends(get_db_session)):
+    if not token or not token.strip():
+        raise HTTPException(status_code=400, detail="Missing verification token")
+    token_hash = _verification_token_hash(token)
+    row = db.execute(select(PendingSignup).where(PendingSignup.verification_token == token_hash)).scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if not row:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+    exp = row.expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < now:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+    if row.verified_at is None:
+        row.verified_at = now
+    db.commit()
+    return VerifySignupSuccessResponse(
+        company_name=row.company_name,
+        email=row.email,
+        vendor_code=row.vendor_code,
+    )
+
+
+@router.post("/complete-signup")
+def complete_signup(body: CompleteSignupBody, db: Session = Depends(get_db_session)):
+    if body.password != body.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+
+    token_hash = _verification_token_hash(body.token)
+    row = db.execute(select(PendingSignup).where(PendingSignup.verification_token == token_hash)).scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if not row:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+    exp = row.expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < now:
+        db.delete(row)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+    if row.verified_at is None:
+        raise HTTPException(status_code=400, detail="Please verify your email using the link first")
+
+    email_norm = row.email
+    vc = row.vendor_code.strip()
+
+    if db.execute(select(CompanyUser).where(CompanyUser.email == email_norm)).scalar_one_or_none():
+        db.delete(row)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Email already registered")
+    if db.execute(select(Company).where(Company.vendor_code == vc)).scalar_one_or_none():
+        db.delete(row)
+        db.commit()
         raise HTTPException(status_code=400, detail="Vendor code already in use")
 
     today = date.today()
     trial_end = today + timedelta(days=7)
-
     company = Company(
-        company_name=body.company_name.strip(),
+        company_name=row.company_name.strip(),
         vendor_code=vc,
         trial_start_date=today,
         trial_end_date=trial_end,
@@ -66,22 +183,16 @@ def signup(body: SignupRequest, db: Session = Depends(get_db_session)):
     )
     db.add(company)
     db.flush()
-
     user = CompanyUser(
         company_id=company.id,
-        email=str(body.email).lower().strip(),
+        email=email_norm,
         password_hash=hash_password(body.password),
         name=None,
     )
     db.add(user)
+    db.delete(row)
     db.commit()
-    db.refresh(user)
-
-    token = create_access_token(
-        str(user.id),
-        {"company_id": company.id},
-    )
-    return TokenResponse(access_token=token)
+    return {"ok": True, "email": email_norm}
 
 
 @router.post("/login", response_model=TokenResponse)
