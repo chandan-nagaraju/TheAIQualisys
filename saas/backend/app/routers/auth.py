@@ -10,7 +10,15 @@ from app.config import get_settings
 from app.dates import billing_today
 from app.deps import company_impersonated_by_admin, get_current_company_user, get_db_session, get_company_for_user
 from app.email_util import is_email_configured, send_password_reset_email
-from app.models import Company, CompanyUser, PasswordResetToken, PlanType, PlatformAdmin, SubscriptionStatus
+from app.models import (
+    AdminPasswordResetToken,
+    Company,
+    CompanyUser,
+    PasswordResetToken,
+    PlanType,
+    PlatformAdmin,
+    SubscriptionStatus,
+)
 from app.schemas import (
     ChangePasswordRequest,
     CompanyOut,
@@ -226,17 +234,27 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db_se
             detail="Password reset email is not configured. Set EMAIL_FROM, SMTP_HOST and SMTP_PORT.",
         )
     user = db.execute(select(CompanyUser).where(CompanyUser.email == email)).scalar_one_or_none()
+    admin: PlatformAdmin | None = None
     if not user:
+        admin = db.execute(select(PlatformAdmin).where(PlatformAdmin.email == email)).scalar_one_or_none()
+    if not user and not admin:
         return {"ok": True}
     raw = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw.encode()).hexdigest()
     expires = datetime.now(timezone.utc) + timedelta(hours=1)
-    db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
-    db.add(PasswordResetToken(user_id=user.id, token_hash=token_hash, expires_at=expires))
+    if user:
+        db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
+        db.add(PasswordResetToken(user_id=user.id, token_hash=token_hash, expires_at=expires))
+        to_email = user.email
+    else:
+        assert admin is not None
+        db.execute(delete(AdminPasswordResetToken).where(AdminPasswordResetToken.admin_id == admin.id))
+        db.add(AdminPasswordResetToken(admin_id=admin.id, token_hash=token_hash, expires_at=expires))
+        to_email = admin.email
     db.commit()
     link = f"{settings.public_app_url.rstrip('/')}/reset-password?token={raw}"
     try:
-        send_password_reset_email(settings, user.email, link)
+        send_password_reset_email(settings, to_email, link)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -245,25 +263,44 @@ def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db_se
     return {"ok": True}
 
 
+def _password_reset_expired(exp: datetime, now: datetime) -> bool:
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    return exp < now
+
+
 @router.post("/reset-password")
 def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db_session)):
     token_hash = hashlib.sha256(body.token.encode()).hexdigest()
-    row = db.execute(select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)).scalar_one_or_none()
     now = datetime.now(timezone.utc)
-    if not row:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
-    exp = row.expires_at
-    if exp.tzinfo is None:
-        exp = exp.replace(tzinfo=timezone.utc)
-    if exp < now:
+    row = db.execute(select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)).scalar_one_or_none()
+    if row:
+        if _password_reset_expired(row.expires_at, now):
+            db.delete(row)
+            db.commit()
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+        user = db.get(CompanyUser, row.user_id)
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid reset link")
+        user.password_hash = hash_password(body.new_password)
         db.delete(row)
         db.commit()
+        return {"ok": True}
+
+    admin_row = db.execute(
+        select(AdminPasswordResetToken).where(AdminPasswordResetToken.token_hash == token_hash)
+    ).scalar_one_or_none()
+    if not admin_row:
         raise HTTPException(status_code=400, detail="Invalid or expired reset link")
-    user = db.get(CompanyUser, row.user_id)
-    if not user:
+    if _password_reset_expired(admin_row.expires_at, now):
+        db.delete(admin_row)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    admin = db.get(PlatformAdmin, admin_row.admin_id)
+    if not admin:
         raise HTTPException(status_code=400, detail="Invalid reset link")
-    user.password_hash = hash_password(body.new_password)
-    db.delete(row)
+    admin.password_hash = hash_password(body.new_password)
+    db.delete(admin_row)
     db.commit()
     return {"ok": True}
 
