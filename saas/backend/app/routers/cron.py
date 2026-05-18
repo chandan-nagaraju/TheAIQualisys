@@ -14,11 +14,7 @@ from app.config import get_settings
 from app.deps import get_db_session
 from app.email_util import is_email_configured, send_subscription_expiring_email
 from app.models import Company, CompanyUser
-from app.subscription_logic import (
-    count_fir_reports_in_subscription_window,
-    subscription_is_active,
-    subscription_period_start_for_reports,
-)
+from app.subscription_logic import count_fir_reports_this_month, subscription_is_active
 
 router = APIRouter(prefix="/cron", tags=["cron"])
 logger = logging.getLogger(__name__)
@@ -136,8 +132,9 @@ def send_subscription_expiry_reminders(
         if not slots:
             continue
 
-        period_start = subscription_period_start_for_reports(company)
-        report_count = count_fir_reports_in_subscription_window(db, company.id, period_start, today_local)
+        fir_count = count_fir_reports_this_month(db, company.id, today_local)
+        sub_end = company.subscription_end
+        assert sub_end is not None
         users = (
             db.execute(
                 select(CompanyUser)
@@ -150,8 +147,6 @@ def send_subscription_expiry_reminders(
         if not users:
             continue
 
-        sub_end_s = company.subscription_end.isoformat() if company.subscription_end else ""
-        period_s = period_start.isoformat()
         mask_before = mask
 
         for slot, bit in slots:
@@ -162,13 +157,9 @@ def send_subscription_expiry_reminders(
                         settings,
                         u.email,
                         company_name=company.company_name,
-                        subscription_end=sub_end_s,
-                        reports_in_period=report_count,
-                        period_started_on=period_s,
+                        subscription_end_date=sub_end,
+                        fir_count=fir_count,
                         billing_url=billing_url,
-                        reminder_slot=slot,
-                        morning_hour=mh,
-                        evening_hour=eh,
                     )
                     emails_sent += 1
                 except Exception as exc:

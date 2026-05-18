@@ -7,9 +7,14 @@ import smtplib
 import socket
 import urllib.error
 import urllib.request
+from datetime import date
 from email.message import EmailMessage
+from html import escape
 
 from app.config import Settings
+
+SUBSCRIPTION_EXPIRY_SUBJECT = "Your FIR Automation subscription ends today"
+SUBSCRIPTION_EXPIRY_REPLY_TO = "admin@theaiqualisys.com"
 
 
 def is_email_configured(settings: Settings) -> bool:
@@ -18,13 +23,31 @@ def is_email_configured(settings: Settings) -> bool:
     return bool(settings.email_from and settings.smtp_host and settings.smtp_port)
 
 
-def _send_via_resend(settings: Settings, to_email: str, subject: str, text: str) -> None:
+def _send_via_resend(
+    settings: Settings,
+    to_email: str,
+    subject: str,
+    text: str,
+    *,
+    html: str | None = None,
+    reply_to: str | None = None,
+) -> None:
     key = settings.resend_api_key
     sender = settings.email_from
     if not key or not sender:
         raise RuntimeError("Resend requires RESEND_API_KEY and EMAIL_FROM")
 
-    payload = {"from": sender, "to": [to_email], "subject": subject, "text": text}
+    payload: dict[str, object] = {
+        "from": sender,
+        "to": [to_email],
+        "subject": subject,
+        "text": text,
+    }
+    if html is not None:
+        payload["html"] = html
+    if reply_to:
+        payload["reply_to"] = reply_to
+
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         "https://api.resend.com/emails",
@@ -33,7 +56,6 @@ def _send_via_resend(settings: Settings, to_email: str, subject: str, text: str)
         headers={
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
-            # Required by Resend / Cloudflare — missing or blocked default urllib UA yields HTTP 403 / error 1010.
             "User-Agent": "TheAIQualisys-Backend/1.0 (+https://www.theaiqualisys.com)",
             "Accept": "application/json",
         },
@@ -129,6 +151,123 @@ def send_plain_text_email(settings: Settings, to_email: str, subject: str, text:
         smtp.send_message(msg, from_addr=envelope_from, to_addrs=[to_email])
 
 
+def _send_text_and_html_email(
+    settings: Settings,
+    to_email: str,
+    subject: str,
+    text: str,
+    html: str,
+    *,
+    reply_to: str | None = None,
+) -> None:
+    if settings.resend_api_key:
+        _send_via_resend(
+            settings,
+            to_email,
+            subject,
+            text,
+            html=html,
+            reply_to=reply_to,
+        )
+        return
+
+    if not (settings.email_from and settings.smtp_host and settings.smtp_port):
+        raise RuntimeError("SMTP is not configured")
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = settings.email_from
+    msg["To"] = to_email
+    if reply_to:
+        msg["Reply-To"] = reply_to
+    msg.set_content(text)
+    msg.add_alternative(html, subtype="html")
+
+    envelope_from = (settings.smtp_user or settings.email_from or "").strip()
+    timeout = 20
+    host = settings.smtp_host
+    assert host is not None
+
+    if settings.smtp_use_ssl:
+        smtp_cls = _SMTP_SSLPreferIPv4 if settings.smtp_force_ipv4 else smtplib.SMTP_SSL
+        with smtp_cls(host, settings.smtp_port, timeout=timeout) as smtp:
+            if settings.smtp_user and settings.smtp_password is not None:
+                smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(msg, from_addr=envelope_from, to_addrs=[to_email])
+        return
+
+    smtp_cls = _SMTPPreferIPv4 if settings.smtp_force_ipv4 else smtplib.SMTP
+    with smtp_cls(host, settings.smtp_port, timeout=timeout) as smtp:
+        if settings.smtp_use_tls:
+            smtp.starttls()
+        if settings.smtp_user and settings.smtp_password is not None:
+            smtp.login(settings.smtp_user, settings.smtp_password)
+        smtp.send_message(msg, from_addr=envelope_from, to_addrs=[to_email])
+
+
+def _format_subscription_end_human(subscription_end: date) -> str:
+    """e.g. 18 May 2026"""
+    return f"{subscription_end.day} {subscription_end.strftime('%B')} {subscription_end.year}"
+
+
+def _subscription_expiry_text_body(
+    company_name: str,
+    subscription_end_formatted: str,
+    fir_count: int,
+    billing_url: str,
+) -> str:
+    return (
+        "Hello,\n\n"
+        "We hope FIR Automation has been helping your team save time and make inspection reporting easier.\n\n"
+        f"We wanted to gently remind you that your subscription for {company_name} is scheduled to end today, "
+        f"{subscription_end_formatted}.\n\n"
+        f"Over the past month, your team has processed {fir_count} FIR report entries through the platform. "
+        "It has been a pleasure supporting your work, and we would be honored to continue helping your team "
+        "streamline inspection and reporting.\n\n"
+        "To avoid any interruption in service, you can renew your subscription here:\n\n"
+        f"{billing_url}\n\n"
+        "If you need any assistance, have questions, or would like to discuss your plan, simply reply to this email. "
+        "We are always happy to help.\n\n"
+        "Thank you for placing your trust in us.\n\n"
+        "Warm regards,\n\n"
+        "Chandan N\n"
+        "Founder, The AI Qualisys\n"
+        "admin@theaiqualisys.com\n"
+    )
+
+
+def _subscription_expiry_html_body(
+    company_name: str,
+    subscription_end_formatted: str,
+    fir_count: int,
+    billing_url: str,
+) -> str:
+    cn = escape(company_name)
+    df = escape(subscription_end_formatted)
+    safe_url = escape(billing_url, quote=True)
+    count_bold = f"<strong>{fir_count}</strong>"
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+<body style="margin:0;padding:24px;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.65;color:#1e293b;background:#f8fafc;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;padding:32px;border-radius:12px;border:1px solid #e2e8f0;">
+    <p style="margin:0 0 16px;">Hello,</p>
+    <p style="margin:0 0 16px;">We hope FIR Automation has been helping your team save time and make inspection reporting easier.</p>
+    <p style="margin:0 0 16px;">We wanted to gently remind you that your subscription for <strong>{cn}</strong> is scheduled to end today, <strong>{df}</strong>.</p>
+    <p style="margin:0 0 16px;">Over the past month, your team has processed {count_bold} FIR report entries through the platform. It has been a pleasure supporting your work, and we would be honored to continue helping your team streamline inspection and reporting.</p>
+    <p style="margin:0 0 20px;">To avoid any interruption in service, you can renew your subscription using the button below:</p>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="{safe_url}" style="display:inline-block;background:#2563eb;color:#ffffff !important;text-decoration:none;font-weight:600;padding:14px 28px;border-radius:10px;font-family:system-ui,sans-serif;">Renew Subscription</a>
+    </div>
+    <p style="margin:0 0 16px;font-size:15px;">If you need any assistance, have questions, or would like to discuss your plan, simply reply to this email. We are always happy to help.</p>
+    <p style="margin:24px 0 8px;">Thank you for placing your trust in us.</p>
+    <p style="margin:16px 0 4px;">Warm regards,</p>
+    <p style="margin:0;line-height:1.5;">Chandan N<br />Founder, The AI Qualisys<br /><a href="mailto:admin@theaiqualisys.com" style="color:#2563eb;">admin@theaiqualisys.com</a></p>
+  </div>
+</body>
+</html>"""
+
+
 def send_password_reset_email(settings: Settings, to_email: str, reset_link: str) -> None:
     subject = "Reset your FIR Automation password"
     text = (
@@ -143,33 +282,29 @@ def send_subscription_expiring_email(
     to_email: str,
     *,
     company_name: str,
-    subscription_end: str,
-    reports_in_period: int,
-    period_started_on: str,
+    subscription_end_date: date,
+    fir_count: int,
     billing_url: str,
-    reminder_slot: str,
-    morning_hour: int,
-    evening_hour: int,
 ) -> None:
-    """Gentle renewal reminder with FIR report count since period start (invoice_date basis)."""
-    h = morning_hour if reminder_slot == "morning" else evening_hour
-    subject = f"Reminder: {company_name} — subscription ends today ({h:02d}:00)"
-    slot_line = (
-        f"This is your scheduled {morning_hour:02d}:00 reminder on the last day of your current period.\n\n"
-        if reminder_slot == "morning"
-        else f"This is your scheduled {evening_hour:02d}:00 reminder on the last day of your current period.\n\n"
+    """Warm renewal reminder; same copy for morning and evening sends (multipart text + HTML)."""
+    subscription_end_formatted = _format_subscription_end_human(subscription_end_date)
+    text = _subscription_expiry_text_body(
+        company_name,
+        subscription_end_formatted,
+        fir_count,
+        billing_url,
     )
-    text = (
-        f"Hello,\n\n"
-        f"{slot_line}"
-        f"We wanted to give you a gentle heads-up: your subscription for {company_name} is scheduled to end on "
-        f"{subscription_end} (the date we have on file).\n\n"
-        "To keep using FIR Automation without interruption, please renew at your convenience — "
-        "we would love to continue supporting your team.\n\n"
-        f"Since {period_started_on}, your workspace has {reports_in_period} FIR report line(s) recorded "
-        "(invoice-based rows used in your analytics).\n\n"
-        f"You can manage billing here:\n{billing_url}\n\n"
-        "Thank you for being with us.\n\n"
-        "— FIR Automation"
+    html = _subscription_expiry_html_body(
+        company_name,
+        subscription_end_formatted,
+        fir_count,
+        billing_url,
     )
-    send_plain_text_email(settings, to_email, subject, text)
+    _send_text_and_html_email(
+        settings,
+        to_email,
+        SUBSCRIPTION_EXPIRY_SUBJECT,
+        text,
+        html,
+        reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO,
+    )
