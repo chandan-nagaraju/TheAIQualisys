@@ -1,5 +1,5 @@
 # Railway / Docker: install deps in a separate layer so code-only commits reuse the pip cache.
-# Build context = repository root (see railway.toml dockerfilePath).
+# Build context = repository root.
 FROM python:3.11-slim-bookworm
 
 WORKDIR /app

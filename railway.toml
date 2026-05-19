@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "saas/backend/Dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 # Single worker: one in-process subscription reminder scheduler; multiple workers would duplicate emails.
