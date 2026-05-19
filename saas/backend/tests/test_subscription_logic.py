@@ -5,7 +5,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.email_util import build_admin_thank_you_email, build_admin_thank_you_performance_email
+from app.email_util import (
+    build_admin_thank_you_all_email,
+    build_admin_thank_you_email,
+    build_admin_thank_you_performance_email,
+)
 from app.models import Company, SubscriptionStatus
 from app.subscription_logic import (
     can_create_invoice,
@@ -25,6 +29,34 @@ def sample_thank_you_top_parts() -> list[tuple[str, int, str, str]]:
         ("P3", 20, "10", "March 10, 2026"),
         ("P4", 7, "3", "February 2, 2026"),
         ("P5", 3, "1", "January 1, 2026"),
+    ]
+
+
+def sample_thank_you_all_engagement_sections() -> list[
+    tuple[str, int, int, list[tuple[str, int, str, str]]]
+]:
+    """Synthetic per-band sections (each with a distinct Top 5 table)."""
+    parts_run = [
+        ("R1", 12, "3", "May 18, 2026"),
+        ("R2", 10, "4", "May 17, 2026"),
+        ("R3", 8, "5", "May 10, 2026"),
+        ("R4", 2, "1", "May 1, 2026"),
+        ("R5", 1, "—", "April 20, 2026"),
+    ]
+    parts_reg = [
+        ("G1", 8, "7", "April 15, 2026"),
+        ("G2", 6, "10", "March 3, 2026"),
+        ("G3", 4, "14", "February 2, 2026"),
+        ("G4", 2, "2", "January 10, 2026"),
+        ("G5", 1, "—", "January 5, 2026"),
+    ]
+    p = sample_thank_you_top_parts()
+    return [
+        ("🏃 Running Customers", 25, 25, parts_run),
+        ("🔁 Regular Customers", 18, 18, parts_reg),
+        ("📅 Occasional Customers", 14, 14, p),
+        ("👋 Stranger Customers", 9, 9, p),
+        ("🆕 New Customers", 4, 4, p),
     ]
 
 
@@ -133,19 +165,34 @@ def test_thank_you_send_body_requires_category() -> None:
     assert b_all.thank_you_category == "all"
 
 
-def test_thank_you_all_category_combined_copy() -> None:
-    base = dict(
+def test_thank_you_all_category_performance_email() -> None:
+    parts = sample_thank_you_top_parts()
+    sections = sample_thank_you_all_engagement_sections()
+    subject, body, hours_saved = build_admin_thank_you_all_email(
         customer_name="Acme",
-        plan_name="Enterprise",
-        subscription_start_date="May 1, 2026",
-        subscription_end_date="June 18, 2026",
-        total_report_count=10,
-        workspace_user_count=2,
-        top_parts=sample_thank_you_top_parts(),
+        total_report_count=100,
+        top_parts_overall=parts,
+        engagement_sections=sections,
     )
-    _, all_body, _, _ = build_admin_thank_you_email(category="all", **base)
-    assert "every organization" in all_body.lower() or "high-volume" in all_body.lower()
-    assert "expand" in all_body.lower() and "reconnect" in all_body.lower()
+    assert subject == "Thank You & Performance Summary"
+    assert "Dear Acme" in body
+    assert "📊 Lifetime Metrics" in body
+    assert "Total FIR Reports Generated: 100" in body
+    assert "16.7 hours" in body  # 100 * 10 / 60, rounded
+    assert hours_saved == 16.7
+    assert "₹8,333" in body
+    assert "🏆 Overall Top 5 Most Frequently Generated Parts" in body
+    assert "Customer Engagement Category Summaries" in body
+    for title in (
+        "🏃 Running Customers",
+        "🔁 Regular Customers",
+        "📅 Occasional Customers",
+        "👋 Stranger Customers",
+        "🆕 New Customers",
+    ):
+        assert title in body
+    assert body.count("Top 5 Parts\n") == 5
+    assert "| R1          |" in body and "| G1          |" in body
 
 
 def test_thank_you_tone_varies_by_category() -> None:

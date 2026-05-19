@@ -406,7 +406,11 @@ def build_admin_manual_subscription_reminder_email(
 THANK_YOU_PERFORMANCE_SUBJECT = "Thank You for Using TheAiQualisys – Your Performance Summary"
 DEFAULT_MINUTES_PER_MANUAL_REPORT = 15
 
-ThankYouEmailCategory = Literal["running", "regular", "occasional", "stranger", "new", "all"]
+ThankYouEmailSingleCategory = Literal["running", "regular", "occasional", "stranger", "new"]
+
+THANK_YOU_ALL_CATEGORY_SUBJECT = "Thank You & Performance Summary"
+THANK_YOU_ALL_MINUTES_PER_REPORT = 10
+THANK_YOU_ALL_INR_PER_MANUAL_HOUR = 500
 
 
 def _thank_you_time_saved_totals(
@@ -418,7 +422,7 @@ def _thank_you_time_saved_totals(
     return total_time_saved_hours, working_days_saved
 
 
-def _thank_you_tone_copy(category: ThankYouEmailCategory) -> tuple[str, str]:
+def _thank_you_tone_copy(category: ThankYouEmailSingleCategory) -> tuple[str, str]:
     """Closing tone after Estimated Time Saved (category-specific)."""
     if category == "running":
         after_saved = (
@@ -474,20 +478,6 @@ def _thank_you_tone_copy(category: ThankYouEmailCategory) -> tuple[str, str]:
         )
         return after_saved, penultimate
 
-    if category == "all":
-        after_saved = (
-            "The lifetime figures above are the same for every organization — what changes is how you engage day to day: "
-            "some teams run the platform heavily, others on a steady cadence, some in focused bursts, and some are "
-            "returning after time away or are still in early onboarding. In every case, the totals show what you have "
-            "already achieved with less manual effort, more consistent documentation, and time returned to quality work."
-        )
-        penultimate = (
-            "Thank you for being part of TheAiQualisys — whether your usage is high-volume, regular, occasional, new, or "
-            "pickup again soon, we value the partnership and are here to help you expand, reconnect, or go deeper "
-            "whenever you are ready."
-        )
-        return after_saved, penultimate
-
     raise ValueError(f"Unknown thank-you category: {category!r}")
 
 
@@ -536,9 +526,73 @@ def _format_thank_you_top_parts_mysql_table(
     return "\n".join(lines)
 
 
+def build_admin_thank_you_all_email(
+    *,
+    customer_name: str,
+    total_report_count: int,
+    top_parts_overall: list[tuple[str, int, str, str]],
+    engagement_sections: list[tuple[str, int, int, list[tuple[str, int, str, str]]]],
+) -> tuple[str, str, float]:
+    """Combined thank-you for ``thank_you_category == \"all\"`` (lifetime + per-engagement Top 5 tables).
+
+    Each engagement tuple is ``(section_title, fir_report_row_count, fir_row_count, top_5_table_rows)``.
+    Row counts match ``fir_events`` usage elsewhere (one row per ingested invoice line).
+    Time saved uses :data:`THANK_YOU_ALL_MINUTES_PER_REPORT`; cost uses INR per hour constant.
+    """
+    if len(top_parts_overall) != 5:
+        raise ValueError("top_parts_overall must contain exactly 5 rows")
+    for _t, _rc, _rr, rows in engagement_sections:
+        if len(rows) != 5:
+            raise ValueError("each engagement section must have exactly 5 top_parts rows")
+
+    greeting = f"Dear {customer_name},"
+    total_minutes_saved = total_report_count * THANK_YOU_ALL_MINUTES_PER_REPORT
+    hours_saved = total_minutes_saved / 60.0
+    hours_saved_rounded = round(hours_saved, 1)
+    cost_saved = hours_saved * THANK_YOU_ALL_INR_PER_MANUAL_HOUR
+
+    overall_table = _format_thank_you_top_parts_mysql_table(top_parts_overall)
+
+    section_blocks: list[str] = []
+    for title, report_count, row_count, top_rows in engagement_sections:
+        if report_count <= 0:
+            continue
+        table_block = _format_thank_you_top_parts_mysql_table(top_rows)
+        section_blocks.append(
+            f"{title}\n"
+            f"- FIR Reports Generated: {report_count}\n"
+            f"- FIR Report Rows Processed: {row_count}\n\n"
+            f"Top 5 Parts\n"
+            f"{table_block}"
+        )
+
+    all_sections = "\n\n".join(section_blocks)
+
+    text = (
+        f"{greeting}\n\n"
+        "Thank you for partnering with TheAiQualisys.\n\n"
+        "Below is your complete performance summary based on all reports generated till date.\n\n"
+        "📊 Lifetime Metrics\n"
+        f"- Total FIR Reports Generated: {total_report_count}\n"
+        f"- Total FIR Report Rows Processed: {total_report_count}\n"
+        f"- Estimated Manual Time Saved: {hours_saved_rounded:.1f} hours\n"
+        f"- Estimated Cost Saved: ₹{cost_saved:,.0f}\n\n"
+        "🏆 Overall Top 5 Most Frequently Generated Parts\n"
+        f"{overall_table}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📂 Customer Engagement Category Summaries\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"{all_sections}\n\n"
+        "Thank you for your continued trust and support.\n\n"
+        "Team,\n"
+        "TheAiQualisys"
+    )
+    return THANK_YOU_ALL_CATEGORY_SUBJECT, text, hours_saved_rounded
+
+
 def build_admin_thank_you_email(
     *,
-    category: ThankYouEmailCategory,
+    category: ThankYouEmailSingleCategory,
     customer_name: str,
     plan_name: str,
     subscription_start_date: str,

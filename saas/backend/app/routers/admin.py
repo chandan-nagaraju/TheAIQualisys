@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.deps import get_db_session, get_platform_admin
 from app.email_util import (
     build_admin_manual_subscription_reminder_email,
+    build_admin_thank_you_all_email,
     build_admin_thank_you_email,
     is_email_configured,
     send_plain_text_email,
@@ -56,10 +57,19 @@ from app.subscription_logic import (
     count_fir_reports_total,
     count_invoices_this_month,
     sync_subscription_status_from_dates,
+    thank_you_engagement_section_rows,
     top_fir_part_thank_you_table_rows,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+_THANK_YOU_ALL_ENGAGEMENT_KEYS_AND_TITLES: list[tuple[str, str]] = [
+    ("running", "🏃 Running Customers"),
+    ("regular", "🔁 Regular Customers"),
+    ("occasional", "📅 Occasional Customers"),
+    ("stranger", "👋 Stranger Customers"),
+    ("new", "🆕 New Customers"),
+]
 
 
 def _company_out(c: Company) -> CompanyOut:
@@ -434,25 +444,51 @@ def send_manual_subscription_reminder(
         sub_start = c.subscription_start.strftime("%B %d, %Y") if c.subscription_start else "—"
         sub_end = c.subscription_end.strftime("%B %d, %Y") if c.subscription_end else "—"
         top_parts = top_fir_part_thank_you_table_rows(db, company_id, limit=5)
-        subject, text, hours_saved, _ = build_admin_thank_you_email(
-            category=body.thank_you_category,
-            customer_name=c.company_name,
-            plan_name=plan_name,
-            subscription_start_date=sub_start,
-            subscription_end_date=sub_end,
-            total_report_count=report_total,
-            workspace_user_count=len(users),
-            top_parts=top_parts,
-        )
-        thank_you_audit = {
-            "thank_you_category": body.thank_you_category,
-            "current_month_report_count": None,
-            "top_5_parts": [
-                {"part_no": p, "count": n, "median_gap_days": mg, "last_dispatched": ld}
-                for p, n, mg, ld in top_parts
-            ],
-            "total_time_saved_hours": hours_saved,
-        }
+
+        if body.thank_you_category == "all":
+            today = billing_today()
+            engagement_sections: list[tuple[str, int, int, list[tuple[str, int, str, str]]]] = []
+            for key, title in _THANK_YOU_ALL_ENGAGEMENT_KEYS_AND_TITLES:
+                report_count, row_count, sec_top = thank_you_engagement_section_rows(
+                    db, company_id, key, today=today
+                )
+                engagement_sections.append((title, report_count, row_count, sec_top))
+            subject, text, hours_saved = build_admin_thank_you_all_email(
+                customer_name=c.company_name,
+                total_report_count=report_total,
+                top_parts_overall=top_parts,
+                engagement_sections=engagement_sections,
+            )
+            thank_you_audit = {
+                "thank_you_category": body.thank_you_category,
+                "current_month_report_count": None,
+                "top_5_parts": [
+                    {"part_no": p, "count": n, "median_gap_days": mg, "last_dispatched": ld}
+                    for p, n, mg, ld in top_parts
+                ],
+                "total_time_saved_hours": hours_saved,
+                "minutes_per_report": 10,
+            }
+        else:
+            subject, text, hours_saved, _ = build_admin_thank_you_email(
+                category=body.thank_you_category,
+                customer_name=c.company_name,
+                plan_name=plan_name,
+                subscription_start_date=sub_start,
+                subscription_end_date=sub_end,
+                total_report_count=report_total,
+                workspace_user_count=len(users),
+                top_parts=top_parts,
+            )
+            thank_you_audit = {
+                "thank_you_category": body.thank_you_category,
+                "current_month_report_count": None,
+                "top_5_parts": [
+                    {"part_no": p, "count": n, "median_gap_days": mg, "last_dispatched": ld}
+                    for p, n, mg, ld in top_parts
+                ],
+                "total_time_saved_hours": hours_saved,
+            }
     else:
         assert c.subscription_end is not None  # guarded above for ending/already
         end_date_display = c.subscription_end.strftime("%B %d, %Y")
