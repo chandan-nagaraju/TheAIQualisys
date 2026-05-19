@@ -4,11 +4,6 @@ import { apiFetch } from "../api";
 type SendResponse = {
   ok?: boolean;
   email_status: string;
-  total_report_count: number;
-  current_month_report_count: number;
-  current_month_name: string;
-  recipients_attempted: number;
-  emails_sent: number;
 };
 
 type Props = {
@@ -31,16 +26,14 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
         token: "admin",
         body: JSON.stringify({ reminder_type: reminderType }),
       });
-      const partialNote = res.email_status === "partial" ? " Some recipients failed — check server logs or Resend dashboard." : "";
-      setFeedback({
-        ok: true,
-        text: `Reminder sent to ${res.emails_sent} of ${res.recipients_attempted} workspace user(s) (${res.email_status}). Counts in email — ${res.current_month_name}: ${res.current_month_report_count} this month; ${res.total_report_count} lifetime.${partialNote}`,
-      });
+      const text =
+        res.email_status === "partial" ? "Email sent (not all recipients)." : "Email sent.";
+      setFeedback({ ok: true, text });
       setOpen(false);
     } catch (e) {
       setFeedback({
         ok: false,
-        text: e instanceof Error ? e.message : "Failed to send reminder.",
+        text: "Email not sent.",
       });
     } finally {
       setBusy(false);
@@ -53,17 +46,23 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
       : "inline-flex shrink-0 items-center justify-center rounded-lg border border-amber-600/50 bg-amber-950/30 px-4 py-2 text-sm font-medium text-amber-100 hover:bg-amber-950/50 disabled:opacity-50";
 
   return (
-    <div className={variant === "inline" ? "inline-block text-left" : ""}>
+    <div
+      className={
+        variant === "inline"
+          ? "inline-flex flex-col items-start text-left"
+          : "inline-flex flex-col items-start"
+      }
+    >
       <button type="button" className={btnClass} disabled={busy} onClick={() => setOpen(true)}>
         {busy ? "Sending…" : "Reminder"}
       </button>
-      {feedback && (
-        <p
-          className={`mt-2 text-sm ${feedback.ok ? "text-emerald-400" : "text-red-400"} ${variant === "inline" ? "max-w-xs" : ""}`}
-        >
-          {feedback.text}
-        </p>
-      )}
+      {/* Fixed-height line so the Actions row / table layout does not jump when status appears */}
+      <p
+        className={`mt-1 min-h-[1.25rem] text-xs leading-tight tabular-nums ${feedback == null ? "text-transparent" : feedback.ok ? "text-emerald-400" : "text-red-400"}`}
+        aria-live="polite"
+      >
+        {feedback?.text ?? "\u00a0"}
+      </p>
 
       {open && (
         <div
