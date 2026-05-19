@@ -1,7 +1,16 @@
-# API service: in Railway → Settings → set "Root Directory" to `saas/backend`.
-#
-# Leave "Custom Start Command" EMPTY (Dashboard + no deploy.startCommand here). Overrides use exec form and
-# break `$PORT`. The container runs `saas/backend/run_gunicorn.py`, which reads PORT from the environment.
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "saas/backend/Dockerfile"
+builder = "NIXPACKS"
+
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = [
+  "cd saas/backend",
+  "python -m pip install --upgrade pip",
+  "pip install -r requirements.txt"
+]
+
+[start]
+# Single worker: one in-process subscription reminder scheduler; multiple workers would duplicate emails.
+cmd = "cd saas/backend && gunicorn app.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
