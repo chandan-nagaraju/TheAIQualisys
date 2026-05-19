@@ -440,14 +440,13 @@ def send_manual_subscription_reminder(
             plan_name=plan_name,
             subscription_start_date=sub_start,
             subscription_end_date=sub_end,
-            current_month_name=current_month_name,
-            current_month_report_count=report_month,
             total_report_count=report_total,
+            workspace_user_count=len(users),
             top_parts=top_parts,
         )
         thank_you_audit = {
             "thank_you_category": body.thank_you_category,
-            "current_month_report_count": report_month,
+            "current_month_report_count": None,
             "top_5_parts": [{"part_no": p, "count": n} for p, n in top_parts],
             "total_time_saved_hours": hours_saved,
         }

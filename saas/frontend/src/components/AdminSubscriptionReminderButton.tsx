@@ -193,7 +193,8 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
                   Thank You &amp; Performance Summary
                 </h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Choose the tone of the message. All summaries include the same usage metrics and time-saved estimate.
+                  Choose the tone of the message. Every option uses the same lifetime usage metrics, top parts, and time-saved
+                  estimate.
                 </p>
                 <div className="mt-6">
                   <label htmlFor="thank-you-category" className="block text-xs font-medium text-slate-500">

@@ -86,9 +86,12 @@ def test_thank_you_performance_email_contains_summary_sections() -> None:
     )
     assert "Performance Summary" in subject
     assert "Acme" in body
-    assert "**100**" in body or "100" in body
+    assert "Till date, your organization has generated **100 inspection reports**" in body
+    assert "Total Active Users in Workspace: **3**" in body
     assert "25.0 hours" in body  # 100 * 15 / 60
-    assert "Top 5 Most Frequently Generated Parts" in body
+    assert "Top 5 Most Frequently Generated Parts Till Date" in body
+    assert "Reports Generated in May" not in body
+    assert "Assuming each inspection report takes approximately" in body
 
 
 def test_thank_you_send_body_requires_category() -> None:
@@ -110,15 +113,14 @@ def test_thank_you_tone_varies_by_category() -> None:
         plan_name="Enterprise",
         subscription_start_date="May 1, 2026",
         subscription_end_date="June 18, 2026",
-        current_month_name="May 2026",
-        current_month_report_count=1,
         total_report_count=10,
+        workspace_user_count=2,
         top_parts=[("P1", 4), ("P2", 3), ("P3", 2), ("P4", 1), ("P5", 0)],
     )
     _, running, _, _ = build_admin_thank_you_email(category="running", **base)
     _, stranger, _, _ = build_admin_thank_you_email(category="stranger", **base)
-    assert "most active partners" in running
-    assert "historical" in stranger.lower()
+    assert "cumulative impact" in running
+    assert "ready to reconnect" in stranger.lower()
 
 
 def test_fir_workspace_requires_trial_or_subscription() -> None:
