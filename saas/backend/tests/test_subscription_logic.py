@@ -14,7 +14,18 @@ from app.subscription_logic import (
     count_fir_reports_total,
     subscription_is_active,
     top_fir_part_report_counts,
+    _median_gap_days_consecutive,
 )
+
+
+def sample_thank_you_top_parts() -> list[tuple[str, int, str, str]]:
+    return [
+        ("P1", 40, "7", "May 15, 2026"),
+        ("P2", 30, "14", "April 1, 2026"),
+        ("P3", 20, "10", "March 10, 2026"),
+        ("P4", 7, "3", "February 2, 2026"),
+        ("P5", 3, "1", "January 1, 2026"),
+    ]
 
 
 def _company_expired_trial() -> Company:
@@ -63,6 +74,15 @@ def test_count_fir_reports_total_calls_db() -> None:
     db.execute.assert_called_once()
 
 
+def test_median_gap_days_consecutive() -> None:
+    assert _median_gap_days_consecutive([date(2026, 1, 1)]) is None
+    assert _median_gap_days_consecutive([date(2026, 1, 1), date(2026, 1, 11)]) == 10.0
+    # gaps 5 and 10 -> median 7.5
+    assert _median_gap_days_consecutive(
+        [date(2026, 1, 1), date(2026, 1, 6), date(2026, 1, 16)]
+    ) == 7.5
+
+
 def test_top_fir_part_report_counts_pads_to_five() -> None:
     db = MagicMock()
     db.execute.return_value.all.return_value = [("P-A", 10), ("P-B", 3)]
@@ -81,7 +101,7 @@ def test_thank_you_performance_email_contains_summary_sections() -> None:
         current_month_report_count=12,
         total_report_count=100,
         workspace_user_count=3,
-        top_parts=[("P1", 40), ("P2", 30), ("P3", 20), ("P4", 7), ("P5", 3)],
+        top_parts=sample_thank_you_top_parts(),
         minutes_per_report=15,
     )
     assert "Performance Summary" in subject
@@ -92,6 +112,9 @@ def test_thank_you_performance_email_contains_summary_sections() -> None:
     assert "Top 5 Most Frequently Generated Parts Till Date" in body
     assert "Reports Generated in May" not in body
     assert "Assuming each inspection report takes approximately" in body
+    assert "Median Gap (Days)" in body
+    assert "Last Dispatched Date" in body
+    assert "| 1 | P1 | 40 | 7 | May 15, 2026 |" in body
 
 
 def test_thank_you_send_body_requires_category() -> None:
@@ -117,7 +140,7 @@ def test_thank_you_all_category_combined_copy() -> None:
         subscription_end_date="June 18, 2026",
         total_report_count=10,
         workspace_user_count=2,
-        top_parts=[("P1", 4), ("P2", 3), ("P3", 2), ("P4", 1), ("P5", 0)],
+        top_parts=sample_thank_you_top_parts(),
     )
     _, all_body, _, _ = build_admin_thank_you_email(category="all", **base)
     assert "every organization" in all_body.lower() or "high-volume" in all_body.lower()
@@ -132,7 +155,7 @@ def test_thank_you_tone_varies_by_category() -> None:
         subscription_end_date="June 18, 2026",
         total_report_count=10,
         workspace_user_count=2,
-        top_parts=[("P1", 4), ("P2", 3), ("P3", 2), ("P4", 1), ("P5", 0)],
+        top_parts=sample_thank_you_top_parts(),
     )
     _, running, _, _ = build_admin_thank_you_email(category="running", **base)
     _, stranger, _, _ = build_admin_thank_you_email(category="stranger", **base)

@@ -509,10 +509,13 @@ def build_admin_thank_you_email(
     subscription_end_date: str,
     total_report_count: int,
     workspace_user_count: int,
-    top_parts: list[tuple[str, int]],
+    top_parts: list[tuple[str, int, str, str]],
     minutes_per_report: int = DEFAULT_MINUTES_PER_MANUAL_REPORT,
 ) -> tuple[str, str, float, float]:
-    """Thank-you + lifetime usage summary (plain text). Returns subject, body, hours_saved, days_saved."""
+    """Thank-you + lifetime usage summary (plain text). Returns subject, body, hours_saved, days_saved.
+
+    ``top_parts`` rows: (part_no, count, median_gap_label, last_dispatched_label).
+    """
     if len(top_parts) != 5:
         raise ValueError("top_parts must contain exactly 5 rows")
 
@@ -521,11 +524,12 @@ def build_admin_thank_you_email(
     )
 
     lines = [
-        "| Rank | Part Number    | Reports Generated    |",
-        "| ---- | -------------- | -------------------- |",
+        "| Rank | Part Number | Reports Generated | Median Gap (Days) | Last Dispatched Date |",
+        "| ---- | ----------- | ----------------- | ----------------- | -------------------- |",
     ]
-    for i, (pn, cn) in enumerate(top_parts, start=1):
-        lines.append(f"| {i}    | {pn} | {cn} |")
+    for i, row in enumerate(top_parts, start=1):
+        pn, cn, gap_lbl, last_lbl = row
+        lines.append(f"| {i} | {pn} | {cn} | {gap_lbl} | {last_lbl} |")
 
     table_block = "\n".join(lines)
     shared_opening = _thank_you_shared_opening(total_report_count)
@@ -566,7 +570,7 @@ def build_admin_thank_you_performance_email(
     current_month_report_count: int,
     total_report_count: int,
     workspace_user_count: int,
-    top_parts: list[tuple[str, int]],
+    top_parts: list[tuple[str, int, str, str]],
     minutes_per_report: int = DEFAULT_MINUTES_PER_MANUAL_REPORT,
 ) -> tuple[str, str]:
     """Deprecated: use ``build_admin_thank_you_email``. Kept for tests."""

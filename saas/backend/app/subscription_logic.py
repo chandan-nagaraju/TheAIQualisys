@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.dates import format_date_english
 from app.models import Company, FirReportEvent, InvoiceV2, SubscriptionStatus
 from app.pricing_catalog import invoice_cap_for_plan
 
@@ -80,6 +81,64 @@ def top_fir_part_report_counts(
     while len(out) < limit:
         out.append(("—", 0))
     return out[:limit]
+
+
+def _median_gap_days_consecutive(sorted_dates: list[date]) -> float | None:
+    """Median of calendar-day gaps between consecutive event dates (sorted)."""
+    if len(sorted_dates) < 2:
+        return None
+    gaps: list[int] = []
+    for i in range(len(sorted_dates) - 1):
+        gaps.append((sorted_dates[i + 1] - sorted_dates[i]).days)
+    gaps.sort()
+    n = len(gaps)
+    mid = n // 2
+    if n % 2 == 1:
+        return float(gaps[mid])
+    return (gaps[mid - 1] + gaps[mid]) / 2.0
+
+
+def _format_median_gap_label(days: float | None) -> str:
+    if days is None:
+        return "—"
+    if days == int(days):
+        return str(int(days))
+    return f"{days:.1f}"
+
+
+def top_fir_part_thank_you_table_rows(
+    db: Session, company_id: int, *, limit: int = 5
+) -> list[tuple[str, int, str, str]]:
+    """Top ``part_no`` rows by lifetime count: (part_no, count, median_gap_days_str, last_dispatched_str).
+
+    Median gap uses consecutive **invoice_date** values per part; last dispatched is **max(invoice_date)**.
+    """
+    base = top_fir_part_report_counts(db, company_id, limit=limit)
+    parts_needed = [p for p, n in base if p != "—" and n > 0]
+    dates_by_part: dict[str, list[date]] = {p: [] for p in parts_needed}
+    if parts_needed:
+        q = (
+            select(FirReportEvent.part_no, FirReportEvent.invoice_date)
+            .where(
+                FirReportEvent.company_id == company_id,
+                FirReportEvent.part_no.in_(parts_needed),
+            )
+            .order_by(FirReportEvent.part_no, FirReportEvent.invoice_date, FirReportEvent.id)
+        )
+        for part_no, inv_dt in db.execute(q).all():
+            dates_by_part.setdefault(str(part_no), []).append(inv_dt)
+
+    rows_out: list[tuple[str, int, str, str]] = []
+    for part_no, count in base:
+        if part_no == "—" or count == 0:
+            rows_out.append((part_no, count, "—", "—"))
+            continue
+        dlist = dates_by_part.get(part_no, [])
+        gap_lbl = _format_median_gap_label(_median_gap_days_consecutive(dlist))
+        last_dt = max(dlist) if dlist else None
+        last_lbl = format_date_english(last_dt) if last_dt is not None else "—"
+        rows_out.append((part_no, count, gap_lbl, last_lbl))
+    return rows_out
 
 
 def count_combined_usage_this_month(db: Session, company_id: int, today: date | None = None) -> int:

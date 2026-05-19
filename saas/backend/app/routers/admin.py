@@ -56,7 +56,7 @@ from app.subscription_logic import (
     count_fir_reports_total,
     count_invoices_this_month,
     sync_subscription_status_from_dates,
-    top_fir_part_report_counts,
+    top_fir_part_thank_you_table_rows,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -433,7 +433,7 @@ def send_manual_subscription_reminder(
         assert body.thank_you_category is not None
         sub_start = c.subscription_start.strftime("%B %d, %Y") if c.subscription_start else "—"
         sub_end = c.subscription_end.strftime("%B %d, %Y") if c.subscription_end else "—"
-        top_parts = top_fir_part_report_counts(db, company_id, limit=5)
+        top_parts = top_fir_part_thank_you_table_rows(db, company_id, limit=5)
         subject, text, hours_saved, _ = build_admin_thank_you_email(
             category=body.thank_you_category,
             customer_name=c.company_name,
@@ -447,7 +447,10 @@ def send_manual_subscription_reminder(
         thank_you_audit = {
             "thank_you_category": body.thank_you_category,
             "current_month_report_count": None,
-            "top_5_parts": [{"part_no": p, "count": n} for p, n in top_parts],
+            "top_5_parts": [
+                {"part_no": p, "count": n, "median_gap_days": mg, "last_dispatched": ld}
+                for p, n, mg, ld in top_parts
+            ],
             "total_time_saved_hours": hours_saved,
         }
     else:
