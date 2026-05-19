@@ -406,7 +406,7 @@ def build_admin_manual_subscription_reminder_email(
 THANK_YOU_PERFORMANCE_SUBJECT = "Thank You for Using TheAiQualisys – Your Performance Summary"
 DEFAULT_MINUTES_PER_MANUAL_REPORT = 15
 
-ThankYouEmailCategory = Literal["running", "regular", "occasional", "stranger", "new"]
+ThankYouEmailCategory = Literal["running", "regular", "occasional", "stranger", "new", "all"]
 
 
 def _thank_you_time_saved_totals(
@@ -471,6 +471,20 @@ def _thank_you_tone_copy(category: ThankYouEmailCategory) -> tuple[str, str]:
         )
         penultimate = (
             "Thank you for joining us — our team is here if you have questions as you ramp up."
+        )
+        return after_saved, penultimate
+
+    if category == "all":
+        after_saved = (
+            "The lifetime figures above are the same for every organization — what changes is how you engage day to day: "
+            "some teams run the platform heavily, others on a steady cadence, some in focused bursts, and some are "
+            "returning after time away or are still in early onboarding. In every case, the totals show what you have "
+            "already achieved with less manual effort, more consistent documentation, and time returned to quality work."
+        )
+        penultimate = (
+            "Thank you for being part of TheAiQualisys — whether your usage is high-volume, regular, occasional, new, or "
+            "pickup again soon, we value the partnership and are here to help you expand, reconnect, or go deeper "
+            "whenever you are ready."
         )
         return after_saved, penultimate
 

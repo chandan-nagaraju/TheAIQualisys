@@ -105,6 +105,23 @@ def test_thank_you_send_body_requires_category() -> None:
         AdminSubscriptionReminderSendBody(reminder_type="ending_soon", thank_you_category="running")
     b = AdminSubscriptionReminderSendBody(reminder_type="thank_you", thank_you_category="new")
     assert b.thank_you_category == "new"
+    b_all = AdminSubscriptionReminderSendBody(reminder_type="thank_you", thank_you_category="all")
+    assert b_all.thank_you_category == "all"
+
+
+def test_thank_you_all_category_combined_copy() -> None:
+    base = dict(
+        customer_name="Acme",
+        plan_name="Enterprise",
+        subscription_start_date="May 1, 2026",
+        subscription_end_date="June 18, 2026",
+        total_report_count=10,
+        workspace_user_count=2,
+        top_parts=[("P1", 4), ("P2", 3), ("P3", 2), ("P4", 1), ("P5", 0)],
+    )
+    _, all_body, _, _ = build_admin_thank_you_email(category="all", **base)
+    assert "every organization" in all_body.lower() or "high-volume" in all_body.lower()
+    assert "expand" in all_body.lower() and "reconnect" in all_body.lower()
 
 
 def test_thank_you_tone_varies_by_category() -> None:

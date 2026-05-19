@@ -18,6 +18,7 @@ const THANK_YOU_CATEGORIES = [
   { value: "occasional", label: "Occasional" },
   { value: "stranger", label: "Stranger" },
   { value: "new", label: "New" },
+  { value: "all", label: "All — combined message" },
 ] as const;
 
 type ThankYouCategory = (typeof THANK_YOU_CATEGORIES)[number]["value"];
@@ -188,33 +189,36 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
                 </div>
               </>
             ) : (
-              <>
-                <h3 id="thank-you-category-title" className="text-lg font-semibold text-white">
-                  Thank You &amp; Performance Summary
-                </h3>
-                <p className="mt-2 text-sm text-slate-400">
-                  Choose the tone of the message. Every option uses the same lifetime usage metrics, top parts, and time-saved
-                  estimate.
-                </p>
-                <div className="mt-6">
-                  <label htmlFor="thank-you-category" className="block text-xs font-medium text-slate-500">
-                    Category
-                  </label>
-                  <select
-                    id="thank-you-category"
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-                    value={thankYouCategory}
-                    disabled={busy}
-                    onChange={(e) => setThankYouCategory(e.target.value as ThankYouCategory)}
-                  >
-                    {THANK_YOU_CATEGORIES.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+              <div className="flex max-h-[min(32rem,85vh)] flex-col">
+                <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
+                  <h3 id="thank-you-category-title" className="text-lg font-semibold text-white">
+                    Thank You &amp; Performance Summary
+                  </h3>
+                  <p className="text-sm text-slate-400">
+                    Choose the tone of the message (or <strong className="text-slate-300">All</strong> for one email that
+                    speaks to every engagement style). Every option uses the same lifetime metrics, top parts, and time-saved
+                    estimate.
+                  </p>
+                  <div>
+                    <label htmlFor="thank-you-category" className="block text-xs font-medium text-slate-500">
+                      Category
+                    </label>
+                    <select
+                      id="thank-you-category"
+                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+                      value={thankYouCategory}
+                      disabled={busy}
+                      onChange={(e) => setThankYouCategory(e.target.value as ThankYouCategory)}
+                    >
+                      {THANK_YOU_CATEGORIES.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div className="mt-6 flex flex-wrap justify-end gap-2">
+                <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-slate-800 pt-4">
                   <button
                     type="button"
                     disabled={busy}
@@ -232,7 +236,7 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
                     {busy ? "Sending…" : "Send email"}
                   </button>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>

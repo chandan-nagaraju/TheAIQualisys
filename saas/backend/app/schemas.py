@@ -251,7 +251,7 @@ class AdminCompanyPatch(BaseModel):
     extend_days: int | None = None
 
 
-ThankYouCategory = Literal["running", "regular", "occasional", "stranger", "new"]
+ThankYouCategory = Literal["running", "regular", "occasional", "stranger", "new", "all"]
 
 
 class AdminSubscriptionReminderSendBody(BaseModel):
