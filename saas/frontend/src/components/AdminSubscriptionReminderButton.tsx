@@ -88,7 +88,7 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
   const btnClass =
     variant === "inline"
       ? "rounded border border-slate-600 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50"
-      : "inline-flex shrink-0 items-center justify-center rounded-lg border border-amber-600/50 bg-amber-950/30 px-4 py-2 text-sm font-medium text-amber-100 hover:bg-amber-950/50 disabled:opacity-50";
+      : "inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-amber-600/50 bg-amber-950/30 px-4 text-sm font-medium text-amber-100 hover:bg-amber-950/50 disabled:opacity-50";
 
   return (
     <div

@@ -165,23 +165,26 @@ export default function AdminCompanyPage() {
       </div>
 
       <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold text-white">Actions</h2>
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <h2 className="text-lg font-semibold text-white sm:pt-1">Actions</h2>
+          <div className="flex flex-wrap items-start gap-2 sm:justify-end">
             <AdminSubscriptionReminderButton companyId={Number(id)} />
             <Link
               to={`/admin/companies/${id}/fir-intelligence`}
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-brand-600/50 bg-brand-600/10 px-4 py-2 text-sm font-medium text-brand-400 hover:bg-brand-600/20"
+              className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-brand-600/50 bg-brand-600/10 px-4 text-sm font-medium text-brand-400 hover:bg-brand-600/20"
             >
               FIR intelligence
             </Link>
           </div>
         </div>
-        <form className="flex flex-wrap items-end gap-3" onSubmit={activate}>
-          <div>
+        <form
+          className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(12rem,16rem)_auto] sm:items-end sm:gap-x-3"
+          onSubmit={activate}
+        >
+          <div className="min-w-0">
             <label className="block text-xs text-slate-500">Plan on activate</label>
             <select
-              className="mt-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
               value={plan}
               onChange={(e) => setPlan(e.target.value)}
             >
@@ -192,25 +195,25 @@ export default function AdminCompanyPage() {
           </div>
           <button
             type="submit"
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+            className="h-10 w-full rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500 sm:w-auto sm:self-end sm:justify-self-start"
           >
             Activate subscription
           </button>
         </form>
 
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(12rem,16rem)_auto] sm:items-end sm:gap-x-3">
+          <div className="min-w-0">
             <label className="block text-xs text-slate-500">Extend (days)</label>
             <input
               type="number"
-              className="mt-1 w-32 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
               value={extendDays}
               onChange={(e) => setExtendDays(Number(e.target.value))}
             />
           </div>
           <button
             type="button"
-            className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800"
+            className="h-10 w-full rounded-lg border border-slate-600 px-4 text-sm text-slate-100 hover:bg-slate-800 sm:w-auto sm:self-end sm:justify-self-start"
             onClick={() => patch({ action: "extend", extend_days: extendDays })}
           >
             Extend subscription
