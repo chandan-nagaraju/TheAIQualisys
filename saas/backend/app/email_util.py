@@ -500,6 +500,42 @@ def _thank_you_shared_opening(total_report_count: int) -> str:
     )
 
 
+def _format_thank_you_top_parts_mysql_table(
+    top_parts: list[tuple[str, int, str, str]],
+    *,
+    max_part_no_width: int = 24,
+) -> str:
+    """Box-drawn plain-text table similar to the MySQL client ASCII output."""
+    headers = ["Rank", "Part Number", "Reports Generated", "Median Gap (Days)", "Last Dispatched Date"]
+
+    def prep_part_no(pn: str) -> str:
+        if len(pn) <= max_part_no_width:
+            return pn
+        return pn[: max_part_no_width - 1] + "…"
+
+    data_rows: list[list[str]] = []
+    for i, (pn, cn, gap_lbl, last_lbl) in enumerate(top_parts, start=1):
+        data_rows.append([str(i), prep_part_no(str(pn)), str(cn), str(gap_lbl), str(last_lbl)])
+
+    widths: list[int] = [len(h) for h in headers]
+    for row in data_rows:
+        for col, cell in enumerate(row):
+            widths[col] = max(widths[col], len(cell))
+
+    def horizontal_rule() -> str:
+        return "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+
+    def fmt_row(cells: list[str]) -> str:
+        segs = [" " + cells[i].ljust(widths[i]) + " " for i in range(len(cells))]
+        return "|" + "|".join(segs) + "|"
+
+    lines = [horizontal_rule(), fmt_row(headers), horizontal_rule()]
+    for row in data_rows:
+        lines.append(fmt_row(row))
+    lines.append(horizontal_rule())
+    return "\n".join(lines)
+
+
 def build_admin_thank_you_email(
     *,
     category: ThankYouEmailCategory,
@@ -523,15 +559,7 @@ def build_admin_thank_you_email(
         total_report_count, minutes_per_report=minutes_per_report
     )
 
-    lines = [
-        "| Rank | Part Number | Reports Generated | Median Gap (Days) | Last Dispatched Date |",
-        "| ---- | ----------- | ----------------- | ----------------- | -------------------- |",
-    ]
-    for i, row in enumerate(top_parts, start=1):
-        pn, cn, gap_lbl, last_lbl = row
-        lines.append(f"| {i} | {pn} | {cn} | {gap_lbl} | {last_lbl} |")
-
-    table_block = "\n".join(lines)
+    table_block = _format_thank_you_top_parts_mysql_table(top_parts)
     shared_opening = _thank_you_shared_opening(total_report_count)
     after_saved, penultimate = _thank_you_tone_copy(category)
 

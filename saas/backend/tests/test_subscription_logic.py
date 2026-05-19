@@ -114,7 +114,8 @@ def test_thank_you_performance_email_contains_summary_sections() -> None:
     assert "Assuming each inspection report takes approximately" in body
     assert "Median Gap (Days)" in body
     assert "Last Dispatched Date" in body
-    assert "| 1 | P1 | 40 | 7 | May 15, 2026 |" in body
+    assert body.count("+") >= 6  # mysql-style borders
+    assert "| 1    | P1          | 40                | 7                 | May 15, 2026         |" in body
 
 
 def test_thank_you_send_body_requires_category() -> None:
