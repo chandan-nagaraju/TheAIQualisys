@@ -105,12 +105,18 @@ class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("company_users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("company_users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    platform_admin_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("platform_admins.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    user: Mapped[CompanyUser] = relationship("CompanyUser")
+    user: Mapped[CompanyUser | None] = relationship("CompanyUser")
+    platform_admin: Mapped[PlatformAdmin | None] = relationship("PlatformAdmin")
 
 
 class PendingSignup(Base):

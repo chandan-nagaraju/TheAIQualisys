@@ -533,9 +533,9 @@ def build_admin_thank_you_all_email(
     top_parts_overall: list[tuple[str, int, str, str]],
     engagement_sections: list[tuple[str, int, int, list[tuple[str, int, str, str]]]],
 ) -> tuple[str, str, float]:
-    """Combined thank-you for ``thank_you_category == \"all\"`` (lifetime + per-engagement Top 5 tables).
+    """Combined thank-you for ``thank_you_category == \"all\"`` (lifetime + per part engagement category Top 5 tables).
 
-    Each engagement tuple is ``(section_title, fir_report_row_count, fir_row_count, top_5_table_rows)``.
+    Each section tuple is ``(section_title, fir_report_row_count, fir_row_count, top_5_table_rows)``.
     Row counts match ``fir_events`` usage elsewhere (one row per ingested invoice line).
     Time saved uses :data:`THANK_YOU_ALL_MINUTES_PER_REPORT`; cost uses INR per hour constant.
     """
@@ -543,7 +543,7 @@ def build_admin_thank_you_all_email(
         raise ValueError("top_parts_overall must contain exactly 5 rows")
     for _t, _rc, _rr, rows in engagement_sections:
         if len(rows) != 5:
-            raise ValueError("each engagement section must have exactly 5 top_parts rows")
+            raise ValueError("each part engagement section must have exactly 5 top_parts rows")
 
     greeting = f"Dear {customer_name},"
     total_minutes_saved = total_report_count * THANK_YOU_ALL_MINUTES_PER_REPORT
@@ -580,7 +580,7 @@ def build_admin_thank_you_all_email(
         "🏆 Overall Top 5 Most Frequently Generated Parts\n"
         f"{overall_table}\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📂 Customer Engagement Category Summaries\n"
+        "📂 Part Engagement Category Summaries\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"{all_sections}\n\n"
         "Thank you for your continued trust and support.\n\n"

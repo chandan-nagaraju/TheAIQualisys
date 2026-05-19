@@ -196,8 +196,8 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
                   </h3>
                   <p className="text-sm text-slate-400">
                     Choose the tone of the message (or <strong className="text-slate-300">All</strong> for one email that
-                    speaks to every engagement style). Every option uses the same lifetime metrics, top parts, and time-saved
-                    estimate.
+                    speaks to every part engagement category). Every option uses the same lifetime metrics, top parts, and
+                    time-saved estimate.
                   </p>
                   <div>
                     <label htmlFor="thank-you-category" className="block text-xs font-medium text-slate-500">

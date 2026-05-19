@@ -52,11 +52,11 @@ def sample_thank_you_all_engagement_sections() -> list[
     ]
     p = sample_thank_you_top_parts()
     return [
-        ("🏃 Running Customers", 25, 25, parts_run),
-        ("🔁 Regular Customers", 18, 18, parts_reg),
-        ("📅 Occasional Customers", 14, 14, p),
-        ("👋 Stranger Customers", 9, 9, p),
-        ("🆕 New Customers", 4, 4, p),
+        ("🏃 Running Parts", 25, 25, parts_run),
+        ("🔁 Regular Parts", 18, 18, parts_reg),
+        ("📅 Occasional Parts", 14, 14, p),
+        ("👋 Stranger Parts", 9, 9, p),
+        ("🆕 New Parts", 4, 4, p),
     ]
 
 
@@ -109,6 +109,10 @@ def test_count_fir_reports_total_calls_db() -> None:
 def test_median_gap_days_consecutive() -> None:
     assert _median_gap_days_consecutive([date(2026, 1, 1)]) is None
     assert _median_gap_days_consecutive([date(2026, 1, 1), date(2026, 1, 11)]) == 10.0
+    # Same calendar day repeated (many FIR rows one dispatch) → use distinct days only
+    assert _median_gap_days_consecutive(
+        [date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 11)]
+    ) == 10.0
     # gaps 5 and 10 -> median 7.5
     assert _median_gap_days_consecutive(
         [date(2026, 1, 1), date(2026, 1, 6), date(2026, 1, 16)]
@@ -182,13 +186,13 @@ def test_thank_you_all_category_performance_email() -> None:
     assert hours_saved == 16.7
     assert "₹8,333" in body
     assert "🏆 Overall Top 5 Most Frequently Generated Parts" in body
-    assert "Customer Engagement Category Summaries" in body
+    assert "Part Engagement Category Summaries" in body
     for title in (
-        "🏃 Running Customers",
-        "🔁 Regular Customers",
-        "📅 Occasional Customers",
-        "👋 Stranger Customers",
-        "🆕 New Customers",
+        "🏃 Running Parts",
+        "🔁 Regular Parts",
+        "📅 Occasional Parts",
+        "👋 Stranger Parts",
+        "🆕 New Parts",
     ):
         assert title in body
     assert body.count("Top 5 Parts\n") == 5

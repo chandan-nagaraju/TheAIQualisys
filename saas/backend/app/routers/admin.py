@@ -64,11 +64,11 @@ from app.subscription_logic import (
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 _THANK_YOU_ALL_ENGAGEMENT_KEYS_AND_TITLES: list[tuple[str, str]] = [
-    ("running", "🏃 Running Customers"),
-    ("regular", "🔁 Regular Customers"),
-    ("occasional", "📅 Occasional Customers"),
-    ("stranger", "👋 Stranger Customers"),
-    ("new", "🆕 New Customers"),
+    ("running", "🏃 Running Parts"),
+    ("regular", "🔁 Regular Parts"),
+    ("occasional", "📅 Occasional Parts"),
+    ("stranger", "👋 Stranger Parts"),
+    ("new", "🆕 New Parts"),
 ]
 
 
@@ -441,6 +441,17 @@ def send_manual_subscription_reminder(
     thank_you_audit: dict | None = None
     if body.reminder_type == "thank_you":
         assert body.thank_you_category is not None
+        # Pass:
+        # (customer_email,)
+        #
+        # This guarantees:
+        # - Overall Top 5 = selected customer's parts only
+        # - Running Parts = selected customer's running parts only
+        # - Regular Parts = selected customer's regular parts only
+        # - Occasional Parts = selected customer's occasional parts only
+        # - Stranger Parts = selected customer's stranger parts only
+        # - New Parts = selected customer's new parts only
+        # - Every number and part shown in the email belongs only to the selected customer
         sub_start = c.subscription_start.strftime("%B %d, %Y") if c.subscription_start else "—"
         sub_end = c.subscription_end.strftime("%B %d, %Y") if c.subscription_end else "—"
         top_parts = top_fir_part_thank_you_table_rows(db, company_id, limit=5)

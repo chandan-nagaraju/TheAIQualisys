@@ -125,7 +125,7 @@ def thank_you_engagement_invoice_range(
     today: date,
     first_fir_date: date | None,
 ) -> tuple[date | None, date | None] | None:
-    """Return inclusive (start, end) for ``invoice_date``, or None to skip this section entirely."""
+    """Return inclusive (start, end) for ``invoice_date`` for a part engagement category, or None to skip this section entirely."""
     if engagement_key == "running":
         return today - timedelta(days=29), today
     if engagement_key == "regular":
@@ -192,7 +192,7 @@ def thank_you_engagement_section_rows(
     *,
     today: date,
 ) -> tuple[int, int, list[tuple[str, int, str, str]]]:
-    """FIR row counts (report and row are identical) and Top-5 table rows for one engagement window."""
+    """FIR row counts (report and row are identical) and Top-5 table rows for one part engagement category window."""
     first_fir = fir_first_invoice_date(db, company_id)
     rng = thank_you_engagement_invoice_range(engagement_key, today=today, first_fir_date=first_fir)
     if rng is None:
@@ -208,12 +208,20 @@ def thank_you_engagement_section_rows(
 
 
 def _median_gap_days_consecutive(sorted_dates: list[date]) -> float | None:
-    """Median of calendar-day gaps between consecutive event dates (sorted)."""
-    if len(sorted_dates) < 2:
+    """Median of gaps between consecutive *distinct* invoice calendar days.
+
+    Multiple ``fir_events`` rows often share the same ``invoice_date`` (same dispatch batch).
+    Counting row-by-row yields many zero-day gaps and a median of 0. Collapsing duplicate
+    days matches :func:`app.fir_analytics.build_fir_intelligence` ``median_interval_days``.
+    """
+    if not sorted_dates:
+        return None
+    uniq_days = sorted(set(sorted_dates))
+    if len(uniq_days) < 2:
         return None
     gaps: list[int] = []
-    for i in range(len(sorted_dates) - 1):
-        gaps.append((sorted_dates[i + 1] - sorted_dates[i]).days)
+    for i in range(len(uniq_days) - 1):
+        gaps.append((uniq_days[i + 1] - uniq_days[i]).days)
     gaps.sort()
     n = len(gaps)
     mid = n // 2
