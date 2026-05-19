@@ -3,7 +3,9 @@
 from datetime import date
 from unittest.mock import MagicMock
 
-from app.email_util import build_admin_thank_you_performance_email
+import pytest
+
+from app.email_util import build_admin_thank_you_email, build_admin_thank_you_performance_email
 from app.models import Company, SubscriptionStatus
 from app.subscription_logic import (
     can_create_invoice,
@@ -87,6 +89,36 @@ def test_thank_you_performance_email_contains_summary_sections() -> None:
     assert "**100**" in body or "100" in body
     assert "25.0 hours" in body  # 100 * 15 / 60
     assert "Top 5 Most Frequently Generated Parts" in body
+
+
+def test_thank_you_send_body_requires_category() -> None:
+    from pydantic import ValidationError
+
+    from app.schemas import AdminSubscriptionReminderSendBody
+
+    with pytest.raises(ValidationError):
+        AdminSubscriptionReminderSendBody(reminder_type="thank_you")
+    with pytest.raises(ValidationError):
+        AdminSubscriptionReminderSendBody(reminder_type="ending_soon", thank_you_category="running")
+    b = AdminSubscriptionReminderSendBody(reminder_type="thank_you", thank_you_category="new")
+    assert b.thank_you_category == "new"
+
+
+def test_thank_you_tone_varies_by_category() -> None:
+    base = dict(
+        customer_name="Acme",
+        plan_name="Enterprise",
+        subscription_start_date="May 1, 2026",
+        subscription_end_date="June 18, 2026",
+        current_month_name="May 2026",
+        current_month_report_count=1,
+        total_report_count=10,
+        top_parts=[("P1", 4), ("P2", 3), ("P3", 2), ("P4", 1), ("P5", 0)],
+    )
+    _, running, _, _ = build_admin_thank_you_email(category="running", **base)
+    _, stranger, _, _ = build_admin_thank_you_email(category="stranger", **base)
+    assert "most active partners" in running
+    assert "historical" in stranger.lower()
 
 
 def test_fir_workspace_requires_trial_or_subscription() -> None:

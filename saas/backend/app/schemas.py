@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.part_field_validation import sanitize_part_master_alnum_upper
 
@@ -251,8 +251,21 @@ class AdminCompanyPatch(BaseModel):
     extend_days: int | None = None
 
 
+ThankYouCategory = Literal["running", "regular", "occasional", "stranger", "new"]
+
+
 class AdminSubscriptionReminderSendBody(BaseModel):
-    reminder_type: Literal["ending_soon", "already_ended", "thank_you_performance"]
+    reminder_type: Literal["ending_soon", "already_ended", "thank_you"]
+    thank_you_category: ThankYouCategory | None = None
+
+    @model_validator(mode="after")
+    def _thank_you_needs_category(self):
+        if self.reminder_type == "thank_you":
+            if self.thank_you_category is None:
+                raise ValueError("thank_you_category is required when reminder_type is thank_you")
+        elif self.thank_you_category is not None:
+            raise ValueError("thank_you_category is only allowed when reminder_type is thank_you")
+        return self
 
 
 class AdminSubscriptionReminderSendResponse(BaseModel):

@@ -11,6 +11,7 @@ import urllib.request
 from datetime import date
 from email.message import EmailMessage
 from html import escape
+from typing import Literal
 
 from app.config import Settings
 
@@ -405,6 +406,157 @@ def build_admin_manual_subscription_reminder_email(
 THANK_YOU_PERFORMANCE_SUBJECT = "Thank You for Using TheAiQualisys – Your Performance Summary"
 DEFAULT_MINUTES_PER_MANUAL_REPORT = 15
 
+ThankYouEmailCategory = Literal["running", "regular", "occasional", "stranger", "new"]
+
+
+def _thank_you_time_saved_totals(
+    total_report_count: int, *, minutes_per_report: int = DEFAULT_MINUTES_PER_MANUAL_REPORT
+) -> tuple[float, float]:
+    total_minutes = total_report_count * minutes_per_report
+    total_time_saved_hours = round(total_minutes / 60.0, 1)
+    working_days_saved = round(total_time_saved_hours / 8.0, 1)
+    return total_time_saved_hours, working_days_saved
+
+
+def _thank_you_tone_copy(category: ThankYouEmailCategory, customer_name: str) -> tuple[str, str, str]:
+    """(opening_after_dear, paragraph_after_time_saved, penultimate_thanks)."""
+    if category == "running":
+        opening = (
+            f"Thank you for being one of our most active partners in automating inspection report generation.\n\n"
+            f"We deeply appreciate the trust {customer_name} places in TheAiQualisys, and we are proud to support a team that uses "
+            "the platform with such consistency and intent."
+        )
+        after_saved = (
+            "The usage summary below highlights what you accomplished this month, your cumulative impact, your most-run parts, "
+            "and the time your teams have gained back — all of it made possible by your continued partnership. "
+            "We are grateful for the collaboration and look forward to helping you keep this momentum going."
+        )
+        penultimate = (
+            "Thank you again for choosing TheAiQualisys — we value this partnership and are here whenever you need us."
+        )
+        return opening, after_saved, penultimate
+
+    if category == "regular":
+        opening = (
+            f"Thank you for relying on TheAiQualisys as a steady part of {customer_name}'s quality workflow.\n\n"
+            "Your team has built a dependable rhythm with the platform, and that consistency is precisely where lasting productivity gains take root."
+        )
+        after_saved = (
+            "These figures show the steady value your organization captures month over month — reliable throughput, clearer documentation, "
+            "and less manual repetition in inspection reporting. We appreciate the continuity you bring to the partnership."
+        )
+        penultimate = "Thank you for your continued trust; we are glad to be part of your day-to-day operations."
+        return opening, after_saved, penultimate
+
+    if category == "occasional":
+        opening = (
+            f"Thank you for choosing TheAiQualisys.\n\n"
+            f"Even when {customer_name} uses the platform in bursts rather than every day, the automation, templates, and traceability are ready "
+            "whenever you need them — no lost setup, no rework on structure."
+        )
+        after_saved = (
+            "The summary below shows what you have already achieved. Many teams find that leaning on FIR automation a little more often "
+            "multiplies these gains: faster turnaround on audits, less firefighting before customer visits, and fewer hours lost to re-keying data."
+        )
+        penultimate = (
+            "Whenever you are ready to expand usage, we are here to help you get even more from the same workflow."
+        )
+        return opening, after_saved, penultimate
+
+    if category == "stranger":
+        opening = (
+            f"We have truly valued having {customer_name} on TheAiQualisys.\n\n"
+            "It has been some time since your team was last active in the workspace, but your historical run data still tells a useful story — "
+            "and the benefits of automated FIR and inspection reporting are unchanged."
+        )
+        after_saved = (
+            "The metrics below reflect the impact your organization has already seen. If priorities have shifted, no problem — "
+            "when you are ready to reconnect, the same time savings, consistency, and audit-ready documentation will be waiting."
+        )
+        penultimate = (
+            "We would welcome the chance to support you again; please reach out if you would like a quick refresher or a walkthrough of what is new."
+        )
+        return opening, after_saved, penultimate
+
+    if category == "new":
+        opening = (
+            f"Welcome to TheAiQualisys — and thank you for getting started with us, {customer_name}.\n\n"
+            "We are excited to help your quality and manufacturing teams move faster on inspection reporting with less manual effort."
+        )
+        after_saved = (
+            "The early usage snapshot below is only the beginning. As you scale up, you can expect the same standardized outputs, fewer errors "
+            "from manual entry, and more time back for engineering and shop-floor quality work."
+        )
+        penultimate = (
+            "Thank you for joining us — our team is here if you have questions as you ramp up."
+        )
+        return opening, after_saved, penultimate
+
+    raise ValueError(f"Unknown thank-you category: {category!r}")
+
+
+def build_admin_thank_you_email(
+    *,
+    category: ThankYouEmailCategory,
+    customer_name: str,
+    plan_name: str,
+    subscription_start_date: str,
+    subscription_end_date: str,
+    current_month_name: str,
+    current_month_report_count: int,
+    total_report_count: int,
+    top_parts: list[tuple[str, int]],
+    minutes_per_report: int = DEFAULT_MINUTES_PER_MANUAL_REPORT,
+) -> tuple[str, str, float, float]:
+    """Thank-you + usage summary (plain text), tone by ``category``. Returns subject, body, hours_saved, days_saved."""
+    if len(top_parts) != 5:
+        raise ValueError("top_parts must contain exactly 5 rows")
+
+    total_time_saved_hours, working_days_saved = _thank_you_time_saved_totals(
+        total_report_count, minutes_per_report=minutes_per_report
+    )
+
+    lines = [
+        "| Rank | Part Number    | Reports Generated    |",
+        "| ---- | -------------- | -------------------- |",
+    ]
+    for i, (pn, cn) in enumerate(top_parts, start=1):
+        lines.append(f"| {i}    | {pn} | {cn} |")
+
+    table_block = "\n".join(lines)
+    opening, after_saved, penultimate = _thank_you_tone_copy(category, customer_name)
+
+    subject = THANK_YOU_PERFORMANCE_SUBJECT
+    text = (
+        f"Dear {customer_name},\n\n"
+        f"{opening}\n\n"
+        "## Your Usage Summary\n\n"
+        f"* Current Plan: {plan_name}\n"
+        f"* Subscription Start Date: {subscription_start_date}\n"
+        f"* Subscription End Date: {subscription_end_date}\n"
+        f"* Reports Generated in {current_month_name}: **{current_month_report_count}**\n"
+        f"* Total Reports Generated Till Date: **{total_report_count}**\n\n"
+        "## Top 5 Most Frequently Generated Parts\n\n"
+        f"{table_block}\n\n"
+        "## Value Delivered by TheAiQualisys\n\n"
+        "By automating your FIR and inspection report generation workflow, TheAiQualisys has helped your organization:\n\n"
+        "* Reduce repetitive manual data entry\n"
+        "* Improve consistency and accuracy of reports\n"
+        "* Accelerate report generation turnaround time\n"
+        "* Standardize documentation across teams\n"
+        "* Free up engineers to focus on quality improvement and production\n\n"
+        "## Estimated Time Saved\n\n"
+        f"Assuming each report takes approximately {minutes_per_report} minutes to prepare manually:\n\n"
+        f"* Total Estimated Time Saved: **{total_time_saved_hours} hours**\n"
+        f"* Equivalent Working Days Saved: **{working_days_saved} days**\n\n"
+        f"{after_saved}\n\n"
+        f"{penultimate}\n\n"
+        "Warm regards,\n\n"
+        "Team,\n"
+        "TheAiQualisys"
+    )
+    return subject, text, total_time_saved_hours, working_days_saved
+
 
 def build_admin_thank_you_performance_email(
     *,
@@ -419,54 +571,18 @@ def build_admin_thank_you_performance_email(
     top_parts: list[tuple[str, int]],
     minutes_per_report: int = DEFAULT_MINUTES_PER_MANUAL_REPORT,
 ) -> tuple[str, str]:
-    """Thank-you + usage summary (plain text). ``top_parts`` must be five (part_no, count) rows."""
-    if len(top_parts) != 5:
-        raise ValueError("top_parts must contain exactly 5 rows")
-
-    total_minutes = total_report_count * minutes_per_report
-    total_time_saved_hours = round(total_minutes / 60.0, 1)
-    working_days_saved = round(total_time_saved_hours / 8.0, 1)
-
-    lines = [
-        "| Rank | Part Number    | Reports Generated    |",
-        "| ---- | -------------- | -------------------- |",
-    ]
-    for i, (pn, cn) in enumerate(top_parts, start=1):
-        lines.append(f"| {i}    | {pn} | {cn} |")
-
-    table_block = "\n".join(lines)
-
-    subject = THANK_YOU_PERFORMANCE_SUBJECT
-    text = (
-        f"Dear {customer_name},\n\n"
-        "Thank you for choosing TheAiQualisys as your partner in automating inspection report generation.\n\n"
-        "Your trust in our platform has helped us support your quality team in reducing manual work, improving report accuracy, "
-        "and accelerating the overall inspection documentation process.\n\n"
-        "## Your Usage Summary\n\n"
-        f"* Current Plan: {plan_name}\n"
-        f"* Subscription Start Date: {subscription_start_date}\n"
-        f"* Subscription End Date: {subscription_end_date}\n"
-        f"* Reports Generated in {current_month_name}: **{current_month_report_count}**\n"
-        f"* Total Reports Generated Till Date: **{total_report_count}**\n"
-        f"* Total Active Users in Your Workspace: **{workspace_user_count}**\n\n"
-        "## Top 5 Most Frequently Generated Parts\n\n"
-        f"{table_block}\n\n"
-        "## Value Delivered by TheAiQualisys\n\n"
-        "By automating your FIR and inspection report generation workflow, TheAiQualisys has helped your organization:\n\n"
-        "* Reduce repetitive manual data entry\n"
-        "* Improve consistency and accuracy of reports\n"
-        "* Accelerate report generation turnaround time\n"
-        "* Standardize documentation across teams\n"
-        "* Free up engineers to focus on quality improvement and production\n\n"
-        "## Estimated Time Saved\n\n"
-        f"Assuming each report takes approximately {minutes_per_report} minutes to prepare manually:\n\n"
-        f"* Total Estimated Time Saved: **{total_time_saved_hours} hours**\n"
-        f"* Equivalent Working Days Saved: **{working_days_saved} days**\n\n"
-        "This represents a significant productivity gain for your quality and manufacturing teams.\n\n"
-        "We sincerely appreciate the opportunity to be part of your digital transformation journey.\n\n"
-        "Thank you once again for your continued support.\n\n"
-        "Warm regards,\n\n"
-        "Team,\n"
-        "TheAiQualisys"
+    """Deprecated: use ``build_admin_thank_you_email`` with ``category=\"running\"``. Kept for tests."""
+    _ = workspace_user_count
+    s, t, _h, _d = build_admin_thank_you_email(
+        category="running",
+        customer_name=customer_name,
+        plan_name=plan_name,
+        subscription_start_date=subscription_start_date,
+        subscription_end_date=subscription_end_date,
+        current_month_name=current_month_name,
+        current_month_report_count=current_month_report_count,
+        total_report_count=total_report_count,
+        top_parts=top_parts,
+        minutes_per_report=minutes_per_report,
     )
-    return subject, text
+    return s, t

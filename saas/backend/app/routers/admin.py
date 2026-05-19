@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.deps import get_db_session, get_platform_admin
 from app.email_util import (
     build_admin_manual_subscription_reminder_email,
-    build_admin_thank_you_performance_email,
+    build_admin_thank_you_email,
     is_email_configured,
     send_plain_text_email,
 )
@@ -428,11 +428,14 @@ def send_manual_subscription_reminder(
     current_month_name = billing_month_year_english(today)
     plan_name = c.plan_type.title()
 
-    if body.reminder_type == "thank_you_performance":
+    thank_you_audit: dict | None = None
+    if body.reminder_type == "thank_you":
+        assert body.thank_you_category is not None
         sub_start = c.subscription_start.strftime("%B %d, %Y") if c.subscription_start else "—"
         sub_end = c.subscription_end.strftime("%B %d, %Y") if c.subscription_end else "—"
         top_parts = top_fir_part_report_counts(db, company_id, limit=5)
-        subject, text = build_admin_thank_you_performance_email(
+        subject, text, hours_saved, _ = build_admin_thank_you_email(
+            category=body.thank_you_category,
             customer_name=c.company_name,
             plan_name=plan_name,
             subscription_start_date=sub_start,
@@ -440,9 +443,14 @@ def send_manual_subscription_reminder(
             current_month_name=current_month_name,
             current_month_report_count=report_month,
             total_report_count=report_total,
-            workspace_user_count=len(users),
             top_parts=top_parts,
         )
+        thank_you_audit = {
+            "thank_you_category": body.thank_you_category,
+            "current_month_report_count": report_month,
+            "top_5_parts": [{"part_no": p, "count": n} for p, n in top_parts],
+            "total_time_saved_hours": hours_saved,
+        }
     else:
         assert c.subscription_end is not None  # guarded above for ending/already
         end_date_display = c.subscription_end.strftime("%B %d, %Y")
@@ -485,6 +493,10 @@ def send_manual_subscription_reminder(
             reports_generated=report_total,
             email_status=st,
             error_message=err_msg,
+            thank_you_category=(thank_you_audit["thank_you_category"] if thank_you_audit else None),
+            current_month_report_count=(thank_you_audit["current_month_report_count"] if thank_you_audit else None),
+            top_5_parts=(thank_you_audit["top_5_parts"] if thank_you_audit else None),
+            total_time_saved_hours=(thank_you_audit["total_time_saved_hours"] if thank_you_audit else None),
         )
     )
     db.commit()
