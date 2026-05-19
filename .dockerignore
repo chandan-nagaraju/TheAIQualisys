@@ -1,0 +1,13 @@
+# Smaller build context → faster uploads on Railway.
+.git
+**/.git
+**/node_modules
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/dist
+**/build
+legacy
+saas/frontend
+*.md
