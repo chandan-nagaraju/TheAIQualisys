@@ -1,6 +1,7 @@
 # API service: in Railway → Settings → set "Root Directory" to `saas/backend`.
-# Do not set deploy.startCommand for Dockerfile builds: Railway runs it in exec form and
-# `$PORT` is not expanded. Startup is defined in saas/backend/Dockerfile CMD (shell + PORT).
+#
+# Leave "Custom Start Command" EMPTY (Dashboard + no deploy.startCommand here). Overrides use exec form and
+# break `$PORT`. The container runs `saas/backend/run_gunicorn.py`, which reads PORT from the environment.
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "saas/backend/Dockerfile"

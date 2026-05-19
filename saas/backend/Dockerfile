@@ -16,4 +16,5 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "exec gunicorn app.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000}"]
+# Read PORT via Python so exec-form overrides (Railway UI / startCommand) cannot leave a literal \"$PORT\".
+CMD ["python", "run_gunicorn.py"]
