@@ -1,6 +1,8 @@
+# API service: in Railway → Settings → set "Root Directory" to `saas/backend`.
+# (Docker build context is that folder, so the Dockerfile uses COPY requirements.txt / COPY . .)
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "saas/backend/Dockerfile"
 
 [deploy]
 # Single worker: one in-process subscription reminder scheduler; multiple workers would duplicate emails.
