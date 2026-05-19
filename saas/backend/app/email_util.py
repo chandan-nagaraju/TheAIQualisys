@@ -400,3 +400,73 @@ def build_admin_manual_subscription_reminder_email(
         )
         return subject, text
     raise ValueError(f"Unknown reminder_type: {reminder_type!r}")
+
+
+THANK_YOU_PERFORMANCE_SUBJECT = "Thank You for Using TheAiQualisys – Your Performance Summary"
+DEFAULT_MINUTES_PER_MANUAL_REPORT = 15
+
+
+def build_admin_thank_you_performance_email(
+    *,
+    customer_name: str,
+    plan_name: str,
+    subscription_start_date: str,
+    subscription_end_date: str,
+    current_month_name: str,
+    current_month_report_count: int,
+    total_report_count: int,
+    workspace_user_count: int,
+    top_parts: list[tuple[str, int]],
+    minutes_per_report: int = DEFAULT_MINUTES_PER_MANUAL_REPORT,
+) -> tuple[str, str]:
+    """Thank-you + usage summary (plain text). ``top_parts`` must be five (part_no, count) rows."""
+    if len(top_parts) != 5:
+        raise ValueError("top_parts must contain exactly 5 rows")
+
+    total_minutes = total_report_count * minutes_per_report
+    total_time_saved_hours = round(total_minutes / 60.0, 1)
+    working_days_saved = round(total_time_saved_hours / 8.0, 1)
+
+    lines = [
+        "| Rank | Part Number    | Reports Generated    |",
+        "| ---- | -------------- | -------------------- |",
+    ]
+    for i, (pn, cn) in enumerate(top_parts, start=1):
+        lines.append(f"| {i}    | {pn} | {cn} |")
+
+    table_block = "\n".join(lines)
+
+    subject = THANK_YOU_PERFORMANCE_SUBJECT
+    text = (
+        f"Dear {customer_name},\n\n"
+        "Thank you for choosing TheAiQualisys as your partner in automating inspection report generation.\n\n"
+        "Your trust in our platform has helped us support your quality team in reducing manual work, improving report accuracy, "
+        "and accelerating the overall inspection documentation process.\n\n"
+        "## Your Usage Summary\n\n"
+        f"* Current Plan: {plan_name}\n"
+        f"* Subscription Start Date: {subscription_start_date}\n"
+        f"* Subscription End Date: {subscription_end_date}\n"
+        f"* Reports Generated in {current_month_name}: **{current_month_report_count}**\n"
+        f"* Total Reports Generated Till Date: **{total_report_count}**\n"
+        f"* Total Active Users in Your Workspace: **{workspace_user_count}**\n\n"
+        "## Top 5 Most Frequently Generated Parts\n\n"
+        f"{table_block}\n\n"
+        "## Value Delivered by TheAiQualisys\n\n"
+        "By automating your FIR and inspection report generation workflow, TheAiQualisys has helped your organization:\n\n"
+        "* Reduce repetitive manual data entry\n"
+        "* Improve consistency and accuracy of reports\n"
+        "* Accelerate report generation turnaround time\n"
+        "* Standardize documentation across teams\n"
+        "* Free up engineers to focus on quality improvement and production\n\n"
+        "## Estimated Time Saved\n\n"
+        f"Assuming each report takes approximately {minutes_per_report} minutes to prepare manually:\n\n"
+        f"* Total Estimated Time Saved: **{total_time_saved_hours} hours**\n"
+        f"* Equivalent Working Days Saved: **{working_days_saved} days**\n\n"
+        "This represents a significant productivity gain for your quality and manufacturing teams.\n\n"
+        "We sincerely appreciate the opportunity to be part of your digital transformation journey.\n\n"
+        "Thank you once again for your continued support.\n\n"
+        "Warm regards,\n\n"
+        "Team,\n"
+        "TheAiQualisys"
+    )
+    return subject, text

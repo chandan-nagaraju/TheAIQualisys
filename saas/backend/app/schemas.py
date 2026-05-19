@@ -252,7 +252,7 @@ class AdminCompanyPatch(BaseModel):
 
 
 class AdminSubscriptionReminderSendBody(BaseModel):
-    reminder_type: Literal["ending_soon", "already_ended"]
+    reminder_type: Literal["ending_soon", "already_ended", "thank_you_performance"]
 
 
 class AdminSubscriptionReminderSendResponse(BaseModel):

@@ -63,6 +63,25 @@ def count_fir_reports_total(db: Session, company_id: int) -> int:
     return int(db.execute(q).scalar_one())
 
 
+def top_fir_part_report_counts(
+    db: Session, company_id: int, *, limit: int = 5
+) -> list[tuple[str, int]]:
+    """Most common ``part_no`` values in ``fir_events`` for this tenant, by row count (ties arbitrary)."""
+    cnt = func.count(FirReportEvent.id).label("n")
+    q = (
+        select(FirReportEvent.part_no, cnt)
+        .where(FirReportEvent.company_id == company_id)
+        .group_by(FirReportEvent.part_no)
+        .order_by(cnt.desc())
+        .limit(limit)
+    )
+    rows = list(db.execute(q).all())
+    out: list[tuple[str, int]] = [(str(part_no), int(n or 0)) for part_no, n in rows]
+    while len(out) < limit:
+        out.append(("—", 0))
+    return out[:limit]
+
+
 def count_combined_usage_this_month(db: Session, company_id: int, today: date | None = None) -> int:
     """Invoices (v2) + FIR report rows — both count toward the same monthly plan cap."""
     return count_invoices_this_month(db, company_id, today) + count_fir_reports_this_month(

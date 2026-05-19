@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.deps import get_db_session, get_platform_admin
 from app.email_util import (
     build_admin_manual_subscription_reminder_email,
+    build_admin_thank_you_performance_email,
     is_email_configured,
     send_plain_text_email,
 )
@@ -55,6 +56,7 @@ from app.subscription_logic import (
     count_fir_reports_total,
     count_invoices_this_month,
     sync_subscription_status_from_dates,
+    top_fir_part_report_counts,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -399,12 +401,6 @@ def send_manual_subscription_reminder(
         db.commit()
         db.refresh(c)
 
-    if c.subscription_end is None:
-        raise HTTPException(
-            status_code=400,
-            detail="This tenant has no subscription end date; activate or extend the subscription first.",
-        )
-
     users = (
         db.execute(
             select(CompanyUser).where(
@@ -421,22 +417,46 @@ def send_manual_subscription_reminder(
             detail="No active (non-blocked) workspace users to email for this tenant.",
         )
 
+    if body.reminder_type in ("ending_soon", "already_ended") and c.subscription_end is None:
+        raise HTTPException(
+            status_code=400,
+            detail="This tenant has no subscription end date; activate or extend the subscription first.",
+        )
+
     report_total = count_fir_reports_total(db, company_id)
     report_month = count_fir_reports_this_month(db, company_id, today)
     current_month_name = billing_month_year_english(today)
-    renewal_link = f"{settings.public_app_url.rstrip('/')}/dashboard/billing"
-    end_date_display = c.subscription_end.strftime("%B %d, %Y")
     plan_name = c.plan_type.title()
-    subject, text = build_admin_manual_subscription_reminder_email(
-        reminder_type=body.reminder_type,
-        customer_name=c.company_name,
-        plan_name=plan_name,
-        end_date_display=end_date_display,
-        current_month_name=current_month_name,
-        current_month_report_count=report_month,
-        total_report_count=report_total,
-        renewal_link=renewal_link,
-    )
+
+    if body.reminder_type == "thank_you_performance":
+        sub_start = c.subscription_start.strftime("%B %d, %Y") if c.subscription_start else "—"
+        sub_end = c.subscription_end.strftime("%B %d, %Y") if c.subscription_end else "—"
+        top_parts = top_fir_part_report_counts(db, company_id, limit=5)
+        subject, text = build_admin_thank_you_performance_email(
+            customer_name=c.company_name,
+            plan_name=plan_name,
+            subscription_start_date=sub_start,
+            subscription_end_date=sub_end,
+            current_month_name=current_month_name,
+            current_month_report_count=report_month,
+            total_report_count=report_total,
+            workspace_user_count=len(users),
+            top_parts=top_parts,
+        )
+    else:
+        assert c.subscription_end is not None  # guarded above for ending/already
+        end_date_display = c.subscription_end.strftime("%B %d, %Y")
+        renewal_link = f"{settings.public_app_url.rstrip('/')}/dashboard/billing"
+        subject, text = build_admin_manual_subscription_reminder_email(
+            reminder_type=body.reminder_type,
+            customer_name=c.company_name,
+            plan_name=plan_name,
+            end_date_display=end_date_display,
+            current_month_name=current_month_name,
+            current_month_report_count=report_month,
+            total_report_count=report_total,
+            renewal_link=renewal_link,
+        )
 
     errors: list[str] = []
     sent = 0

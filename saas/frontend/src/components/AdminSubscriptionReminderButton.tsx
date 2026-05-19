@@ -17,7 +17,7 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
-  async function send(reminderType: "ending_soon" | "already_ended") {
+  async function send(reminderType: "ending_soon" | "already_ended" | "thank_you_performance") {
     setBusy(true);
     setFeedback(null);
     try {
@@ -74,7 +74,7 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
             role="dialog"
             aria-modal="true"
             aria-labelledby="reminder-modal-title"
-            className="max-w-md rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-xl"
+            className="max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id="reminder-modal-title" className="text-lg font-semibold text-white">
@@ -101,6 +101,17 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
               >
                 <span className="font-medium text-white">Subscription Already Ended</span>
                 <span className="mt-1 block text-xs text-slate-400">Past expiry — win-back and renew messaging.</span>
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                className="rounded-lg border border-slate-600 bg-slate-950 px-4 py-3 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:opacity-50"
+                onClick={() => void send("thank_you_performance")}
+              >
+                <span className="font-medium text-white">Thank You &amp; Performance Summary</span>
+                <span className="mt-1 block text-xs text-slate-400">
+                  Thank customers with a detailed usage summary and business impact report.
+                </span>
               </button>
             </div>
             <div className="mt-6 flex justify-end gap-2">

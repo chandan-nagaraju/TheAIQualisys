@@ -3,6 +3,7 @@
 from datetime import date
 from unittest.mock import MagicMock
 
+from app.email_util import build_admin_thank_you_performance_email
 from app.models import Company, SubscriptionStatus
 from app.subscription_logic import (
     can_create_invoice,
@@ -10,6 +11,7 @@ from app.subscription_logic import (
     count_fir_reports_this_month,
     count_fir_reports_total,
     subscription_is_active,
+    top_fir_part_report_counts,
 )
 
 
@@ -57,6 +59,34 @@ def test_count_fir_reports_total_calls_db() -> None:
     db.execute.return_value.scalar_one.return_value = 1313
     assert count_fir_reports_total(db, 3) == 1313
     db.execute.assert_called_once()
+
+
+def test_top_fir_part_report_counts_pads_to_five() -> None:
+    db = MagicMock()
+    db.execute.return_value.all.return_value = [("P-A", 10), ("P-B", 3)]
+    out = top_fir_part_report_counts(db, 1, limit=5)
+    assert out[:2] == [("P-A", 10), ("P-B", 3)]
+    assert out[2:] == [("—", 0), ("—", 0), ("—", 0)]
+
+
+def test_thank_you_performance_email_contains_summary_sections() -> None:
+    subject, body = build_admin_thank_you_performance_email(
+        customer_name="Acme",
+        plan_name="Enterprise",
+        subscription_start_date="May 1, 2026",
+        subscription_end_date="June 18, 2026",
+        current_month_name="May 2026",
+        current_month_report_count=12,
+        total_report_count=100,
+        workspace_user_count=3,
+        top_parts=[("P1", 40), ("P2", 30), ("P3", 20), ("P4", 7), ("P5", 3)],
+        minutes_per_report=15,
+    )
+    assert "Performance Summary" in subject
+    assert "Acme" in body
+    assert "**100**" in body or "100" in body
+    assert "25.0 hours" in body  # 100 * 15 / 60
+    assert "Top 5 Most Frequently Generated Parts" in body
 
 
 def test_fir_workspace_requires_trial_or_subscription() -> None:
