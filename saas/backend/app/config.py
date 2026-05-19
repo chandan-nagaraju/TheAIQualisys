@@ -114,6 +114,15 @@ class Settings(BaseSettings):
             "subscription_reminder_evening_hour",
         ),
     )
+    # When True, the API runs subscription expiry reminder logic every 60s (no external cron required).
+    # Use a single Gunicorn worker to avoid duplicate sends. Set False for tests or if you only use HTTP cron.
+    enable_automatic_subscription_reminders: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "ENABLE_AUTOMATIC_SUBSCRIPTION_REMINDERS",
+            "enable_automatic_subscription_reminders",
+        ),
+    )
 
     # S3 direct uploads for workspace company assets (optional — when unset, settings use DB blobs / local files).
     aws_access_key_id: str | None = Field(default=None, validation_alias=AliasChoices("AWS_ACCESS_KEY_ID"))

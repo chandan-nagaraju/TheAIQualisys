@@ -19,8 +19,12 @@ from app.routers import admin, auth, billing, cron, modules, pricing_public, sub
 from app.routers.v2.endpoints import router as v2_router
 from app.routers.workspace import fir_preview as legacy_fir_preview_alias, router as workspace_router
 from app.security import hash_password, verify_password
+from app.email_util import is_email_configured
+from app.subscription_reminder_runner import run_subscription_expiry_reminders
 
 logger = logging.getLogger(__name__)
+
+_REMINDER_SCHEDULER_INTERVAL_SEC = 60
 
 
 def _startup_error_json(request: Request) -> str | None:
@@ -87,6 +91,42 @@ async def lifespan(app: FastAPI):
         app.state.startup_elapsed_sec = round(time.monotonic() - app.state.startup_started_monotonic, 2)
 
     asyncio.create_task(_run_startup())
+
+    async def _subscription_reminder_scheduler() -> None:
+        """Wake every minute; send during configured local morning/evening windows (see subscription_reminder_runner)."""
+        while True:
+            await asyncio.sleep(_REMINDER_SCHEDULER_INTERVAL_SEC)
+            if not getattr(app.state, "startup_complete", False):
+                continue
+            cfg = get_settings()
+            if not cfg.enable_automatic_subscription_reminders:
+                continue
+            if not is_email_configured(cfg):
+                continue
+
+            def _tick() -> dict:
+                db = SessionLocal()
+                try:
+                    return run_subscription_expiry_reminders(db, cfg, force=False)
+                finally:
+                    db.close()
+
+            try:
+                result = await asyncio.to_thread(_tick)
+            except Exception:
+                logger.exception("Automatic subscription reminder tick failed")
+                continue
+            if result.get("errors"):
+                for err in result["errors"]:
+                    logger.warning("subscription reminder error: %s", err)
+            if not result.get("skipped") and result.get("emails_sent", 0) > 0:
+                logger.info(
+                    "Automatic subscription reminders sent: emails_sent=%s companies_touched=%s",
+                    result.get("emails_sent"),
+                    result.get("companies_touched"),
+                )
+
+    asyncio.create_task(_subscription_reminder_scheduler())
     yield
 
 
