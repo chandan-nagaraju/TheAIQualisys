@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 _MASK_MORNING = 1
 _MASK_EVENING = 2
-_SLOT_GRACE_MINUTES = 5
+# Any minute within the scheduled local hour counts (daily scheduler wakes once at :00; masks prevent duplicates).
+_SLOT_GRACE_MINUTES = 60
 
 
 def _build_reminder_slots(
@@ -80,7 +81,7 @@ def run_subscription_expiry_reminders(db: Session, settings: Settings, *, force:
             "skipped": True,
             "forced": False,
             "reason": (
-                f"No send window: need a run in minutes 0–{_SLOT_GRACE_MINUTES - 1} of hour {mh} or {eh} "
+                f"No send window: need a run during local hour {mh} or {eh} "
                 f"({settings.subscription_reminder_timezone}), or use force=True for catch-up."
             ),
             "local_time": now_local.isoformat(),

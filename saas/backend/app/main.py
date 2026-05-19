@@ -2,6 +2,8 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +26,22 @@ from app.subscription_reminder_runner import run_subscription_expiry_reminders
 
 logger = logging.getLogger(__name__)
 
-_REMINDER_SCHEDULER_INTERVAL_SEC = 60
+_STARTUP_POLL_SEC = 60
+
+
+def _seconds_until_next_local_hms(
+    tz: ZoneInfo,
+    *,
+    hour: int,
+    minute: int = 0,
+    second: int = 0,
+) -> float:
+    """Wall-clock seconds until the next occurrence of hour:minute:second in ``tz``."""
+    now = datetime.now(tz)
+    target = now.replace(hour=hour, minute=minute, second=second, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return max(1.0, (target - now).total_seconds())
 
 
 def _startup_error_json(request: Request) -> str | None:
@@ -93,15 +110,42 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_run_startup())
 
     async def _subscription_reminder_scheduler() -> None:
-        """Wake every minute; send during configured local morning/evening windows (see subscription_reminder_runner)."""
+        """
+        Once per local calendar day at ``subscription_reminder_morning_hour``:00
+        (``SUBSCRIPTION_REMINDER_TIMEZONE``), run the same send as HTTP cron with ``force=False``.
+
+        Only the **morning** window is hit automatically; the evening slot still needs a manual
+        ``POST .../cron/send-subscription-expiry-reminders`` (or rely on last-day morning only).
+        """
         while True:
-            await asyncio.sleep(_REMINDER_SCHEDULER_INTERVAL_SEC)
+            if not getattr(app.state, "startup_complete", False):
+                await asyncio.sleep(_STARTUP_POLL_SEC)
+                continue
+
+            cfg = get_settings()
+            if not cfg.enable_automatic_subscription_reminders or not is_email_configured(cfg):
+                await asyncio.sleep(_STARTUP_POLL_SEC)
+                continue
+
+            try:
+                tz = ZoneInfo(cfg.subscription_reminder_timezone)
+            except Exception:
+                logger.exception("Invalid SUBSCRIPTION_REMINDER_TIMEZONE for reminder scheduler")
+                await asyncio.sleep(_STARTUP_POLL_SEC)
+                continue
+
+            sec = _seconds_until_next_local_hms(
+                tz,
+                hour=cfg.subscription_reminder_morning_hour,
+                minute=0,
+                second=0,
+            )
+            await asyncio.sleep(sec)
+
             if not getattr(app.state, "startup_complete", False):
                 continue
             cfg = get_settings()
-            if not cfg.enable_automatic_subscription_reminders:
-                continue
-            if not is_email_configured(cfg):
+            if not cfg.enable_automatic_subscription_reminders or not is_email_configured(cfg):
                 continue
 
             def _tick() -> dict:

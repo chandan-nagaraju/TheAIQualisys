@@ -29,9 +29,10 @@ def send_subscription_expiry_reminders(
 
     **Renewed** (`subscription_end > today_local`): excluded — no emails.
 
-    The API process also runs the same logic every minute when
-    ``ENABLE_AUTOMATIC_SUBSCRIPTION_REMINDERS`` is true (default). Use this endpoint for
-    manual catch-up with ``?force=true``.
+    The API process also runs the same logic **once per local day** at
+    ``subscription_reminder_morning_hour``:00 when ``ENABLE_AUTOMATIC_SUBSCRIPTION_REMINDERS`` is true
+    (default). The **evening** slot still requires a manual ``POST`` that day if you want two sends on
+    last day, or rely on morning-only.
 
         curl -X POST "$API/api/cron/send-subscription-expiry-reminders" -H "X-Cron-Secret: $CRON_SECRET"
         curl -X POST "$API/api/cron/send-subscription-expiry-reminders?force=true" -H "X-Cron-Secret: $CRON_SECRET"

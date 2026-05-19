@@ -114,8 +114,8 @@ class Settings(BaseSettings):
             "subscription_reminder_evening_hour",
         ),
     )
-    # When True, the API runs subscription expiry reminder logic every 60s (no external cron required).
-    # Use a single Gunicorn worker to avoid duplicate sends. Set False for tests or if you only use HTTP cron.
+    # When True, the API wakes once per local day at subscription_reminder_morning_hour:00 and runs
+    # the same logic as HTTP cron (no external scheduler). Use a single Gunicorn worker.
     enable_automatic_subscription_reminders: bool = Field(
         default=True,
         validation_alias=AliasChoices(
