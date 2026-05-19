@@ -360,7 +360,9 @@ def build_admin_manual_subscription_reminder_email(
     customer_name: str,
     plan_name: str,
     end_date_display: str,
-    report_count: int,
+    current_month_name: str,
+    current_month_report_count: int,
+    total_report_count: int,
     renewal_link: str,
 ) -> tuple[str, str]:
     """Plain-text subject + body for platform-admin manual subscription reminders."""
@@ -368,11 +370,14 @@ def build_admin_manual_subscription_reminder_email(
         subject = ADMIN_MANUAL_SUBSCRIPTION_ENDING_SUBJECT
         text = (
             f"Dear {customer_name},\n\n"
-            f"Your subscription for the {plan_name} plan will expire on {end_date_display}.\n\n"
-            f"So far, you have generated {report_count} reports using TheAiQualisys.\n\n"
-            "To continue generating reports without interruption, please renew your subscription before the expiry date.\n\n"
+            f"Your subscription for the {plan_name} plan is scheduled to expire on {end_date_display}.\n\n"
+            f"In {current_month_name}, you have generated **{current_month_report_count} inspection reports** using TheAiQualisys.\n\n"
+            "This month, TheAiQualisys has helped your team simplify inspection report generation by automating repetitive work, "
+            "reducing manual effort, improving accuracy, and saving valuable time in your quality process.\n\n"
+            "To continue generating reports without interruption and maintain the efficiency you have achieved, please renew "
+            "your subscription before the expiry date.\n\n"
             f"Renew your subscription here: {renewal_link}\n\n"
-            "Thank you for choosing TheAiQualisys.\n\n"
+            "Thank you for trusting TheAiQualisys to streamline your inspection and reporting workflow.\n\n"
             "Team,\n"
             "TheAiQualisys"
         )
@@ -382,10 +387,14 @@ def build_admin_manual_subscription_reminder_email(
         text = (
             f"Dear {customer_name},\n\n"
             f"Your subscription for the {plan_name} plan expired on {end_date_display}.\n\n"
-            f"During your subscription, you generated {report_count} reports using TheAiQualisys.\n\n"
-            "To regain access and continue generating reports, please renew your subscription.\n\n"
+            f"In {current_month_name}, you generated **{current_month_report_count} inspection reports**.\n\n"
+            f"Since you started using TheAiQualisys, you have generated a total of **{total_report_count} inspection reports**.\n\n"
+            "Throughout your subscription, TheAiQualisys helped automate report generation, reduce repetitive manual work, "
+            "improve consistency, and save significant time for your quality and production teams.\n\n"
+            "Your access to automated report generation is currently inactive. Renew your subscription to restore full access "
+            "and continue generating reports efficiently.\n\n"
             f"Renew your subscription here: {renewal_link}\n\n"
-            "Thank you for using TheAiQualisys.\n\n"
+            "Thank you for being a valued customer of TheAiQualisys.\n\n"
             "Team,\n"
             "TheAiQualisys"
         )

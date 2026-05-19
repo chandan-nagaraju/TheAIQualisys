@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from app.dates import billing_today
+from app.dates import billing_month_year_english, billing_today
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select
@@ -422,6 +422,8 @@ def send_manual_subscription_reminder(
         )
 
     report_total = count_fir_reports_total(db, company_id)
+    report_month = count_fir_reports_this_month(db, company_id, today)
+    current_month_name = billing_month_year_english(today)
     renewal_link = f"{settings.public_app_url.rstrip('/')}/dashboard/billing"
     end_date_display = c.subscription_end.strftime("%B %d, %Y")
     plan_name = c.plan_type.title()
@@ -430,7 +432,9 @@ def send_manual_subscription_reminder(
         customer_name=c.company_name,
         plan_name=plan_name,
         end_date_display=end_date_display,
-        report_count=report_total,
+        current_month_name=current_month_name,
+        current_month_report_count=report_month,
+        total_report_count=report_total,
         renewal_link=renewal_link,
     )
 
@@ -473,7 +477,9 @@ def send_manual_subscription_reminder(
 
     return AdminSubscriptionReminderSendResponse(
         email_status=st,
-        reports_generated=report_total,
+        total_report_count=report_total,
+        current_month_report_count=report_month,
+        current_month_name=current_month_name,
         recipients_attempted=n,
         emails_sent=sent,
     )

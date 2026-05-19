@@ -258,7 +258,9 @@ class AdminSubscriptionReminderSendBody(BaseModel):
 class AdminSubscriptionReminderSendResponse(BaseModel):
     ok: bool = True
     email_status: str
-    reports_generated: int
+    total_report_count: int
+    current_month_report_count: int
+    current_month_name: str
     recipients_attempted: int
     emails_sent: int
 

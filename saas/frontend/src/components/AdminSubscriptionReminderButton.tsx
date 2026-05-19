@@ -4,7 +4,9 @@ import { apiFetch } from "../api";
 type SendResponse = {
   ok?: boolean;
   email_status: string;
-  reports_generated: number;
+  total_report_count: number;
+  current_month_report_count: number;
+  current_month_name: string;
   recipients_attempted: number;
   emails_sent: number;
 };
@@ -32,7 +34,7 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
       const partialNote = res.email_status === "partial" ? " Some recipients failed — check server logs or Resend dashboard." : "";
       setFeedback({
         ok: true,
-        text: `Reminder sent to ${res.emails_sent} of ${res.recipients_attempted} workspace user(s) (${res.email_status}). Reports in email: ${res.reports_generated}.${partialNote}`,
+        text: `Reminder sent to ${res.emails_sent} of ${res.recipients_attempted} workspace user(s) (${res.email_status}). Counts in email — ${res.current_month_name}: ${res.current_month_report_count} this month; ${res.total_report_count} lifetime.${partialNote}`,
       });
       setOpen(false);
     } catch (e) {
