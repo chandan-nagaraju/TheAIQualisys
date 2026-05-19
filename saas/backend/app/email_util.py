@@ -348,3 +348,46 @@ TheAIQualisys"""
 </body>
 </html>"""
     _send_text_and_html_email(settings, to_email, SIGNUP_VERIFY_SUBJECT, text, html)
+
+
+ADMIN_MANUAL_SUBSCRIPTION_ENDING_SUBJECT = "Your TheAiQualisys Subscription is Ending Soon"
+ADMIN_MANUAL_SUBSCRIPTION_EXPIRED_SUBJECT = "Your TheAiQualisys Subscription Has Expired"
+
+
+def build_admin_manual_subscription_reminder_email(
+    *,
+    reminder_type: str,
+    customer_name: str,
+    plan_name: str,
+    end_date_display: str,
+    report_count: int,
+    renewal_link: str,
+) -> tuple[str, str]:
+    """Plain-text subject + body for platform-admin manual subscription reminders."""
+    if reminder_type == "ending_soon":
+        subject = ADMIN_MANUAL_SUBSCRIPTION_ENDING_SUBJECT
+        text = (
+            f"Dear {customer_name},\n\n"
+            f"Your subscription for the {plan_name} plan will expire on {end_date_display}.\n\n"
+            f"So far, you have generated {report_count} reports using TheAiQualisys.\n\n"
+            "To continue generating reports without interruption, please renew your subscription before the expiry date.\n\n"
+            f"Renew your subscription here: {renewal_link}\n\n"
+            "Thank you for choosing TheAiQualisys.\n\n"
+            "Team,\n"
+            "TheAiQualisys"
+        )
+        return subject, text
+    if reminder_type == "already_ended":
+        subject = ADMIN_MANUAL_SUBSCRIPTION_EXPIRED_SUBJECT
+        text = (
+            f"Dear {customer_name},\n\n"
+            f"Your subscription for the {plan_name} plan expired on {end_date_display}.\n\n"
+            f"During your subscription, you generated {report_count} reports using TheAiQualisys.\n\n"
+            "To regain access and continue generating reports, please renew your subscription.\n\n"
+            f"Renew your subscription here: {renewal_link}\n\n"
+            "Thank you for using TheAiQualisys.\n\n"
+            "Team,\n"
+            "TheAiQualisys"
+        )
+        return subject, text
+    raise ValueError(f"Unknown reminder_type: {reminder_type!r}")

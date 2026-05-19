@@ -70,6 +70,9 @@ class Company(Base):
     fir_upload_logs: Mapped[list["FirUploadLog"]] = relationship(
         "FirUploadLog", back_populates="company", cascade="all, delete-orphan"
     )
+    admin_subscription_reminders: Mapped[list["AdminSubscriptionReminder"]] = relationship(
+        "AdminSubscriptionReminder", back_populates="company"
+    )
 
 
 class CompanyUser(Base):
@@ -381,3 +384,21 @@ class ModulePricing(Base):
     highlight: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     listing_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class AdminSubscriptionReminder(Base):
+    """Audit row for a manual subscription reminder sent from the platform admin UI."""
+
+    __tablename__ = "admin_subscription_reminders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    reminder_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    reports_generated: Mapped[int] = mapped_column(Integer, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    email_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    company: Mapped[Company] = relationship("Company", back_populates="admin_subscription_reminders")

@@ -57,6 +57,12 @@ def count_fir_reports_this_month(db: Session, company_id: int, today: date | Non
     return int(db.execute(q).scalar_one())
 
 
+def count_fir_reports_total(db: Session, company_id: int) -> int:
+    """All-time FIR intelligence row count for this tenant (``fir_events`` for ``company_id``)."""
+    q = select(func.count()).select_from(FirReportEvent).where(FirReportEvent.company_id == company_id)
+    return int(db.execute(q).scalar_one())
+
+
 def count_combined_usage_this_month(db: Session, company_id: int, today: date | None = None) -> int:
     """Invoices (v2) + FIR report rows — both count toward the same monthly plan cap."""
     return count_invoices_this_month(db, company_id, today) + count_fir_reports_this_month(

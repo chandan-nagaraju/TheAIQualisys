@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api";
+import { AdminSubscriptionReminderButton } from "../components/AdminSubscriptionReminderButton";
 
 type Company = {
   id: number;
@@ -166,12 +167,15 @@ export default function AdminCompanyPage() {
       <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold text-white">Actions</h2>
-          <Link
-            to={`/admin/companies/${id}/fir-intelligence`}
-            className="inline-flex shrink-0 items-center justify-center rounded-lg border border-brand-600/50 bg-brand-600/10 px-4 py-2 text-sm font-medium text-brand-400 hover:bg-brand-600/20"
-          >
-            FIR intelligence
-          </Link>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <AdminSubscriptionReminderButton companyId={Number(id)} />
+            <Link
+              to={`/admin/companies/${id}/fir-intelligence`}
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-brand-600/50 bg-brand-600/10 px-4 py-2 text-sm font-medium text-brand-400 hover:bg-brand-600/20"
+            >
+              FIR intelligence
+            </Link>
+          </div>
         </div>
         <form className="flex flex-wrap items-end gap-3" onSubmit={activate}>
           <div>

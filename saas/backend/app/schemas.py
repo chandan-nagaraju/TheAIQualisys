@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -248,6 +249,18 @@ class AdminCompanyPatch(BaseModel):
     subscription_start: date | None = None
     plan_type: str | None = None
     extend_days: int | None = None
+
+
+class AdminSubscriptionReminderSendBody(BaseModel):
+    reminder_type: Literal["ending_soon", "already_ended"]
+
+
+class AdminSubscriptionReminderSendResponse(BaseModel):
+    ok: bool = True
+    email_status: str
+    reports_generated: int
+    recipients_attempted: int
+    emails_sent: int
 
 
 class QmsModuleOverviewItem(BaseModel):

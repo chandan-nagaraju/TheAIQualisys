@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api";
+import { AdminSubscriptionReminderButton } from "../components/AdminSubscriptionReminderButton";
 
 type Dash = {
   total_companies: number;
@@ -178,7 +179,7 @@ export default function AdminDashboardPage() {
                 <th className="px-4 py-3">Logins</th>
                 <th className="px-4 py-3">Usage (mo)</th>
                 <th className="px-4 py-3 text-slate-500">Inv / FIR</th>
-                <th className="px-4 py-3" />
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
@@ -199,9 +200,12 @@ export default function AdminDashboardPage() {
                     {r.monthly_usage} / {r.monthly_fir_reports}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link className="text-brand-600 hover:underline" to={`/admin/companies/${r.id}`}>
-                      Manage
-                    </Link>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <AdminSubscriptionReminderButton companyId={r.id} variant="inline" />
+                      <Link className="text-brand-600 hover:underline" to={`/admin/companies/${r.id}`}>
+                        Manage
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

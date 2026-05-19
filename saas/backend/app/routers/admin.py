@@ -8,8 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.deps import get_db_session, get_platform_admin
+from app.email_util import (
+    build_admin_manual_subscription_reminder_email,
+    is_email_configured,
+    send_plain_text_email,
+)
 from app.fir_analytics import build_fir_intelligence, list_fir_invoice_months
 from app.models import (
+    AdminSubscriptionReminder,
     Company,
     CompanySettings,
     CompanyUser,
@@ -31,6 +37,8 @@ from app.schemas import (
     AdminDashboardResponse,
     AdminFirCustomerRow,
     AdminLoginRequest,
+    AdminSubscriptionReminderSendBody,
+    AdminSubscriptionReminderSendResponse,
     AdminTenantUserRow,
     CompanyOut,
     ModulePricingPatch,
@@ -42,7 +50,12 @@ from app.security import (
     create_admin_token,
     verify_password_and_upgrade,
 )
-from app.subscription_logic import count_fir_reports_this_month, count_invoices_this_month, sync_subscription_status_from_dates
+from app.subscription_logic import (
+    count_fir_reports_this_month,
+    count_fir_reports_total,
+    count_invoices_this_month,
+    sync_subscription_status_from_dates,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -359,6 +372,111 @@ def patch_company(
     db.commit()
     db.refresh(c)
     return _company_out(c)
+
+
+@router.post(
+    "/companies/{company_id}/subscription-reminder",
+    response_model=AdminSubscriptionReminderSendResponse,
+)
+def send_manual_subscription_reminder(
+    company_id: int,
+    body: AdminSubscriptionReminderSendBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Send a subscription reminder email to all non-blocked workspace users for this tenant."""
+    settings = get_settings()
+    if not is_email_configured(settings):
+        raise HTTPException(status_code=503, detail="Email is not configured (Resend or SMTP + EMAIL_FROM).")
+
+    c = db.get(Company, company_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    today = billing_today()
+    if sync_subscription_status_from_dates(c, today):
+        db.add(c)
+        db.commit()
+        db.refresh(c)
+
+    if c.subscription_end is None:
+        raise HTTPException(
+            status_code=400,
+            detail="This tenant has no subscription end date; activate or extend the subscription first.",
+        )
+
+    users = (
+        db.execute(
+            select(CompanyUser).where(
+                CompanyUser.company_id == company_id,
+                CompanyUser.is_blocked == 0,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not users:
+        raise HTTPException(
+            status_code=400,
+            detail="No active (non-blocked) workspace users to email for this tenant.",
+        )
+
+    report_total = count_fir_reports_total(db, company_id)
+    renewal_link = f"{settings.public_app_url.rstrip('/')}/dashboard/billing"
+    end_date_display = c.subscription_end.strftime("%B %d, %Y")
+    plan_name = c.plan_type.title()
+    subject, text = build_admin_manual_subscription_reminder_email(
+        reminder_type=body.reminder_type,
+        customer_name=c.company_name,
+        plan_name=plan_name,
+        end_date_display=end_date_display,
+        report_count=report_total,
+        renewal_link=renewal_link,
+    )
+
+    errors: list[str] = []
+    sent = 0
+    for u in users:
+        try:
+            send_plain_text_email(settings, u.email, subject, text)
+            sent += 1
+        except Exception as exc:  # noqa: BLE001 — surface provider errors to admin
+            errors.append(f"{u.email}: {exc}")
+
+    n = len(users)
+    if sent == n:
+        st = "success"
+        err_msg = None
+    elif sent == 0:
+        st = "failed"
+        err_msg = "; ".join(errors)[:8000]
+    else:
+        st = "partial"
+        err_msg = "; ".join(errors)[:8000]
+
+    db.add(
+        AdminSubscriptionReminder(
+            company_id=company_id,
+            reminder_type=body.reminder_type,
+            reports_generated=report_total,
+            email_status=st,
+            error_message=err_msg,
+        )
+    )
+    db.commit()
+
+    if sent == 0:
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "Failed to send to all recipients", "errors": errors},
+        )
+
+    return AdminSubscriptionReminderSendResponse(
+        email_status=st,
+        reports_generated=report_total,
+        recipients_attempted=n,
+        emails_sent=sent,
+    )
 
 
 @router.delete("/companies/{company_id}")
