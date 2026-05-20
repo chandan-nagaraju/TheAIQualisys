@@ -21,6 +21,7 @@ import PricingPage from "./pages/PricingPage";
 import SignupPage from "./pages/SignupPage";
 import SignupCompletePage from "./pages/SignupCompletePage";
 import UpgradePage from "./pages/UpgradePage";
+import UpgradePayPage from "./pages/UpgradePayPage";
 import CustomersPage from "./pages/workspace/CustomersPage";
 import ExtractedPage from "./pages/workspace/ExtractedPage";
 import InspectionPage from "./pages/workspace/InspectionPage";
@@ -116,6 +117,7 @@ export default function App() {
           }
         />
         <Route path="/upgrade" element={<UpgradePage />} />
+        <Route path="/upgrade/pay" element={<UpgradePayPage />} />
         <Route path="/admin/login" element={<Navigate to="/login" replace />} />
         <Route
           path="/admin"
