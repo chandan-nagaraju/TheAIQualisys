@@ -156,6 +156,39 @@
     font-size: 15px;
     font-family: inherit;
   }
+  .fir-special-char-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 2.2em;
+    padding: 2px;
+    box-sizing: border-box;
+  }
+  .fir-special-char-icon {
+    max-height: 28px;
+    max-width: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+  .fir-special-char-select {
+    font-size: 10px;
+    line-height: 1.2;
+    max-width: 100%;
+    padding: 1px 2px;
+    border: 1px solid #ccc;
+    border-radius: 2px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .fir-special-char-other {
+    font-size: 11px !important;
+    width: 100%;
+    max-width: 100%;
+  }
   input[type="text"]:focus {
     background: #e6f0ff;
     text-align: left;
@@ -354,6 +387,53 @@
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  function firAttrUrl(u) {
+    if (u == null || u === undefined || u === '') return '';
+    return String(u).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  }
+
+  function firSpecialCharTag(raw) {
+    var t = (raw == null || raw === undefined) ? '' : String(raw).trim().toLowerCase();
+    if (t === 'critical') return 'Critical';
+    if (t === 'safety') return 'Safety';
+    if (t === 'important') return 'Important';
+    return '';
+  }
+
+  function firSpecialCharImgUrl(tag) {
+    if (!globalSettings) return '';
+    if (tag === 'Critical') return globalSettings.char_critical_path || '';
+    if (tag === 'Safety') return globalSettings.char_safety_path || '';
+    if (tag === 'Important') return globalSettings.char_important_path || '';
+    return '';
+  }
+
+  function firOnSpecialCharChange(sel) {
+    var box = sel.closest('.fir-special-char-box');
+    if (!box) return;
+    var img = box.querySelector('.fir-special-char-icon');
+    var other = box.querySelector('.fir-special-char-other');
+    var v = sel.value || '';
+    if (other) {
+      if (v) {
+        other.style.display = 'none';
+        other.value = '';
+      } else {
+        other.style.display = 'block';
+      }
+    }
+    var url = firSpecialCharImgUrl(v);
+    if (img) {
+      if (url) {
+        img.src = url;
+        img.style.display = 'block';
+      } else {
+        img.removeAttribute('src');
+        img.style.display = 'none';
+      }
+    }
+  }
+
   if (!partName || !description) {
     document.body.innerHTML = `<h2 style='text-align:center;color:red;'>Missing part data. Please go back and fill the form.</h2>
     <div style='text-align:center;'><button onclick='history.back()'>Go Back</button></div>`;
@@ -383,21 +463,6 @@
       </table>`;
 
     html += `<div class="section-title">A) Dimension Parameters</div>`;
-    if (globalSettings && (globalSettings.char_critical_path || globalSettings.char_safety_path || globalSettings.char_important_path)) {
-      let leg = '<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;margin:6px 0 10px 0;padding:8px 10px;border:1px solid #333;background:#f9f9f9;font-size:10px;line-height:1.2;">';
-      leg += '<span style="font-weight:bold;width:100%;margin-bottom:2px;">Special characteristic symbols (reference)</span>';
-      if (globalSettings.char_critical_path) {
-        leg += '<div style="text-align:center;"><img src="' + globalSettings.char_critical_path + '" style="height:36px;max-width:120px;object-fit:contain;display:block;margin:0 auto 4px;border:1px solid #ccc;background:#fff;padding:2px;" alt=""><div>Critical</div></div>';
-      }
-      if (globalSettings.char_safety_path) {
-        leg += '<div style="text-align:center;"><img src="' + globalSettings.char_safety_path + '" style="height:36px;max-width:120px;object-fit:contain;display:block;margin:0 auto 4px;border:1px solid #ccc;background:#fff;padding:2px;" alt=""><div>Safety</div></div>';
-      }
-      if (globalSettings.char_important_path) {
-        leg += '<div style="text-align:center;"><img src="' + globalSettings.char_important_path + '" style="height:36px;max-width:120px;object-fit:contain;display:block;margin:0 auto 4px;border:1px solid #ccc;background:#fff;padding:2px;" alt=""><div>Important</div></div>';
-      }
-      leg += '</div>';
-      html += leg;
-    }
     html += `
       <table class="data-table" id="dimension-table"><thead>
         <tr><th rowspan="2" style="width:5%;">Sl No</th>
@@ -416,14 +481,34 @@
     const wrapCell = (val) => `<textarea rows="1">${esc(val || '')}</textarea>`;
     const shortInput = (val) => `<input type="text" value="${esc(val || '')}">`;
     const methodInput = (val) => `<input type="text" class="method-input" value="${esc(val || '')}">`;
-    const specialCharInput = (val) => `<input type="text" class="special-char-input" value="${esc(val || '')}">`;
+    const specialCharCell = (val) => {
+      var tag = firSpecialCharTag(val);
+      var customRaw = (!tag && val) ? String(val) : '';
+      var imgUrl = firSpecialCharImgUrl(tag);
+      var imgSrc = imgUrl ? ' src="' + firAttrUrl(imgUrl) + '"' : '';
+      var imgDisplay = imgUrl ? 'display:block;' : 'display:none;';
+      var imgHtml = '<img class="fir-special-char-icon" alt="" style="max-height:28px;max-width:100%;object-fit:contain;' + imgDisplay + '"' + imgSrc + ' />';
+      var oSel = !tag ? ' selected' : '';
+      var cSel = tag === 'Critical' ? ' selected' : '';
+      var sSel = tag === 'Safety' ? ' selected' : '';
+      var iSel = tag === 'Important' ? ' selected' : '';
+      var otherDisplay = tag ? 'none' : (customRaw ? 'block' : 'block');
+      var otherHtml = '<input type="text" class="special-char-input fir-special-char-other" style="display:' + otherDisplay + ';" value="' + esc(customRaw) + '" placeholder="Other…" />';
+      return '<div class="fir-special-char-box">' + imgHtml +
+        '<select class="fir-special-char-select" onchange="firOnSpecialCharChange(this)">' +
+        '<option value=""' + oSel + '>—</option>' +
+        '<option value="Critical"' + cSel + '>Critical</option>' +
+        '<option value="Safety"' + sSel + '>Safety</option>' +
+        '<option value="Important"' + iSel + '>Important</option>' +
+        '</select>' + otherHtml + '</div>';
+    };
     for (let i = 1; i <= totalRows; i++) {
       const idx = i - 1;
       const row = FIR_SPEC_DATA[idx];
       if (row) {
-        html += `<tr><td>${slno++}</td><td>${wrapCell(row.parameter)}</td><td>${wrapCell(row.specification)}</td><td>${specialCharInput(row.special_char)}</td><td>${methodInput(row.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+        html += `<tr><td>${slno++}</td><td>${wrapCell(row.parameter)}</td><td>${wrapCell(row.specification)}</td><td>${specialCharCell(row.special_char)}</td><td>${methodInput(row.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
       } else {
-        html += `<tr><td>${slno++}</td><td>${wrapCell()}</td><td>${wrapCell()}</td><td>${specialCharInput()}</td><td>${methodInput()}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+        html += `<tr><td>${slno++}</td><td>${wrapCell()}</td><td>${wrapCell()}</td><td>${specialCharCell()}</td><td>${methodInput()}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
       }
     }
     html += `</tbody></table>`;
@@ -434,7 +519,7 @@
         let bHtml = '<div class="section-title">B) Customer End Complaints Parameters & Check Points</div><table class="data-table" id="ccp-table"><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         if (FIR_CCP_DATA.length > 0) {
           FIR_CCP_DATA.forEach(function(r, idx) {
-            bHtml += `<tr><td style="width:5%;">${slno++}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharInput(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+            bHtml += `<tr><td style="width:5%;">${slno++}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharCell(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
           });
         }
         bHtml += '</tbody></table>';
@@ -451,10 +536,10 @@
         let dHtml = '<div class="section-title">D) Surface Coating</div><table class="data-table" id="coating-table"><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         if (FIR_COATING_DATA.length > 0) {
           FIR_COATING_DATA.forEach(function(r) {
-            dHtml += `<tr><td>${slno++}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharInput(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+            dHtml += `<tr><td>${slno++}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharCell(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
           });
         } else {
-          dHtml += `<tr><td>${slno++}</td><td>${wrapCell()}</td><td>${wrapCell()}</td><td>${specialCharInput()}</td><td>${methodInput()}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+          dHtml += `<tr><td>${slno++}</td><td>${wrapCell()}</td><td>${wrapCell()}</td><td>${specialCharCell()}</td><td>${methodInput()}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
         }
         dHtml += '</tbody></table>';
         html += bHtml + cHtml + dHtml;
