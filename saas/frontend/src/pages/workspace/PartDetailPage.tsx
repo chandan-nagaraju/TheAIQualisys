@@ -39,6 +39,82 @@ type Detail = {
   coating_rows: Spec[];
 };
 
+/** Global FIR settings: legend images for Critical / Safety / Important (from /api/app/settings). */
+type CharLegendUrls = {
+  char_critical_url: string | null;
+  char_safety_url: string | null;
+  char_important_url: string | null;
+};
+
+type SpecialTag = "" | "Critical" | "Safety" | "Important";
+
+function parseSpecialCharCell(stored: string): { tag: SpecialTag; custom: string } {
+  const raw = (stored ?? "").trim();
+  if (!raw) return { tag: "", custom: "" };
+  const lower = raw.toLowerCase();
+  if (lower === "critical") return { tag: "Critical", custom: "" };
+  if (lower === "safety") return { tag: "Safety", custom: "" };
+  if (lower === "important") return { tag: "Important", custom: "" };
+  return { tag: "", custom: stored };
+}
+
+function normalizeImportedSpecialChar(raw: string | undefined): string {
+  const { tag, custom } = parseSpecialCharCell(raw ?? "");
+  if (tag) return tag;
+  return (custom ?? "").trim();
+}
+
+function SpecialCharEditor({
+  value,
+  onChange,
+  legendUrls,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  legendUrls: CharLegendUrls;
+}) {
+  const { tag, custom } = parseSpecialCharCell(value);
+  const img =
+    tag === "Critical"
+      ? legendUrls.char_critical_url
+      : tag === "Safety"
+        ? legendUrls.char_safety_url
+        : tag === "Important"
+          ? legendUrls.char_important_url
+          : null;
+
+  return (
+    <div className="flex min-w-[7rem] flex-col gap-1 px-1 py-1">
+      <select
+        className="w-full rounded border border-slate-200 bg-white px-1 py-1 text-sm text-slate-900"
+        value={tag}
+        onChange={(e) => onChange((e.target.value as SpecialTag) || "")}
+        aria-label="Special characteristic"
+      >
+        <option value="">—</option>
+        <option value="Critical">Critical</option>
+        <option value="Safety">Safety</option>
+        <option value="Important">Important</option>
+      </select>
+      {tag ? (
+        img ? (
+          <img src={img} alt="" className="mx-auto max-h-10 max-w-[5rem] object-contain" />
+        ) : (
+          <span className="block text-center text-[10px] text-slate-400">Set image in Global FIR settings</span>
+        )
+      ) : null}
+      {!tag ? (
+        <input
+          className="w-full rounded border border-dashed border-slate-200 px-1 py-0.5 text-xs text-slate-800 placeholder:text-slate-400"
+          placeholder="Other text…"
+          value={custom}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function emptySpec(): Spec {
   return { parameter: "", specification: "", special_char: "", method_of_inspection: "" };
 }
@@ -59,7 +135,7 @@ function mergePasteFourColumn(current: Spec[], text: string): Spec[] {
     return {
       parameter: cells[0] ?? "",
       specification: cells[1] ?? "",
-      special_char: cells[2] ?? "",
+      special_char: normalizeImportedSpecialChar(cells[2]),
       method_of_inspection: cells[3] ?? "",
     };
   });
@@ -83,7 +159,7 @@ function parseCoatingPasteLine(line: string): Spec {
     return {
       parameter: cells[0] ?? "",
       specification: cells[1] ?? "",
-      special_char: cells[2] ?? "",
+      special_char: normalizeImportedSpecialChar(cells[2]),
       method_of_inspection: cells[3] ?? "",
     };
   }
@@ -165,6 +241,7 @@ function SpecSectionWithPaste({
   setRows,
   onSave,
   mergePaste,
+  charLegendUrls,
 }: {
   title: string;
   hint: string;
@@ -175,6 +252,7 @@ function SpecSectionWithPaste({
   onSave: () => void | Promise<void>;
   /** Override default 4-column paste (e.g. Section D coating heuristics). */
   mergePaste?: (current: Spec[], text: string) => Spec[];
+  charLegendUrls: CharLegendUrls;
 }) {
   const [paste, setPaste] = useState("");
 
@@ -221,16 +299,28 @@ function SpecSectionWithPaste({
             {rows.map((r, i) => (
               <tr key={i}>
                 {(["parameter", "specification", "special_char", "method_of_inspection"] as const).map((k) => (
-                  <td key={k} className="border border-slate-200 p-0">
-                    <input
-                      className="w-full min-w-[6rem] px-2 py-1.5 text-slate-900"
-                      value={r[k]}
-                      onChange={(e) => {
-                        const n = [...rows];
-                        n[i] = { ...n[i], [k]: e.target.value };
-                        setRows(n);
-                      }}
-                    />
+                  <td key={k} className="border border-slate-200 p-0 align-top">
+                    {k === "special_char" ? (
+                      <SpecialCharEditor
+                        value={r[k]}
+                        legendUrls={charLegendUrls}
+                        onChange={(v) => {
+                          const n = [...rows];
+                          n[i] = { ...n[i], special_char: v };
+                          setRows(n);
+                        }}
+                      />
+                    ) : (
+                      <input
+                        className="w-full min-w-[6rem] px-2 py-1.5 text-slate-900"
+                        value={r[k]}
+                        onChange={(e) => {
+                          const n = [...rows];
+                          n[i] = { ...n[i], [k]: e.target.value };
+                          setRows(n);
+                        }}
+                      />
+                    )}
                   </td>
                 ))}
                 <td className="border border-slate-200 px-1 text-center">
@@ -327,6 +417,25 @@ export default function PartDetailPage() {
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [drawingBusy, setDrawingBusy] = useState(false);
+  const [charLegendUrls, setCharLegendUrls] = useState<CharLegendUrls>({
+    char_critical_url: null,
+    char_safety_url: null,
+    char_important_url: null,
+  });
+
+  useEffect(() => {
+    workspaceFetch<CharLegendUrls>("/api/app/settings")
+      .then((s) =>
+        setCharLegendUrls({
+          char_critical_url: s.char_critical_url ?? null,
+          char_safety_url: s.char_safety_url ?? null,
+          char_important_url: s.char_important_url ?? null,
+        }),
+      )
+      .catch(() => {
+        /* keep nulls; dropdown still works */
+      });
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -558,22 +667,24 @@ export default function PartDetailPage() {
 
       <SpecSectionWithPaste
         title="A) Dimension parameters (part_spec_data)"
-        hint="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method) or add a row, then edit and save. This data is loaded into the FIR report when you generate it."
+        hint="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method) or add a row, then edit and save. Special char: choose Critical / Safety / Important to show your Global FIR settings images in the cell; or use Other text for symbols not in that list."
         pasteLabel="Paste from Excel (columns: Parameter, Specification, Special char, Method — tab-separated, one row per line):"
         placeholder={pastePlaceholderA}
         rows={specs}
         setRows={setSpecs}
         onSave={saveSpecs}
+        charLegendUrls={charLegendUrls}
       />
 
       <SpecSectionWithPaste
         title="B) Customer complaint parameters"
-        hint="Paste from Excel (tab-separated) or add a row, edit and save. Loaded into the FIR when you generate the report."
+        hint="Paste from Excel (tab-separated) or add a row, edit and save. Loaded into the FIR when you generate the report. Special char uses the same Critical / Safety / Important dropdown and images as section A."
         pasteLabel="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method):"
         placeholder={pastePlaceholderA}
         rows={ccps}
         setRows={setCcps}
         onSave={saveCcp}
+        charLegendUrls={charLegendUrls}
       />
 
       <MaterialSectionWithPaste rows={mats} setRows={setMats} onSave={saveMat} />
@@ -587,6 +698,7 @@ export default function PartDetailPage() {
         setRows={setCoats}
         onSave={saveCoat}
         mergePaste={mergePasteCoatingRows}
+        charLegendUrls={charLegendUrls}
       />
     </div>
   );
