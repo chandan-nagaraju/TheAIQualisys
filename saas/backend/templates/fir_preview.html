@@ -167,7 +167,7 @@
     box-sizing: border-box;
   }
   .fir-special-char-icon {
-    max-height: 28px;
+    max-height: 36px;
     max-width: 100%;
     width: auto;
     height: auto;
@@ -294,6 +294,7 @@
 </head>
 
 <body>
+  <!-- fir-preview-ui: no global special-char legend; icons inline in table cells -->
   <button class="download-btn" id="downloadPDF">⬇ Download PDF</button>
   <button class="autofill-btn" id="autofillMeasuredBtn" type="button">Auto-fill measured values</button>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -487,7 +488,7 @@
       var imgUrl = firSpecialCharImgUrl(tag);
       var imgSrc = imgUrl ? ' src="' + firAttrUrl(imgUrl) + '"' : '';
       var imgDisplay = imgUrl ? 'display:block;' : 'display:none;';
-      var imgHtml = '<img class="fir-special-char-icon" alt="" style="max-height:28px;max-width:100%;object-fit:contain;' + imgDisplay + '"' + imgSrc + ' />';
+      var imgHtml = '<img class="fir-special-char-icon" alt="" style="max-height:36px;max-width:100%;object-fit:contain;' + imgDisplay + '"' + imgSrc + ' />';
       var oSel = !tag ? ' selected' : '';
       var cSel = tag === 'Critical' ? ' selected' : '';
       var sSel = tag === 'Safety' ? ' selected' : '';
@@ -495,11 +496,11 @@
       var otherDisplay = tag ? 'none' : (customRaw ? 'block' : 'block');
       var otherHtml = '<input type="text" class="special-char-input fir-special-char-other" style="display:' + otherDisplay + ';" value="' + esc(customRaw) + '" placeholder="Other…" />';
       return '<div class="fir-special-char-box">' + imgHtml +
-        '<select class="fir-special-char-select" onchange="firOnSpecialCharChange(this)">' +
+        '<select class="fir-special-char-select" title="Special characteristic" onchange="firOnSpecialCharChange(this)">' +
         '<option value=""' + oSel + '>—</option>' +
-        '<option value="Critical"' + cSel + '>Critical</option>' +
-        '<option value="Safety"' + sSel + '>Safety</option>' +
-        '<option value="Important"' + iSel + '>Important</option>' +
+        '<option value="Critical"' + cSel + '>C</option>' +
+        '<option value="Safety"' + sSel + '>S</option>' +
+        '<option value="Important"' + iSel + '>+</option>' +
         '</select>' + otherHtml + '</div>';
     };
     for (let i = 1; i <= totalRows; i++) {

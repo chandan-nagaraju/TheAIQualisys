@@ -1900,7 +1900,9 @@ def fir_preview(
 
     fir_ctx_settings = _settings_dict_for_fir(db, company.id)
     token = request.query_params.get("token") or ""
-    api_origin = str(request.base_url).rstrip("/")
+    # Same-origin relative URLs so <img src> works in the browser even when
+    # request.base_url behind a proxy would point at an internal host (breaks icons).
+    app_path_prefix = "/api/app"
     for which_key, settings_key in (
         ("logo", "logo_path"),
         ("inspector_signature", "inspector_signature_path"),
@@ -1912,9 +1914,9 @@ def fir_preview(
         v = fir_ctx_settings.get(settings_key)
         if v and token:
             q = f"which={which_key}&token={quote(token, safe='')}"
-            fir_ctx_settings[settings_key] = f"{api_origin}/api/app/fir-asset?{q}"
+            fir_ctx_settings[settings_key] = f"{app_path_prefix}/fir-asset?{q}"
 
-    api_static_base = api_origin + "/api/app/static/"
+    api_static_base = f"{app_path_prefix}/static/"
 
     return templates.TemplateResponse(
         request=request,
@@ -1929,6 +1931,7 @@ def fir_preview(
             "quali_font_format": quali_font_format,
             "api_static_base": api_static_base,
         },
+        headers={"Cache-Control": "private, no-store, max-age=0"},
     )
 
 
