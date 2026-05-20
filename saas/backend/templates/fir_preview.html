@@ -570,6 +570,17 @@
         </table>`;
     html += `</div>`;
     root.insertAdjacentHTML('beforeend', html);
+    /* Strip legacy "Special characteristic symbols (reference)" strip if still present (cached HTML / old builds). */
+    try {
+      var _dimTbl = root.querySelector('#dimension-table');
+      if (_dimTbl && _dimTbl.previousElementSibling) {
+        var _prev = _dimTbl.previousElementSibling;
+        var _ptxt = ((_prev.textContent || '') + '').replace(/\s+/g, ' ');
+        if (_ptxt.indexOf('Special characteristic symbols') !== -1 && _ptxt.indexOf('reference') !== -1) {
+          _prev.remove();
+        }
+      }
+    } catch (_e) { /* ignore */ }
 
     // Apply global settings: logo, company name, and document meta
     const companyCell = root.querySelector('#companyCode');
