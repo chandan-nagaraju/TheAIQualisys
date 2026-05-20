@@ -174,20 +174,16 @@
     object-fit: contain;
     flex-shrink: 0;
   }
-  .fir-special-char-select {
-    font-size: 10px;
-    line-height: 1.2;
-    max-width: 100%;
-    padding: 1px 2px;
-    border: 1px solid #ccc;
-    border-radius: 2px;
-    background: #fff;
-    cursor: pointer;
+  .fir-special-char-static {
+    text-align: center;
+    vertical-align: middle;
+    padding: 2px;
   }
-  .fir-special-char-other {
-    font-size: 11px !important;
-    width: 100%;
-    max-width: 100%;
+  .fir-special-char-text {
+    font-size: 12px;
+    line-height: 1.3;
+    text-align: center;
+    word-break: break-word;
   }
   input[type="text"]:focus {
     background: #e6f0ff;
@@ -294,7 +290,7 @@
 </head>
 
 <body>
-  <!-- fir-preview-ui: no global special-char legend; icons inline in table cells -->
+  <!-- fir-preview-ui: special char read-only from part master; no global legend -->
   <button class="download-btn" id="downloadPDF">⬇ Download PDF</button>
   <button class="autofill-btn" id="autofillMeasuredBtn" type="button">Auto-fill measured values</button>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -409,32 +405,6 @@
     return '';
   }
 
-  function firOnSpecialCharChange(sel) {
-    var box = sel.closest('.fir-special-char-box');
-    if (!box) return;
-    var img = box.querySelector('.fir-special-char-icon');
-    var other = box.querySelector('.fir-special-char-other');
-    var v = sel.value || '';
-    if (other) {
-      if (v) {
-        other.style.display = 'none';
-        other.value = '';
-      } else {
-        other.style.display = 'block';
-      }
-    }
-    var url = firSpecialCharImgUrl(v);
-    if (img) {
-      if (url) {
-        img.src = url;
-        img.style.display = 'block';
-      } else {
-        img.removeAttribute('src');
-        img.style.display = 'none';
-      }
-    }
-  }
-
   if (!partName || !description) {
     document.body.innerHTML = `<h2 style='text-align:center;color:red;'>Missing part data. Please go back and fill the form.</h2>
     <div style='text-align:center;'><button onclick='history.back()'>Go Back</button></div>`;
@@ -482,26 +452,25 @@
     const wrapCell = (val) => `<textarea rows="1">${esc(val || '')}</textarea>`;
     const shortInput = (val) => `<input type="text" value="${esc(val || '')}">`;
     const methodInput = (val) => `<input type="text" class="method-input" value="${esc(val || '')}">`;
+    /** Part-master special_char only: no dropdown/edit on FIR preview. Icon if C/S/I + image in settings; else plain text. */
     const specialCharCell = (val) => {
+      var raw = (val == null || val === undefined) ? '' : String(val).trim();
       var tag = firSpecialCharTag(val);
-      var customRaw = (!tag && val) ? String(val) : '';
       var imgUrl = firSpecialCharImgUrl(tag);
-      var imgSrc = imgUrl ? ' src="' + firAttrUrl(imgUrl) + '"' : '';
-      var imgDisplay = imgUrl ? 'display:block;' : 'display:none;';
-      var imgHtml = '<img class="fir-special-char-icon" alt="" style="max-height:36px;max-width:100%;object-fit:contain;' + imgDisplay + '"' + imgSrc + ' />';
-      var oSel = !tag ? ' selected' : '';
-      var cSel = tag === 'Critical' ? ' selected' : '';
-      var sSel = tag === 'Safety' ? ' selected' : '';
-      var iSel = tag === 'Important' ? ' selected' : '';
-      var otherDisplay = tag ? 'none' : (customRaw ? 'block' : 'block');
-      var otherHtml = '<input type="text" class="special-char-input fir-special-char-other" style="display:' + otherDisplay + ';" value="' + esc(customRaw) + '" placeholder="Other…" />';
-      return '<div class="fir-special-char-box">' + imgHtml +
-        '<select class="fir-special-char-select" title="Special characteristic" onchange="firOnSpecialCharChange(this)">' +
-        '<option value=""' + oSel + '>—</option>' +
-        '<option value="Critical"' + cSel + '>C</option>' +
-        '<option value="Safety"' + sSel + '>S</option>' +
-        '<option value="Important"' + iSel + '>+</option>' +
-        '</select>' + otherHtml + '</div>';
+      var chunks = [];
+      if (imgUrl) {
+        chunks.push(
+          '<img class="fir-special-char-icon" alt="" src="' +
+            firAttrUrl(imgUrl) +
+            '" style="max-height:36px;max-width:100%;object-fit:contain;display:block;margin:0 auto;" />',
+        );
+      } else if (tag) {
+        chunks.push('<div class="fir-special-char-text">' + esc(tag) + '</div>');
+      } else if (raw) {
+        chunks.push('<div class="fir-special-char-text">' + esc(raw) + '</div>');
+      }
+      var inner = chunks.length ? chunks.join('') : '&nbsp;';
+      return '<div class="fir-special-char-box fir-special-char-static">' + inner + '</div>';
     };
     for (let i = 1; i <= totalRows; i++) {
       const idx = i - 1;
