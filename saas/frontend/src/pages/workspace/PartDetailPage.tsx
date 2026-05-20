@@ -59,9 +59,8 @@ function parseSpecialCharCell(stored: string): { tag: SpecialTag; custom: string
 }
 
 function normalizeImportedSpecialChar(raw: string | undefined): string {
-  const { tag, custom } = parseSpecialCharCell(raw ?? "");
-  if (tag) return tag;
-  return (custom ?? "").trim();
+  const { tag } = parseSpecialCharCell(raw ?? "");
+  return tag || "";
 }
 
 function SpecialCharEditor({
@@ -73,7 +72,7 @@ function SpecialCharEditor({
   onChange: (v: string) => void;
   legendUrls: CharLegendUrls;
 }) {
-  const { tag, custom } = parseSpecialCharCell(value);
+  const { tag } = parseSpecialCharCell(value);
   const img =
     tag === "Critical"
       ? legendUrls.char_critical_url
@@ -102,14 +101,6 @@ function SpecialCharEditor({
         ) : (
           <span className="block text-center text-[10px] text-slate-400">Set image in Global FIR settings</span>
         )
-      ) : null}
-      {!tag ? (
-        <input
-          className="w-full rounded border border-dashed border-slate-200 px-1 py-0.5 text-xs text-slate-800 placeholder:text-slate-400"
-          placeholder="Other text…"
-          value={custom}
-          onChange={(e) => onChange(e.target.value)}
-        />
       ) : null}
     </div>
   );
@@ -667,7 +658,7 @@ export default function PartDetailPage() {
 
       <SpecSectionWithPaste
         title="A) Dimension parameters (part_spec_data)"
-        hint="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method) or add a row, then edit and save. Special char: choose Critical / Safety / Important to show your Global FIR settings images in the cell; or use Other text for symbols not in that list."
+        hint="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method) or add a row, then edit and save. Special char: choose Critical / Safety / Important to show your Global FIR settings images in the cell (other values in the paste are ignored)."
         pasteLabel="Paste from Excel (columns: Parameter, Specification, Special char, Method — tab-separated, one row per line):"
         placeholder={pastePlaceholderA}
         rows={specs}
