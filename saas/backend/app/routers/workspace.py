@@ -275,6 +275,9 @@ def _company_settings_select(company_id: int, *, load_asset_blobs: bool):
             defer(CompanySettings.logo_blob),
             defer(CompanySettings.inspector_signature_blob),
             defer(CompanySettings.quality_signature_blob),
+            defer(CompanySettings.char_critical_blob),
+            defer(CompanySettings.char_safety_blob),
+            defer(CompanySettings.char_important_blob),
             defer(CompanySettings.quali_font_blob),
         )
     return q
@@ -370,6 +373,9 @@ def _settings_dict_for_fir(db: Session, company_id: int) -> dict[str, Any]:
             "logo_path": None,
             "inspector_signature_path": None,
             "quality_signature_path": None,
+            "char_critical_path": None,
+            "char_safety_path": None,
+            "char_important_path": None,
             "format_no": "",
             "issue_date": "",
             "doc_rev_no": "",
@@ -381,6 +387,9 @@ def _settings_dict_for_fir(db: Session, company_id: int) -> dict[str, Any]:
         "logo_path": _resolve_settings_image_url(app_settings, st, "logo"),
         "inspector_signature_path": _resolve_settings_image_url(app_settings, st, "inspector_signature"),
         "quality_signature_path": _resolve_settings_image_url(app_settings, st, "quality_signature"),
+        "char_critical_path": _resolve_settings_image_url(app_settings, st, "char_critical"),
+        "char_safety_path": _resolve_settings_image_url(app_settings, st, "char_safety"),
+        "char_important_path": _resolve_settings_image_url(app_settings, st, "char_important"),
         "format_no": st.format_no or "",
         "issue_date": st.issue_date or "",
         "doc_rev_no": st.doc_rev_no or "",
@@ -463,7 +472,15 @@ def create_customer(body: CustomerCreate, ws: WsContext = Depends(get_ws)):
 
 # --- Settings ---
 class SettingsAssetPresignBody(BaseModel):
-    kind: Literal["logo", "inspector_signature", "quality_signature", "quali_font"]
+    kind: Literal[
+        "logo",
+        "inspector_signature",
+        "quality_signature",
+        "char_critical",
+        "char_safety",
+        "char_important",
+        "quali_font",
+    ]
     content_type: str = ""
 
 
@@ -508,6 +525,9 @@ def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
             "logo_url": None,
             "inspector_signature_url": None,
             "quality_signature_url": None,
+            "char_critical_url": None,
+            "char_safety_url": None,
+            "char_important_url": None,
             "quali_font_configured": False,
             "s3_assets_enabled": s3_assets_configured(app_settings),
         }
@@ -520,6 +540,9 @@ def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
         "logo_url": _resolve_settings_image_url(app_settings, st, "logo"),
         "inspector_signature_url": _resolve_settings_image_url(app_settings, st, "inspector_signature"),
         "quality_signature_url": _resolve_settings_image_url(app_settings, st, "quality_signature"),
+        "char_critical_url": _resolve_settings_image_url(app_settings, st, "char_critical"),
+        "char_safety_url": _resolve_settings_image_url(app_settings, st, "char_safety"),
+        "char_important_url": _resolve_settings_image_url(app_settings, st, "char_important"),
         "quali_font_configured": (
             bool((st.quali_font_path or "").strip())
             if s3_assets_configured(app_settings)
@@ -541,11 +564,17 @@ async def save_settings(
     logo: UploadFile | None = File(None),
     inspector_signature: UploadFile | None = File(None),
     quality_signature: UploadFile | None = File(None),
+    char_critical: UploadFile | None = File(None),
+    char_safety: UploadFile | None = File(None),
+    char_important: UploadFile | None = File(None),
     quali_font: UploadFile | None = File(None),
     clear_quali_font: str = Form(""),
     logo_storage_key: str = Form(""),
     inspector_signature_storage_key: str = Form(""),
     quality_signature_storage_key: str = Form(""),
+    char_critical_storage_key: str = Form(""),
+    char_safety_storage_key: str = Form(""),
+    char_important_storage_key: str = Form(""),
     quali_font_storage_key: str = Form(""),
 ):
     app_settings = get_settings()
@@ -626,6 +655,63 @@ async def save_settings(
             st.quality_signature_blob = raw
             st.quality_signature_mime = mime
             st.quality_signature_path = None
+
+    if s3_on and (k := (char_critical_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid critical characteristic image storage key")
+        _delete_replaced_s3_key(st.char_critical_path, key)
+        st.char_critical_path = key
+        st.char_critical_blob = None
+        st.char_critical_mime = None
+    else:
+        char_critical_payload = _read_upload_file(char_critical)
+        if char_critical_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.char_critical_path):
+                delete_s3_object(app_settings, st.char_critical_path)
+            _name, mime, raw = char_critical_payload
+            st.char_critical_blob = raw
+            st.char_critical_mime = mime
+            st.char_critical_path = None
+
+    if s3_on and (k := (char_safety_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid safety characteristic image storage key")
+        _delete_replaced_s3_key(st.char_safety_path, key)
+        st.char_safety_path = key
+        st.char_safety_blob = None
+        st.char_safety_mime = None
+    else:
+        char_safety_payload = _read_upload_file(char_safety)
+        if char_safety_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.char_safety_path):
+                delete_s3_object(app_settings, st.char_safety_path)
+            _name, mime, raw = char_safety_payload
+            st.char_safety_blob = raw
+            st.char_safety_mime = mime
+            st.char_safety_path = None
+
+    if s3_on and (k := (char_important_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid important characteristic image storage key")
+        _delete_replaced_s3_key(st.char_important_path, key)
+        st.char_important_path = key
+        st.char_important_blob = None
+        st.char_important_mime = None
+    else:
+        char_important_payload = _read_upload_file(char_important)
+        if char_important_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.char_important_path):
+                delete_s3_object(app_settings, st.char_important_path)
+            _name, mime, raw = char_important_payload
+            st.char_important_blob = raw
+            st.char_important_mime = mime
+            st.char_important_path = None
 
     clear_q = (clear_quali_font or "").strip().lower() in ("1", "true", "on", "yes")
     if clear_q:
@@ -1562,7 +1648,14 @@ def inspection_record_reports(body: EnrichBody, ws: WsContext = Depends(get_ws))
     }
 
 
-FirAssetWhich = Literal["logo", "inspector_signature", "quality_signature"]
+FirAssetWhich = Literal[
+    "logo",
+    "inspector_signature",
+    "quality_signature",
+    "char_critical",
+    "char_safety",
+    "char_important",
+]
 
 # Browsers reuse GETs across many FIR iframes (same URL per asset); cuts repeat S3 GetObject per page load.
 _FIR_ASSET_CACHE_CONTROL = {"Cache-Control": "private, max-age=120"}
@@ -1599,6 +1692,9 @@ def fir_workspace_asset(
         "logo": ("logo_blob", "logo_mime", "logo_path"),
         "inspector_signature": ("inspector_signature_blob", "inspector_signature_mime", "inspector_signature_path"),
         "quality_signature": ("quality_signature_blob", "quality_signature_mime", "quality_signature_path"),
+        "char_critical": ("char_critical_blob", "char_critical_mime", "char_critical_path"),
+        "char_safety": ("char_safety_blob", "char_safety_mime", "char_safety_path"),
+        "char_important": ("char_important_blob", "char_important_mime", "char_important_path"),
     }[which]
     blob_v = getattr(st, blob_attr)
     mime_v = getattr(st, mime_attr)
@@ -1739,6 +1835,9 @@ def fir_preview(
         ("logo", "logo_path"),
         ("inspector_signature", "inspector_signature_path"),
         ("quality_signature", "quality_signature_path"),
+        ("char_critical", "char_critical_path"),
+        ("char_safety", "char_safety_path"),
+        ("char_important", "char_important_path"),
     ):
         v = fir_ctx_settings.get(settings_key)
         if v and token:

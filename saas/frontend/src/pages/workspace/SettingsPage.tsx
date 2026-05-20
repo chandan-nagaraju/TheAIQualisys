@@ -10,6 +10,9 @@ type St = {
   logo_url: string | null;
   inspector_signature_url: string | null;
   quality_signature_url: string | null;
+  char_critical_url: string | null;
+  char_safety_url: string | null;
+  char_important_url: string | null;
   quali_font_configured: boolean;
   s3_assets_enabled?: boolean;
 };
@@ -21,7 +24,14 @@ type PresignResponse = {
   headers: Record<string, string>;
 };
 
-type AssetKind = "logo" | "inspector_signature" | "quality_signature" | "quali_font";
+type AssetKind =
+  | "logo"
+  | "inspector_signature"
+  | "quality_signature"
+  | "char_critical"
+  | "char_safety"
+  | "char_important"
+  | "quali_font";
 
 type PendingS3 = Partial<Record<AssetKind, { key: string; url: string }>>;
 
@@ -94,6 +104,9 @@ export default function SettingsPage() {
       if (pendingS3.logo) fd.set("logo_storage_key", pendingS3.logo.key);
       if (pendingS3.inspector_signature) fd.set("inspector_signature_storage_key", pendingS3.inspector_signature.key);
       if (pendingS3.quality_signature) fd.set("quality_signature_storage_key", pendingS3.quality_signature.key);
+      if (pendingS3.char_critical) fd.set("char_critical_storage_key", pendingS3.char_critical.key);
+      if (pendingS3.char_safety) fd.set("char_safety_storage_key", pendingS3.char_safety.key);
+      if (pendingS3.char_important) fd.set("char_important_storage_key", pendingS3.char_important.key);
       if (pendingS3.quali_font) fd.set("quali_font_storage_key", pendingS3.quali_font.key);
     }
     try {
@@ -124,14 +137,17 @@ export default function SettingsPage() {
   const logoSrc = pendingS3.logo?.url ?? s.logo_url;
   const insSrc = pendingS3.inspector_signature?.url ?? s.inspector_signature_url;
   const qualSrc = pendingS3.quality_signature?.url ?? s.quality_signature_url;
+  const critSrc = pendingS3.char_critical?.url ?? s.char_critical_url;
+  const safetySrc = pendingS3.char_safety?.url ?? s.char_safety_url;
+  const importantSrc = pendingS3.char_important?.url ?? s.char_important_url;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h1 className="text-xl font-semibold">Global FIR settings</h1>
       <p className="mt-2 text-sm text-slate-600">
         {s3On
-          ? "Logo, signatures, and custom font upload directly to your S3 bucket. Only keys are stored in the database to reduce data transfer."
-          : "This page stores logo/signatures in shared backend storage so they are visible across all machines."}
+          ? "Logo, signatures, special-character legend images, and custom font upload directly to your S3 bucket. Only keys are stored in the database to reduce data transfer."
+          : "This page stores logo, signatures, and special-character images in shared backend storage so they are visible across all machines."}
       </p>
       {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
       {okMsg && <p className="mt-2 text-sm text-green-700">{okMsg}</p>}
@@ -224,6 +240,51 @@ export default function SettingsPage() {
                 <img src={qualSrc} alt="Quality signature" className="mt-3 h-20 w-full rounded bg-white object-contain p-1" />
               )}
             </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <label className="text-xs font-medium text-slate-600">Critical (special characteristic)</label>
+              <input
+                {...(s3On ? {} : { name: "char_critical" })}
+                type="file"
+                accept="image/*"
+                disabled={!!uploadBusy}
+                className="mt-2 block w-full text-sm"
+                onChange={(e) => void onAssetFile("char_critical", e.target.files?.[0])}
+              />
+              {uploadBusy === "char_critical" && <p className="mt-2 text-xs text-slate-500">Uploading…</p>}
+              {critSrc && (
+                <img src={critSrc} alt="Critical characteristic" className="mt-3 h-20 w-full rounded bg-white object-contain p-1" />
+              )}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <label className="text-xs font-medium text-slate-600">Safety (special characteristic)</label>
+              <input
+                {...(s3On ? {} : { name: "char_safety" })}
+                type="file"
+                accept="image/*"
+                disabled={!!uploadBusy}
+                className="mt-2 block w-full text-sm"
+                onChange={(e) => void onAssetFile("char_safety", e.target.files?.[0])}
+              />
+              {uploadBusy === "char_safety" && <p className="mt-2 text-xs text-slate-500">Uploading…</p>}
+              {safetySrc && (
+                <img src={safetySrc} alt="Safety characteristic" className="mt-3 h-20 w-full rounded bg-white object-contain p-1" />
+              )}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <label className="text-xs font-medium text-slate-600">Important (special characteristic)</label>
+              <input
+                {...(s3On ? {} : { name: "char_important" })}
+                type="file"
+                accept="image/*"
+                disabled={!!uploadBusy}
+                className="mt-2 block w-full text-sm"
+                onChange={(e) => void onAssetFile("char_important", e.target.files?.[0])}
+              />
+              {uploadBusy === "char_important" && <p className="mt-2 text-xs text-slate-500">Uploading…</p>}
+              {importantSrc && (
+                <img src={importantSrc} alt="Important characteristic" className="mt-3 h-20 w-full rounded bg-white object-contain p-1" />
+              )}
+            </div>
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2 xl:col-span-3">
               <label className="text-xs font-medium text-slate-600">FIR measured-values font (replaces Quali_1.ttf)</label>
               <p className="mt-1 text-xs text-slate-500">
@@ -264,7 +325,7 @@ export default function SettingsPage() {
           <div className="sticky top-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <h2 className="text-sm font-semibold text-slate-800">Tips</h2>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">
-              <li>Use PNG/JPG images with transparent or white background.</li>
+              <li>Use PNG/JPG images with transparent or white background (including Critical / Safety / Important symbols for the FIR legend).</li>
               <li>{s3On ? "Files upload when you pick them; click Save settings to store keys in the app." : "Click Save settings after selecting files."}</li>
               <li>Images are shared for all users of your company.</li>
               <li>Custom .ttf applies to FIR report measured-value fields everywhere that font is used.</li>

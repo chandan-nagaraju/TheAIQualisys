@@ -8,7 +8,15 @@ from botocore.config import Config
 
 from app.config import Settings
 
-SettingsAssetKind = Literal["logo", "inspector_signature", "quality_signature", "quali_font"]
+SettingsAssetKind = Literal[
+    "logo",
+    "inspector_signature",
+    "quality_signature",
+    "char_critical",
+    "char_safety",
+    "char_important",
+    "quali_font",
+]
 
 _IMAGE_CT = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
 _FONT_CT = frozenset(
@@ -90,6 +98,9 @@ def company_asset_object_key(
     company/{id}/logo/logo.{ext}
     company/{id}/signatures/inspector.{ext}
     company/{id}/signatures/quality.{ext}
+    company/{id}/characteristics/critical.{ext}
+    company/{id}/characteristics/safety.{ext}
+    company/{id}/characteristics/important.{ext}
     company/{id}/fonts/Quali_1.ttf
     """
     raw_ct = (content_type or "").split(";")[0].strip()
@@ -110,6 +121,12 @@ def company_asset_object_key(
         return f"{base}/signatures/inspector{ext}", ct_for_sign
     if kind == "quality_signature":
         return f"{base}/signatures/quality{ext}", ct_for_sign
+    if kind == "char_critical":
+        return f"{base}/characteristics/critical{ext}", ct_for_sign
+    if kind == "char_safety":
+        return f"{base}/characteristics/safety{ext}", ct_for_sign
+    if kind == "char_important":
+        return f"{base}/characteristics/important{ext}", ct_for_sign
     raise ValueError("Unknown asset kind")
 
 

@@ -382,7 +382,23 @@
         <tr><td class="bold" colspan="2">DRAW.REV NO :</td><td colspan="14"><input type="text" value="${drawRev}"></td></tr>
       </table>`;
 
-    html += `<div class="section-title">A) Dimension Parameters</div>
+    html += `<div class="section-title">A) Dimension Parameters</div>`;
+    if (globalSettings && (globalSettings.char_critical_path || globalSettings.char_safety_path || globalSettings.char_important_path)) {
+      let leg = '<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;margin:6px 0 10px 0;padding:8px 10px;border:1px solid #333;background:#f9f9f9;font-size:10px;line-height:1.2;">';
+      leg += '<span style="font-weight:bold;width:100%;margin-bottom:2px;">Special characteristic symbols (reference)</span>';
+      if (globalSettings.char_critical_path) {
+        leg += '<div style="text-align:center;"><img src="' + globalSettings.char_critical_path + '" style="height:36px;max-width:120px;object-fit:contain;display:block;margin:0 auto 4px;border:1px solid #ccc;background:#fff;padding:2px;" alt=""><div>Critical</div></div>';
+      }
+      if (globalSettings.char_safety_path) {
+        leg += '<div style="text-align:center;"><img src="' + globalSettings.char_safety_path + '" style="height:36px;max-width:120px;object-fit:contain;display:block;margin:0 auto 4px;border:1px solid #ccc;background:#fff;padding:2px;" alt=""><div>Safety</div></div>';
+      }
+      if (globalSettings.char_important_path) {
+        leg += '<div style="text-align:center;"><img src="' + globalSettings.char_important_path + '" style="height:36px;max-width:120px;object-fit:contain;display:block;margin:0 auto 4px;border:1px solid #ccc;background:#fff;padding:2px;" alt=""><div>Important</div></div>';
+      }
+      leg += '</div>';
+      html += leg;
+    }
+    html += `
       <table class="data-table" id="dimension-table"><thead>
         <tr><th rowspan="2" style="width:5%;">Sl No</th>
         <th rowspan="2" style="width:15%;">Parameter</th>
