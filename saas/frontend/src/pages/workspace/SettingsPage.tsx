@@ -243,7 +243,7 @@ export default function SettingsPage() {
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <label className="text-xs font-medium text-slate-600">Critical (special characteristic)</label>
               <input
-                {...(s3On ? {} : { name: "char_critical" })}
+                name="char_critical"
                 type="file"
                 accept="image/*"
                 disabled={!!uploadBusy}
@@ -258,7 +258,7 @@ export default function SettingsPage() {
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <label className="text-xs font-medium text-slate-600">Safety (special characteristic)</label>
               <input
-                {...(s3On ? {} : { name: "char_safety" })}
+                name="char_safety"
                 type="file"
                 accept="image/*"
                 disabled={!!uploadBusy}
@@ -273,7 +273,7 @@ export default function SettingsPage() {
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <label className="text-xs font-medium text-slate-600">Important (special characteristic)</label>
               <input
-                {...(s3On ? {} : { name: "char_important" })}
+                name="char_important"
                 type="file"
                 accept="image/*"
                 disabled={!!uploadBusy}

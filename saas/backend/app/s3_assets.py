@@ -130,6 +130,35 @@ def company_asset_object_key(
     raise ValueError("Unknown asset kind")
 
 
+def put_settings_asset_object(
+    app_settings: Settings,
+    *,
+    company_id: int,
+    kind: SettingsAssetKind,
+    body: bytes,
+    content_type: str,
+) -> str:
+    """
+    Upload bytes to the canonical S3 key for ``kind`` (server-side).
+
+    Used when the browser sent multipart but no presigned client PUT ran, and whenever
+    we must guarantee objects live in the bucket (not BYTEA) while S3 is configured.
+    """
+    if not s3_assets_configured(app_settings):
+        raise RuntimeError("S3 not configured")
+    key, ct_for_sign = company_asset_object_key(company_id, kind, content_type)
+    client = _s3_client(app_settings)
+    bucket = app_settings.s3_bucket_name
+    if not bucket:
+        raise RuntimeError("S3 bucket not configured")
+    ct = (ct_for_sign.split(";")[0].strip() if ct_for_sign else "") or "application/octet-stream"
+    try:
+        client.put_object(Bucket=bucket, Key=key, Body=body, ContentType=ct)
+    except Exception as e:
+        raise RuntimeError("S3 put_object failed") from e
+    return key
+
+
 def presign_settings_asset_put(
     app_settings: Settings,
     *,

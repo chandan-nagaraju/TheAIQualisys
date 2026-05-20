@@ -32,6 +32,7 @@ from app.s3_assets import (
     is_stored_s3_key,
     normalize_storage_key,
     presign_settings_asset_put,
+    put_settings_asset_object,
     s3_assets_configured,
 )
 from app.dates import billing_today
@@ -665,6 +666,29 @@ async def save_settings(
         st.char_critical_path = key
         st.char_critical_blob = None
         st.char_critical_mime = None
+    elif s3_on:
+        char_critical_payload = _read_upload_file(char_critical)
+        if char_critical_payload:
+            _name, mime, raw = char_critical_payload
+            try:
+                key = put_settings_asset_object(
+                    app_settings,
+                    company_id=ws.company.id,
+                    kind="char_critical",
+                    body=raw,
+                    content_type=mime or "image/png",
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except RuntimeError:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to store critical characteristic image in S3",
+                )
+            _delete_replaced_s3_key(st.char_critical_path, key)
+            st.char_critical_path = key
+            st.char_critical_blob = None
+            st.char_critical_mime = None
     else:
         char_critical_payload = _read_upload_file(char_critical)
         if char_critical_payload:
@@ -684,6 +708,29 @@ async def save_settings(
         st.char_safety_path = key
         st.char_safety_blob = None
         st.char_safety_mime = None
+    elif s3_on:
+        char_safety_payload = _read_upload_file(char_safety)
+        if char_safety_payload:
+            _name, mime, raw = char_safety_payload
+            try:
+                key = put_settings_asset_object(
+                    app_settings,
+                    company_id=ws.company.id,
+                    kind="char_safety",
+                    body=raw,
+                    content_type=mime or "image/png",
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except RuntimeError:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to store safety characteristic image in S3",
+                )
+            _delete_replaced_s3_key(st.char_safety_path, key)
+            st.char_safety_path = key
+            st.char_safety_blob = None
+            st.char_safety_mime = None
     else:
         char_safety_payload = _read_upload_file(char_safety)
         if char_safety_payload:
@@ -703,6 +750,29 @@ async def save_settings(
         st.char_important_path = key
         st.char_important_blob = None
         st.char_important_mime = None
+    elif s3_on:
+        char_important_payload = _read_upload_file(char_important)
+        if char_important_payload:
+            _name, mime, raw = char_important_payload
+            try:
+                key = put_settings_asset_object(
+                    app_settings,
+                    company_id=ws.company.id,
+                    kind="char_important",
+                    body=raw,
+                    content_type=mime or "image/png",
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except RuntimeError:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to store important characteristic image in S3",
+                )
+            _delete_replaced_s3_key(st.char_important_path, key)
+            st.char_important_path = key
+            st.char_important_blob = None
+            st.char_important_mime = None
     else:
         char_important_payload = _read_upload_file(char_important)
         if char_important_payload:
