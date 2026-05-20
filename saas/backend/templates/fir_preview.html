@@ -570,15 +570,18 @@
         </table>`;
     html += `</div>`;
     root.insertAdjacentHTML('beforeend', html);
-    /* Strip legacy "Special characteristic symbols (reference)" strip if still present (cached HTML / old builds). */
+    /* Remove legacy "Special characteristic symbols (reference)" legend (any nesting; old/cached builds). */
     try {
-      var _dimTbl = root.querySelector('#dimension-table');
-      if (_dimTbl && _dimTbl.previousElementSibling) {
-        var _prev = _dimTbl.previousElementSibling;
-        var _ptxt = ((_prev.textContent || '') + '').replace(/\s+/g, ' ');
-        if (_ptxt.indexOf('Special characteristic symbols') !== -1 && _ptxt.indexOf('reference') !== -1) {
-          _prev.remove();
-        }
+      var _rc = root.querySelector('.report-container');
+      if (_rc) {
+        _rc.querySelectorAll('div').forEach(function (el) {
+          if (el.closest('#dimension-table')) return;
+          if (el.closest('table.header-table')) return;
+          var _t = ((el.textContent || '') + '').replace(/\s+/g, ' ').toLowerCase();
+          if (_t.indexOf('special characteristic symbols') !== -1 && _t.indexOf('reference') !== -1) {
+            el.remove();
+          }
+        });
       }
     } catch (_e) { /* ignore */ }
 
