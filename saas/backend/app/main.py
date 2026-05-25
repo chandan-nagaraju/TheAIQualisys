@@ -176,7 +176,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="FIR Automation SaaS API", lifespan=lifespan)
+    app = FastAPI(title="Final inspection reports SaaS API", lifespan=lifespan)
 
     raw_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     pub = (settings.public_app_url or "").strip().rstrip("/")
@@ -224,7 +224,7 @@ def create_app() -> FastAPI:
         status = getattr(request.app.state, "startup_status", "pending")
         elapsed = round(time.monotonic() - getattr(request.app.state, "startup_started_monotonic", time.monotonic()), 2)
         return {
-            "service": "FIR Automation SaaS API",
+            "service": "Final inspection reports SaaS API",
             "health": "/health",
             "docs": "/docs",
             "db_ready": ready,

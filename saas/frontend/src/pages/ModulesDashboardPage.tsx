@@ -107,7 +107,7 @@ export default function ModulesDashboardPage() {
       <div>
         <h1 className="text-2xl font-semibold text-white">QMS dashboard</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Choose a module. FIR is fully enabled; other modules use trial then subscription.
+          Choose a module. Final inspection reports are fully enabled; other modules use trial then subscription.
         </p>
       </div>
 
@@ -140,7 +140,7 @@ export default function ModulesDashboardPage() {
 
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         <ModuleCard
-          title="FIR Automation"
+          title="Final inspection reports"
           description="Invoices, inspection, parts master, printable FIR — full workspace."
           badgeLabel="Live"
           badgeKey="live"

@@ -73,7 +73,7 @@ def billing_overview(
     modules: list[BillingModuleRow] = [
         BillingModuleRow(
             module_key="fir",
-            display_name="FIR Automation",
+            display_name="Final inspection reports",
             subscription_status=_fir_module_status(company, today, settings.enable_subscription),
             reports_this_month=fir_only,
             combined_usage_this_month=inv_combined,

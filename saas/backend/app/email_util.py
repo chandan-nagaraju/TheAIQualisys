@@ -15,7 +15,7 @@ from typing import Literal
 
 from app.config import Settings
 
-SUBSCRIPTION_EXPIRY_SUBJECT = "Your FIR Automation subscription ends today"
+SUBSCRIPTION_EXPIRY_SUBJECT = "Your Final inspection reports subscription ends today"
 SUBSCRIPTION_EXPIRY_REPLY_TO = "admin@theaiqualisys.com"
 
 
@@ -220,7 +220,8 @@ def _subscription_expiry_text_body(
 ) -> str:
     return (
         "Hello,\n\n"
-        "We hope FIR Automation has been helping your team save time and make inspection reporting easier.\n\n"
+        "We hope you've found Final inspection reports helpful — saving time and making inspection reporting easier "
+        "for your team.\n\n"
         f"We wanted to gently remind you that your subscription for {company_name} is scheduled to end today, "
         f"{subscription_end_formatted}.\n\n"
         f"Over the past month, your team has processed {fir_count} FIR report entries through the platform. "
@@ -252,7 +253,7 @@ def _subscription_expiry_html_body(
 <body style="margin:0;padding:24px;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.65;color:#1e293b;background:#f8fafc;">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;padding:32px;border-radius:12px;border:1px solid #e2e8f0;">
     <p style="margin:0 0 16px;">Hello,</p>
-    <p style="margin:0 0 16px;">We hope FIR Automation has been helping your team save time and make inspection reporting easier.</p>
+    <p style="margin:0 0 16px;">We hope you've found Final inspection reports helpful — saving time and making inspection reporting easier for your team.</p>
     <p style="margin:0 0 16px;">We wanted to gently remind you that your subscription for <strong>{cn}</strong> is scheduled to end today, <strong>{df}</strong>.</p>
     <p style="margin:0 0 16px;">Over the past month, your team has processed {count_bold} FIR report entries through the platform. It has been a pleasure supporting your work, and we would be honored to continue helping your team streamline inspection and reporting.</p>
     <p style="margin:0 0 20px;">To avoid any interruption in service, you can renew your subscription using the button below:</p>
@@ -268,7 +269,7 @@ def _subscription_expiry_html_body(
 
 
 def send_password_reset_email(settings: Settings, to_email: str, reset_link: str) -> None:
-    subject = "Reset your FIR Automation password"
+    subject = "Reset your password (Final inspection reports)"
     text = (
         f"You requested a password reset.\n\nOpen this link to choose a new password (expires in 1 hour):\n{reset_link}\n\n"
         "If you did not request this, you can ignore this email."

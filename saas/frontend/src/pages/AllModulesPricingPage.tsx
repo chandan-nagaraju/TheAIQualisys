@@ -65,7 +65,7 @@ export default function AllModulesPricingPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-brand-500/30 bg-gradient-to-br from-brand-950/50 to-slate-900/80 p-6">
-          <h2 className="text-lg font-semibold text-white">FIR Automation</h2>
+          <h2 className="text-lg font-semibold text-white">Final inspection reports</h2>
           <p className="mt-2 text-sm text-slate-400">Usage-based tiers for inspection and reports.</p>
           <div className="mt-6 space-y-4">
             {plans.length === 0 && !err ? (

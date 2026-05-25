@@ -113,11 +113,11 @@ export default function LandingPage() {
       <section>
         <h2 className={sectionTitleClass}>Product status</h2>
         <p className={sectionDescClass}>
-          Ship quality workflows incrementally. FIR is production-ready; additional modules are rolling out.
+          Ship quality workflows incrementally. Final inspection reporting is production-ready; additional modules are rolling out.
         </p>
         <ul className="mx-auto mt-10 max-w-2xl divide-y divide-slate-800 rounded-2xl border border-slate-800 bg-slate-900/40">
           <li className="flex items-center justify-between gap-4 px-6 py-4">
-            <span className="font-medium text-slate-200">FIR Automation</span>
+            <span className="font-medium text-slate-200">Final inspection reports</span>
             <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-400">
               Available now
             </span>
@@ -143,7 +143,7 @@ export default function LandingPage() {
 
         <div className="mt-10 grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-brand-500/30 bg-gradient-to-br from-brand-950/50 to-slate-900/80 p-6">
-            <h3 className="text-lg font-semibold text-white">FIR Automation</h3>
+            <h3 className="text-lg font-semibold text-white">Final inspection reports</h3>
             <p className="mt-2 text-sm text-slate-400">Final Inspection Reports — usage-based tiers.</p>
             <div className="mt-6 space-y-4">
               {plans.length === 0 && !planErr ? (

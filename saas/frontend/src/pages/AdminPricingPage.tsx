@@ -271,7 +271,7 @@ export default function AdminPricingPage() {
       )}
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-white">FIR Automation (plan tiers)</h2>
+        <h2 className="text-lg font-semibold text-white">Final inspection reports (plan tiers)</h2>
         <div className="space-y-4">
           {firRows.map((r) => (
             <RowEditor key={r.module_name} row={r} onSaved={() => setTick((x) => x + 1)} />
