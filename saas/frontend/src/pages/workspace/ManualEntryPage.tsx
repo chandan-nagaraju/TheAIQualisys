@@ -70,6 +70,8 @@ export default function ManualEntryPage() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [partMasterKeys, setPartMasterKeys] = useState<Set<string>>(new Set());
+  /** False until `/api/app/parts` finishes for `scopeCustomerId` (avoid showing ✗ while loading). */
+  const [partMasterLoaded, setPartMasterLoaded] = useState(false);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [scopeCustomerId, setScopeCustomerId] = useState<number | null>(null);
 
@@ -105,8 +107,10 @@ export default function ManualEntryPage() {
     let cancelled = false;
     if (scopeCustomerId == null) {
       setPartMasterKeys(new Set());
+      setPartMasterLoaded(false);
       return;
     }
+    setPartMasterLoaded(false);
     setWorkspaceCustomerId(scopeCustomerId);
     const q = `?customer_id=${scopeCustomerId}`;
     workspaceFetch<PartMasterRow[]>(`/api/app/parts${q}`)
@@ -116,6 +120,9 @@ export default function ManualEntryPage() {
       })
       .catch(() => {
         if (!cancelled) setPartMasterKeys(new Set());
+      })
+      .finally(() => {
+        if (!cancelled) setPartMasterLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -340,15 +347,29 @@ export default function ManualEntryPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => (
+            {rows.map((r, i) => {
+              const partSan = sanitizePartNoUpper(r.partNumber);
+              const partKey = partKeyFromInput(r.partNumber);
+              const hasPartText = partSan.length > 0;
+              const inMaster = hasPartText && partMasterKeys.has(partKey);
+              const notInMaster = hasPartText && partMasterLoaded && !inMaster;
+              const statusId = inMaster ? `part-ok-${i}` : notInMaster ? `part-bad-${i}` : undefined;
+
+              return (
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50/80"}>
                 <td className="border-b border-slate-100 px-2 py-1.5 align-middle text-slate-500 tabular-nums">
                   {i + 1}
                 </td>
                 <td className="border-b border-slate-100 px-2 py-1.5 align-middle">
-                  <div className="flex min-w-[10rem] items-center gap-1">
+                  <div className="relative min-w-[10rem]">
                     <input
-                      className="w-full min-w-0 rounded border border-slate-300 px-2 py-1.5 uppercase"
+                      className={`w-full min-w-0 rounded border py-1.5 pl-2 pr-9 uppercase ${
+                        inMaster
+                          ? "border-emerald-500/70 bg-emerald-50/40"
+                          : notInMaster
+                            ? "border-red-400/90 bg-red-50/35"
+                            : "border-slate-300 bg-white"
+                      }`}
                       value={r.partNumber}
                       onChange={(e) => updateRow(i, { partNumber: sanitizePartNoUpper(e.target.value) })}
                       autoComplete="off"
@@ -357,20 +378,21 @@ export default function ManualEntryPage() {
                       spellCheck={false}
                       pattern="[A-Z0-9]*"
                       title="Letters A–Z and digits 0–9 only"
-                      aria-describedby={partMasterKeys.has(partKeyFromInput(r.partNumber)) ? `part-in-master-${i}` : undefined}
+                      aria-invalid={notInMaster || undefined}
+                      aria-describedby={statusId}
                     />
-                    {sanitizePartNoUpper(r.partNumber) && partMasterKeys.has(partKeyFromInput(r.partNumber)) ? (
+                    {inMaster ? (
                       <span
-                        id={`part-in-master-${i}`}
-                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-100"
-                        title="This part number is in Parts master"
+                        id={statusId}
+                        className="pointer-events-none absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-200"
+                        title="Part number is in Parts master"
                         aria-label="Part number found in Parts master"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           viewBox="0 0 20 20"
                           fill="currentColor"
-                          className="h-3.5 w-3.5"
+                          className="h-3 w-3"
                           aria-hidden
                         >
                           <path
@@ -378,6 +400,24 @@ export default function ManualEntryPage() {
                             d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
                             clipRule="evenodd"
                           />
+                        </svg>
+                      </span>
+                    ) : null}
+                    {notInMaster ? (
+                      <span
+                        id={statusId}
+                        className="pointer-events-none absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-red-600 text-white shadow-sm ring-1 ring-red-200"
+                        title="Part number not in Parts master for this customer — add it in Parts master first"
+                        aria-label="Part number not found in Parts master"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="h-3 w-3"
+                          aria-hidden
+                        >
+                          <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
                         </svg>
                       </span>
                     ) : null}
@@ -419,7 +459,8 @@ export default function ManualEntryPage() {
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
