@@ -10,6 +10,8 @@ export default function UploadPage() {
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  /** How many manual FIR rows to open on the manual-entry page (clamped there as well). */
+  const [manualReportCount, setManualReportCount] = useState(3);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +86,12 @@ export default function UploadPage() {
 
   const uploadBlocked = customers.length > 1 && selectedCustomerId == null;
 
+  const clampedManualCount = Math.min(50, Math.max(1, Math.floor(manualReportCount) || 1));
+
+  function goManualEntry() {
+    nav("/workspace/manual-entry", { state: { desiredRowCount: clampedManualCount } });
+  }
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold">Upload invoice details</h1>
@@ -142,17 +150,31 @@ export default function UploadPage() {
           />
         </label>
       </div>
-      <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3">
-        <p className="text-sm text-slate-700">
-          Don&apos;t have an Excel file?{" "}
+      <div className="mt-6 border-t border-slate-200 pt-4">
+        <p className="text-sm font-medium text-slate-800">Manual entry (no Excel)</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Set how many FIR line items you need, then fill the table on the next screen.
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="text-sm text-slate-700">
+            <span className="block text-slate-600">Number of reports</span>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              className="mt-1 w-24 rounded border border-slate-300 bg-white px-2 py-1.5 tabular-nums"
+              value={manualReportCount}
+              onChange={(e) => setManualReportCount(Number(e.target.value))}
+            />
+          </label>
           <button
             type="button"
-            className="font-medium text-blue-700 underline"
-            onClick={() => nav("/workspace/manual-entry")}
+            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+            onClick={goManualEntry}
           >
-            Enter rows manually
+            Continue without Excel
           </button>
-        </p>
+        </div>
       </div>
     </div>
   );

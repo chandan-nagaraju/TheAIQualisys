@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { FormEvent, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { getWorkspaceCustomerId, setWorkspaceCustomerId, workspaceFetch } from "../../api";
 import { sanitizePartNoUpper } from "../../utils/partFields";
 
@@ -10,7 +10,8 @@ type ManualRow = {
   date: string;
 };
 
-const MAX_ROWS = 3;
+/** Manual invoice entry: one row per FIR line item (aligned with typical Excel batch size). */
+const MAX_MANUAL_ROWS = 50;
 
 function partKeyFromInput(s: string): string {
   return sanitizePartNoUpper(s).toLowerCase();
@@ -20,6 +21,15 @@ type CustomerRow = { id: number; vendor_code: string; name: string };
 
 function blankRow(): ManualRow {
   return { partNumber: "", quantity: "", invoiceNumber: "", date: "" };
+}
+
+function rowHasData(r: ManualRow): boolean {
+  return !!(r.partNumber.trim() || r.quantity.trim() || r.invoiceNumber.trim() || r.date.trim());
+}
+
+function clampRowCount(n: number): number {
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(MAX_MANUAL_ROWS, Math.max(1, Math.floor(n)));
 }
 
 type PartMasterRow = {
@@ -53,12 +63,24 @@ function fromDateInput(v: string): string {
 
 export default function ManualEntryPage() {
   const nav = useNavigate();
+  const loc = useLocation();
+
   const [rows, setRows] = useState<ManualRow[]>([blankRow()]);
+  const [rowCountInput, setRowCountInput] = useState("1");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [partMasterKeys, setPartMasterKeys] = useState<Set<string>>(new Set());
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [scopeCustomerId, setScopeCustomerId] = useState<number | null>(null);
+
+  /** Open with N empty rows when coming from upload (or other) with `desiredRowCount`. */
+  useLayoutEffect(() => {
+    const raw = (loc.state as { desiredRowCount?: number } | null)?.desiredRowCount;
+    if (raw == null || !Number.isFinite(raw)) return;
+    const c = clampRowCount(raw);
+    setRows(Array.from({ length: c }, () => blankRow()));
+    setRowCountInput(String(c));
+  }, [loc.key]);
 
   useEffect(() => {
     workspaceFetch<CustomerRow[]>("/api/app/customers")
@@ -100,19 +122,54 @@ export default function ManualEntryPage() {
     };
   }, [scopeCustomerId]);
 
-  const canAddMore = rows.length < MAX_ROWS;
+  const canAddMore = rows.length < MAX_MANUAL_ROWS;
 
   function updateRow(i: number, patch: Partial<ManualRow>) {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
 
+  function applyRowCountFromInput() {
+    const parsed = parseInt(rowCountInput, 10);
+    const n = clampRowCount(Number.isFinite(parsed) ? parsed : rows.length);
+
+    if (n === rows.length) {
+      setRowCountInput(String(n));
+      return;
+    }
+
+    if (n < rows.length) {
+      const removed = rows.slice(n);
+      if (
+        removed.some(rowHasData) &&
+        !window.confirm("Remove rows that already have values? Those values will be lost.")
+      ) {
+        return;
+      }
+      setRows(rows.slice(0, n));
+      setRowCountInput(String(n));
+      return;
+    }
+
+    setRows((prev) => [...prev, ...Array.from({ length: n - prev.length }, () => blankRow())]);
+    setRowCountInput(String(n));
+  }
+
   function addRow() {
     if (!canAddMore) return;
-    setRows((prev) => [...prev, blankRow()]);
+    setRows((prev) => {
+      const next = [...prev, blankRow()];
+      setRowCountInput(String(next.length));
+      return next;
+    });
   }
 
   function removeRow(i: number) {
-    setRows((prev) => prev.filter((_, idx) => idx !== i));
+    setRows((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((_, idx) => idx !== i);
+      setRowCountInput(String(next.length));
+      return next;
+    });
   }
 
   const sanitized = useMemo(() => {
@@ -123,9 +180,7 @@ export default function ManualEntryPage() {
         "Invoice Number": r.invoiceNumber.trim(),
         Date: fromDateInput(r.date),
       }))
-      .filter((r) =>
-        Object.values(r).some((v) => String(v).trim() !== ""),
-      );
+      .filter((r) => Object.values(r).some((v) => String(v).trim() !== ""));
   }, [rows]);
 
   async function onSubmit(e: FormEvent) {
@@ -175,7 +230,7 @@ export default function ManualEntryPage() {
         throw new Error("Add at least one customer before creating FIR manually.");
       }
       if (scopeCustomerId == null) {
-        throw new Error('Select a customer for this FIR.');
+        throw new Error("Select a customer for this FIR.");
       }
       const parts = await workspaceFetch<PartMasterRow[]>(`/api/app/parts?customer_id=${scopeCustomerId}`);
       const partMap = new Map(parts.map((p) => [sanitizePartNoUpper(p.part_no).toLowerCase(), p]));
@@ -220,7 +275,8 @@ export default function ManualEntryPage() {
     <form onSubmit={onSubmit} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h1 className="text-xl font-semibold">Manual FIR entry (no Excel)</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Add up to {MAX_ROWS} parts and continue to inspection/results to generate and download FIR reports.
+        One table row per FIR report. Up to {MAX_MANUAL_ROWS} rows. Set the count and click Apply, or add rows one at a
+        time.
       </p>
       {customers.length > 1 && (
         <div className="mt-4 rounded border border-slate-200 bg-slate-50 px-3 py-2">
@@ -242,101 +298,133 @@ export default function ManualEntryPage() {
         </div>
       )}
 
-      <div className="mt-4 space-y-3">
-        {rows.map((r, i) => (
-          <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-medium text-slate-800">Part row {i + 1}</p>
-              {rows.length > 1 && (
-                <button
-                  type="button"
-                  className="text-xs text-red-700 underline"
-                  onClick={() => removeRow(i)}
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">
-                <span className="block text-slate-600">Part Number (A–Z, 0–9 only)</span>
-                <div className="mt-1 flex items-center gap-2">
-                  <input
-                    className="min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 uppercase"
-                    value={r.partNumber}
-                    onChange={(e) => updateRow(i, { partNumber: sanitizePartNoUpper(e.target.value) })}
-                    autoComplete="off"
-                    inputMode="text"
-                    autoCapitalize="characters"
-                    spellCheck={false}
-                    pattern="[A-Z0-9]+"
-                    title="Letters A–Z and digits 0–9 only"
-                    aria-describedby={partMasterKeys.has(partKeyFromInput(r.partNumber)) ? `part-in-master-${i}` : undefined}
-                  />
-                  {sanitizePartNoUpper(r.partNumber) &&
-                  partMasterKeys.has(partKeyFromInput(r.partNumber)) ? (
-                    <span
-                      id={`part-in-master-${i}`}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-100"
-                      title="This part number is in Parts master"
-                      aria-label="Part number found in Parts master"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        className="h-4 w-4"
-                        aria-hidden
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </span>
-                  ) : null}
-                </div>
-              </label>
-              <label className="text-sm">
-                <span className="block text-slate-600">Quantity</span>
-                <input
-                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-                  value={r.quantity}
-                  onChange={(e) => updateRow(i, { quantity: e.target.value })}
-                />
-              </label>
-              <label className="text-sm">
-                <span className="block text-slate-600">Invoice Number</span>
-                <input
-                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-                  value={r.invoiceNumber}
-                  onChange={(e) => updateRow(i, { invoiceNumber: e.target.value })}
-                />
-              </label>
-              <label className="text-sm sm:col-span-2">
-                <span className="block text-slate-600">Date</span>
-                <input
-                  type="date"
-                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-                  value={toDateInput(r.date)}
-                  onChange={(e) => updateRow(i, { date: e.target.value })}
-                />
-              </label>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-end gap-2">
+        <label className="text-sm text-slate-700">
+          <span className="block text-slate-600">Number of reports (rows)</span>
+          <input
+            type="number"
+            min={1}
+            max={MAX_MANUAL_ROWS}
+            className="mt-1 w-28 rounded border border-slate-300 bg-white px-2 py-1.5 tabular-nums"
+            value={rowCountInput}
+            onChange={(e) => setRowCountInput(e.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          className="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+          onClick={applyRowCountFromInput}
+        >
+          Apply
+        </button>
         <button
           type="button"
           className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-50"
           onClick={addRow}
           disabled={!canAddMore}
         >
-          Add part row
+          Add one row
         </button>
+      </div>
+
+      <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+        <table className="min-w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-100 text-left text-slate-900">
+              <th className="border-b border-slate-200 px-2 py-2 font-semibold">#</th>
+              <th className="border-b border-slate-200 px-2 py-2 font-semibold">Part number</th>
+              <th className="border-b border-slate-200 px-2 py-2 font-semibold">Qty</th>
+              <th className="border-b border-slate-200 px-2 py-2 font-semibold">Invoice #</th>
+              <th className="border-b border-slate-200 px-2 py-2 font-semibold">Date</th>
+              <th className="border-b border-slate-200 px-2 py-2 font-semibold w-20" aria-label="Remove row" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50/80"}>
+                <td className="border-b border-slate-100 px-2 py-1.5 align-middle text-slate-500 tabular-nums">
+                  {i + 1}
+                </td>
+                <td className="border-b border-slate-100 px-2 py-1.5 align-middle">
+                  <div className="flex min-w-[10rem] items-center gap-1">
+                    <input
+                      className="w-full min-w-0 rounded border border-slate-300 px-2 py-1.5 uppercase"
+                      value={r.partNumber}
+                      onChange={(e) => updateRow(i, { partNumber: sanitizePartNoUpper(e.target.value) })}
+                      autoComplete="off"
+                      inputMode="text"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                      pattern="[A-Z0-9]*"
+                      title="Letters A–Z and digits 0–9 only"
+                      aria-describedby={partMasterKeys.has(partKeyFromInput(r.partNumber)) ? `part-in-master-${i}` : undefined}
+                    />
+                    {sanitizePartNoUpper(r.partNumber) && partMasterKeys.has(partKeyFromInput(r.partNumber)) ? (
+                      <span
+                        id={`part-in-master-${i}`}
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-100"
+                        title="This part number is in Parts master"
+                        aria-label="Part number found in Parts master"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="h-3.5 w-3.5"
+                          aria-hidden
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
+                <td className="border-b border-slate-100 px-2 py-1.5 align-middle">
+                  <input
+                    className="w-full min-w-[4rem] rounded border border-slate-300 px-2 py-1.5"
+                    value={r.quantity}
+                    onChange={(e) => updateRow(i, { quantity: e.target.value })}
+                  />
+                </td>
+                <td className="border-b border-slate-100 px-2 py-1.5 align-middle">
+                  <input
+                    className="w-full min-w-[6rem] rounded border border-slate-300 px-2 py-1.5"
+                    value={r.invoiceNumber}
+                    onChange={(e) => updateRow(i, { invoiceNumber: e.target.value })}
+                  />
+                </td>
+                <td className="border-b border-slate-100 px-2 py-1.5 align-middle">
+                  <input
+                    type="date"
+                    className="w-full min-w-[9rem] rounded border border-slate-300 px-2 py-1.5"
+                    value={toDateInput(r.date)}
+                    onChange={(e) => updateRow(i, { date: e.target.value })}
+                  />
+                </td>
+                <td className="border-b border-slate-100 px-2 py-1.5 align-middle text-center">
+                  {rows.length > 1 ? (
+                    <button
+                      type="button"
+                      className="text-xs text-red-700 underline hover:text-red-800"
+                      onClick={() => removeRow(i)}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <span className="text-slate-300">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           type="submit"
           className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-60"
