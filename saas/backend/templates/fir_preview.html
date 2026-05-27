@@ -403,18 +403,23 @@
     return firIsVisualMethod(raw) || firIsThreadPlugGaugeMethod(raw);
   }
 
-  function firInitQualitativeMeasuredRows() {
+  function firRefreshQualitativeMeasuredCellsInTables() {
     var root = document.getElementById("reportRoot");
     if (!root) return;
     root.querySelectorAll("#dimension-table tbody tr, #ccp-table tbody tr, #coating-table tbody tr").forEach(function(tr) {
       var cells = tr.querySelectorAll(":scope > td");
       if (cells.length < 11) return;
-      var methodEl = cells[4].querySelector("input");
-      if (!methodEl) return;
-      if (firIsQualitativeMeasuredMethod(methodEl.value)) {
+      var mel = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
+      if (!mel) return;
+      if (firIsQualitativeMeasuredMethod((mel.value || "").trim())) {
         firUpdateRowRemarksFromMeasurements(tr);
       }
     });
+  }
+
+  /** After sample size changes: refill OK columns for Visual / TPG rows (no preload on initial page load). */
+  function firInitQualitativeMeasuredRows() {
+    firRefreshQualitativeMeasuredCellsInTables();
   }
 
   function firOnSampleSizeOrColumnsChanged() {
@@ -620,7 +625,8 @@
       if (globalSettings.rev_date) lines.push(`Rev Dt: ${globalSettings.rev_date}`);
       docInfoCell.innerHTML = lines.join('<br>');
     }
-    firOnSampleSizeOrColumnsChanged();
+    /* Column enable/disable only on first paint — do not pre-fill TPG/Visual OK until user clicks Autofill. */
+    firApplyMeasuredColumnAvailability();
     var firSampleEl = document.getElementById("firSampleSizeInput");
     if (firSampleEl) {
       firSampleEl.addEventListener("input", firOnSampleSizeOrColumnsChanged);
@@ -841,10 +847,10 @@
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
     var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
-    var methodEl = cells[4].querySelector("input");
+    var methodEl = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
     var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
     if (!specEl || !methodEl || !remarksEl) return;
-    var methodRaw = methodEl.value;
+    var methodRaw = (methodEl.value || "").trim();
     if (firIsQualitativeMeasuredMethod(methodRaw)) {
       var nActiveQ = firGetMeasuredColumnCount();
       for (var ci = 5; ci <= 9; ci++) {
@@ -898,7 +904,7 @@
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
     var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
-    var methodEl = cells[4].querySelector("input");
+    var methodEl = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
     var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
     if (!specEl || !methodEl || !remarksEl) return;
     var actualInputs = [];
@@ -909,7 +915,7 @@
     }
     var nActive = firGetMeasuredColumnCount();
     var spec = (specEl.value || "").trim();
-    if (firIsQualitativeMeasuredMethod(methodEl.value)) {
+    if (firIsQualitativeMeasuredMethod((methodEl.value || "").trim())) {
       actualInputs.forEach(function(inp, idx) {
         if (inp.disabled) {
           inp.value = "";
@@ -953,6 +959,7 @@
       table.querySelectorAll("tbody tr").forEach(tr => fillOneRow(tr));
     });
     firApplyMeasuredColumnAvailability();
+    firRefreshQualitativeMeasuredCellsInTables();
     const materialTable = document.getElementById("material-table");
     if (materialTable) {
       materialTable.querySelectorAll("tbody tr").forEach(tr => {
