@@ -379,6 +379,50 @@
     });
   }
 
+  /** Visual inspection: qualitative pass recorded as OK in measured cells. */
+  function firIsVisualMethod(raw) {
+    var m = String(raw || "").trim().toUpperCase();
+    return m === "VISUAL" || m === "VISUAL INSPECTION";
+  }
+
+  /**
+   * Thread plug gauge — TPG or full phrase (case-insensitive).
+   * Also accepts common truncation/typo (e.g. "hread plug gau…").
+   */
+  function firIsThreadPlugGaugeMethod(raw) {
+    var u = String(raw || "").trim().replace(/\s+/g, " ").toUpperCase();
+    if (u === "TPG") return true;
+    if (u === "THREAD PLUG GAUGE") return true;
+    var letters = String(raw || "").replace(/[^A-Za-z]/g, "").toUpperCase();
+    if (letters.indexOf("THREADPLUGGAUGE") !== -1) return true;
+    if (letters.indexOf("HREADPLUGGAUG") !== -1) return true;
+    return false;
+  }
+
+  function firIsQualitativeMeasuredMethod(raw) {
+    return firIsVisualMethod(raw) || firIsThreadPlugGaugeMethod(raw);
+  }
+
+  function firInitQualitativeMeasuredRows() {
+    var root = document.getElementById("reportRoot");
+    if (!root) return;
+    root.querySelectorAll("#dimension-table tbody tr, #ccp-table tbody tr, #coating-table tbody tr").forEach(function(tr) {
+      var cells = tr.querySelectorAll(":scope > td");
+      if (cells.length < 11) return;
+      var methodEl = cells[4].querySelector("input");
+      if (!methodEl) return;
+      if (firIsQualitativeMeasuredMethod(methodEl.value)) {
+        firUpdateRowRemarksFromMeasurements(tr);
+      }
+    });
+  }
+
+  function firOnSampleSizeOrColumnsChanged() {
+    firApplyMeasuredColumnAvailability();
+    firInitQualitativeMeasuredRows();
+    updateStatusButtons();
+  }
+
   function esc(s) {
     if (s == null || s === undefined) return '';
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -576,11 +620,11 @@
       if (globalSettings.rev_date) lines.push(`Rev Dt: ${globalSettings.rev_date}`);
       docInfoCell.innerHTML = lines.join('<br>');
     }
-    firApplyMeasuredColumnAvailability();
+    firOnSampleSizeOrColumnsChanged();
     var firSampleEl = document.getElementById("firSampleSizeInput");
     if (firSampleEl) {
-      firSampleEl.addEventListener("input", firApplyMeasuredColumnAvailability);
-      firSampleEl.addEventListener("change", firApplyMeasuredColumnAvailability);
+      firSampleEl.addEventListener("input", firOnSampleSizeOrColumnsChanged);
+      firSampleEl.addEventListener("change", firOnSampleSizeOrColumnsChanged);
     }
   }
 
@@ -633,6 +677,10 @@
     if (rootEl) {
       rootEl.addEventListener('input', function(e) {
         if (e.target && e.target.classList && e.target.classList.contains('remarks-value')) updateStatusButtons();
+        if (e.target && e.target.classList && e.target.classList.contains('method-input')) {
+          var trM = e.target.closest('tr');
+          if (trM) firUpdateRowRemarksFromMeasurements(trM);
+        }
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr = e.target.closest('tr');
           if (tr) firUpdateRowRemarksFromMeasurements(tr);
@@ -640,6 +688,10 @@
       });
       rootEl.addEventListener('change', function(e) {
         if (e.target && e.target.classList && e.target.classList.contains('remarks-value')) updateStatusButtons();
+        if (e.target && e.target.classList && e.target.classList.contains('method-input')) {
+          var trM2 = e.target.closest('tr');
+          if (trM2) firUpdateRowRemarksFromMeasurements(trM2);
+        }
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr2 = e.target.closest('tr');
           if (tr2) firUpdateRowRemarksFromMeasurements(tr2);
@@ -792,13 +844,33 @@
     var methodEl = cells[4].querySelector("input");
     var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
     if (!specEl || !methodEl || !remarksEl) return;
-    var method = (methodEl.value || "").trim().toUpperCase();
-    if (method === "VISUAL" || method === "VISUAL INSPECTION") {
+    var methodRaw = methodEl.value;
+    if (firIsQualitativeMeasuredMethod(methodRaw)) {
+      var nActiveQ = firGetMeasuredColumnCount();
+      for (var ci = 5; ci <= 9; ci++) {
+        var td = cells[ci];
+        if (!td) continue;
+        var inp = td.querySelector("input.actual-value") || td.querySelector('input[type="text"]');
+        if (!inp) continue;
+        if (inp.disabled) {
+          inp.value = "";
+          continue;
+        }
+        inp.value = ci < 5 + nActiveQ ? "OK" : "";
+      }
       remarksEl.value = "OK";
       updateStatusButtons();
       return;
     }
     var spec = (specEl.value || "").trim();
+    /* Switching away from VISUAL / TPG: measured cells may still contain "OK" — clear before numeric tolerance check */
+    for (var cPre = 5; cPre <= 9; cPre++) {
+      var tdPre = cells[cPre];
+      if (!tdPre) continue;
+      var inpPre = tdPre.querySelector("input.actual-value") || tdPre.querySelector('input[type="text"]');
+      if (!inpPre || inpPre.disabled) continue;
+      if ((inpPre.value || "").trim().toUpperCase() === "OK") inpPre.value = "";
+    }
     var range = parseSpec(spec);
     if (!range) {
       remarksEl.value = "";
@@ -836,12 +908,15 @@
       actualInputs.push(inp);
     }
     var nActive = firGetMeasuredColumnCount();
-    var method = (methodEl.value || "").trim().toUpperCase();
     var spec = (specEl.value || "").trim();
-    if (method === "VISUAL" || method === "VISUAL INSPECTION") {
+    if (firIsQualitativeMeasuredMethod(methodEl.value)) {
       actualInputs.forEach(function(inp, idx) {
+        if (inp.disabled) {
+          inp.value = "";
+          return;
+        }
         if (idx < nActive) inp.value = "OK";
-        else { inp.value = ""; }
+        else inp.value = "";
       });
       remarksEl.value = "OK";
       updateStatusButtons();
