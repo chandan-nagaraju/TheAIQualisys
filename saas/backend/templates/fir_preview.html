@@ -749,6 +749,7 @@
     const nominal = parseFloat(numbers[0]);
     if (isNaN(nominal)) return null;
     let min = nominal, max = nominal;
+    var limitFromZero = false;
     const plusMinus = s.match(/±\s*([0-9.]+)/i);
     const plusOnly = s.match(/\+\s*([0-9.]+)/);
     const minusOnly = s.match(/-(\s*[0-9.]+)/);
@@ -775,8 +776,36 @@
       // Bare numeric limit only (e.g. flatness 0.5, parallelism 1): 0 ≤ measured ≤ value — never ±10% or other implicit band.
       min = 0;
       max = Math.max(0, nominal);
+      limitFromZero = true;
     }
-    return { min, max, nominal, step: isRadius ? 0.5 : null, isRadius, isAngle };
+    return { min, max, nominal, step: isRadius ? 0.5 : null, isRadius, isAngle, limitFromZero };
+  }
+
+  /**
+   * Shop-floor instrument resolution (mm) for limit-only specs — avoids autofill like 0.043 when the gauge reads 0.01.
+   * Derived from Method of Inspection text; default 0.01 mm when unknown.
+   */
+  function firInstrumentResolutionStep(methodRaw) {
+    var raw = String(methodRaw || "").trim();
+    var m = raw.toUpperCase();
+    if (!m) return 0.01;
+    if (/0\.001|0,001/.test(raw)) return 0.001;
+    if (/0\.02|0,02/.test(raw)) return 0.02;
+    if (/PARALLEL|FEELER|SLIP\s*GAUGE/.test(m)) return 0.02;
+    if (/VERNIER|CALIPER|CALLIPER|VENIRE|HEIGHT\s*GAUGE|HIEGHT|H\.?\s*GAUGE|DIAL\s*GAUGE|D\.?\s*GAUGE|SURFACE\s*PLATE/.test(m)) {
+      return 0.01;
+    }
+    if (/CMM|COORDINATE\s*MEASURING/.test(m)) return 0.001;
+    if (/MICROMETER|MIC\b|BORE\s*GAUGE/.test(m)) return 0.01;
+    return 0.01;
+  }
+
+  function firFormatLimitMeasured(value, resolutionStep) {
+    var step = resolutionStep || 0.01;
+    var mul = Math.round(1 / step);
+    var snapped = Math.round(Number(value) * mul) / mul;
+    if (step >= 0.01) return snapped.toFixed(2);
+    return snapped.toFixed(3);
   }
 
   function randomInRange(min, max, step) {
@@ -796,6 +825,11 @@
       const idx = Math.floor(Math.random() * steps);
       v = Math.round((min + idx * 0.1) * 10) / 10;
       v = Number(v.toFixed(1));
+    } else if (step && step > 0 && step < 1) {
+      var mul = Math.round(1 / step);
+      var nSteps = Math.max(1, Math.round((max - min) * mul) + 1);
+      var pick = Math.floor(Math.random() * nSteps);
+      v = Math.round((min + pick * step) * mul) / mul;
     } else {
       v = min + Math.random() * (max - min);
       v = Number(v.toFixed(2));
@@ -838,6 +872,9 @@
     }
     if (range.oneDecimal) {
       return Number(value).toFixed(1);
+    }
+    if (range.limitFromZero && range.limitResolution) {
+      return firFormatLimitMeasured(value, range.limitResolution);
     }
     return String(value);
   }
@@ -940,6 +977,10 @@
     }
     if (firIsDftStyleRow(paramText, spec)) {
       range = Object.assign({}, range, { step: 0.1, oneDecimal: true });
+    }
+    if (range.limitFromZero) {
+      var limitStep = firInstrumentResolutionStep(methodEl.value);
+      range = Object.assign({}, range, { step: limitStep, limitResolution: limitStep });
     }
     var min = range.min, max = range.max, step = range.step;
     var values = [];
