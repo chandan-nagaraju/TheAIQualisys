@@ -399,8 +399,18 @@
     return false;
   }
 
+  /**
+   * Pass/fail shop gauges — measured columns are OK / Not OK only, not dimensions.
+   * Matches any method containing "gauge" / "gaug" (parallel, slip, weld fillet, thread plug, etc.).
+   */
+  function firIsGaugeMethod(raw) {
+    var u = String(raw || "").trim().toUpperCase();
+    if (!u) return false;
+    return /\bGAUG(E)?\b/.test(u) || u.indexOf("GAUGE") !== -1 || u.indexOf("GAUG") !== -1;
+  }
+
   function firIsQualitativeMeasuredMethod(raw) {
-    return firIsVisualMethod(raw) || firIsThreadPlugGaugeMethod(raw);
+    return firIsVisualMethod(raw) || firIsThreadPlugGaugeMethod(raw) || firIsGaugeMethod(raw);
   }
 
   function firRefreshQualitativeMeasuredCellsInTables() {
@@ -417,7 +427,7 @@
     });
   }
 
-  /** After sample size changes: refill OK columns for Visual / TPG rows (no preload on initial page load). */
+  /** After sample size changes: refill OK columns for Visual / gauge / TPG rows (no preload on initial page load). */
   function firInitQualitativeMeasuredRows() {
     firRefreshQualitativeMeasuredCellsInTables();
   }
@@ -907,7 +917,7 @@
       return;
     }
     var spec = (specEl.value || "").trim();
-    /* Switching away from VISUAL / TPG: measured cells may still contain "OK" — clear before numeric tolerance check */
+    /* Switching away from qualitative methods: measured cells may still contain "OK" — clear before numeric check */
     for (var cPre = 5; cPre <= 9; cPre++) {
       var tdPre = cells[cPre];
       if (!tdPre) continue;
