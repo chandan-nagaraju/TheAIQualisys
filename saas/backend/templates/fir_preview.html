@@ -706,7 +706,7 @@
     }
   } catch (err) { console.error('status/root init', err); }
 
-  // --- Parse specification to get min/max (within tolerance); step 0.5 for R (radius) specs ---
+  // --- Parse specification → min/max for autofill and remarks (explicit tolerance only; bare value = 0…limit) ---
   function parseSpec(specStr) {
     const s = (specStr || "").trim();
     if (!s) return null;
@@ -772,8 +772,9 @@
       min = nominal - tol;
       max = nominal + tol;
     } else {
-      const tol = 0.1 * Math.abs(nominal) || 0.1;
-      min = nominal - tol; max = nominal + tol;
+      // Bare numeric limit only (e.g. flatness 0.5, parallelism 1): 0 ≤ measured ≤ value — never ±10% or other implicit band.
+      min = 0;
+      max = Math.max(0, nominal);
     }
     return { min, max, nominal, step: isRadius ? 0.5 : null, isRadius, isAngle };
   }
