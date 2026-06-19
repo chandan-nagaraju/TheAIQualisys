@@ -435,6 +435,44 @@
     return firIsVisualMethod(raw) || firIsThreadPlugGaugeMethod(raw) || firIsPassFailGaugeMethod(raw);
   }
 
+  /**
+   * Metric thread designation (weld nut, tapped hole) — e.g. M6X1, M8X1.5, M10X1.25, M10X1.5.
+   * Checked with thread plug gauge: measured values are OK only, not a numeric pitch readout.
+   */
+  function firIsMetricThreadSpecification(specRaw) {
+    var s = String(specRaw || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "");
+    return /^M\d+(\.\d+)?[X×]\d+(\.\d+)?$/.test(s);
+  }
+
+  /** Pass/fail measured cells: method (Visual, TPG, go/no-go gauge) or metric thread spec M#X#. */
+  function firRowUsesQualitativeMeasured(methodRaw, specRaw) {
+    return firIsQualitativeMeasuredMethod(methodRaw) || firIsMetricThreadSpecification(specRaw);
+  }
+
+  function firFillQualitativeMeasuredRow(tr) {
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length < 11) return;
+    var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
+    if (!remarksEl) return;
+    var nActiveQ = firGetMeasuredColumnCount();
+    for (var ci = 5; ci <= 9; ci++) {
+      var td = cells[ci];
+      if (!td) continue;
+      var inp = td.querySelector("input.actual-value") || td.querySelector('input[type="text"]');
+      if (!inp) continue;
+      if (inp.disabled) {
+        inp.value = "";
+        continue;
+      }
+      inp.value = ci < 5 + nActiveQ ? "OK" : "";
+    }
+    remarksEl.value = "OK";
+    updateStatusButtons();
+  }
+
   function firRefreshQualitativeMeasuredCellsInTables() {
     var root = document.getElementById("reportRoot");
     if (!root) return;
@@ -442,14 +480,16 @@
       var cells = tr.querySelectorAll(":scope > td");
       if (cells.length < 11) return;
       var mel = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
+      var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
       if (!mel) return;
-      if (firIsQualitativeMeasuredMethod((mel.value || "").trim())) {
+      var specRaw = specEl ? (specEl.value || "").trim() : "";
+      if (firRowUsesQualitativeMeasured((mel.value || "").trim(), specRaw)) {
         firUpdateRowRemarksFromMeasurements(tr);
       }
     });
   }
 
-  /** After sample size changes: refill OK columns for Visual / pass-fail gauge / TPG rows (no preload on initial page load). */
+  /** After sample size changes: refill OK columns for Visual / pass-fail gauge / TPG / M#X# thread rows (no preload on initial page load). */
   function firInitQualitativeMeasuredRows() {
     firRefreshQualitativeMeasuredCellsInTables();
   }
@@ -719,6 +759,10 @@
           var trM = e.target.closest('tr');
           if (trM) firUpdateRowRemarksFromMeasurements(trM);
         }
+        if (e.target && e.target.tagName === 'TEXTAREA') {
+          var trTa = e.target.closest('tr');
+          if (trTa) firUpdateRowRemarksFromMeasurements(trTa);
+        }
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr = e.target.closest('tr');
           if (tr) firUpdateRowRemarksFromMeasurements(tr);
@@ -729,6 +773,10 @@
         if (e.target && e.target.classList && e.target.classList.contains('method-input')) {
           var trM2 = e.target.closest('tr');
           if (trM2) firUpdateRowRemarksFromMeasurements(trM2);
+        }
+        if (e.target && e.target.tagName === 'TEXTAREA') {
+          var trTa2 = e.target.closest('tr');
+          if (trTa2) firUpdateRowRemarksFromMeasurements(trTa2);
         }
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr2 = e.target.closest('tr');
@@ -742,6 +790,7 @@
   function parseSpec(specStr) {
     const s = (specStr || "").trim();
     if (!s) return null;
+    if (firIsMetricThreadSpecification(s)) return null;
     const isRadius = /R\s*\d/i.test(s);
     const isAngle = /°|\bdeg(?:ree)?s?\b/i.test(s);
 
@@ -919,25 +968,12 @@
     var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
     if (!specEl || !methodEl || !remarksEl) return;
     var methodRaw = (methodEl.value || "").trim();
-    if (firIsQualitativeMeasuredMethod(methodRaw)) {
-      var nActiveQ = firGetMeasuredColumnCount();
-      for (var ci = 5; ci <= 9; ci++) {
-        var td = cells[ci];
-        if (!td) continue;
-        var inp = td.querySelector("input.actual-value") || td.querySelector('input[type="text"]');
-        if (!inp) continue;
-        if (inp.disabled) {
-          inp.value = "";
-          continue;
-        }
-        inp.value = ci < 5 + nActiveQ ? "OK" : "";
-      }
-      remarksEl.value = "OK";
-      updateStatusButtons();
+    var spec = (specEl.value || "").trim();
+    if (firRowUsesQualitativeMeasured(methodRaw, spec)) {
+      firFillQualitativeMeasuredRow(tr);
       return;
     }
-    var spec = (specEl.value || "").trim();
-    /* Switching away from qualitative methods: measured cells may still contain "OK" — clear before numeric check */
+    /* Switching away from qualitative rows: measured cells may still contain "OK" — clear before numeric check */
     for (var cPre = 5; cPre <= 9; cPre++) {
       var tdPre = cells[cPre];
       if (!tdPre) continue;
@@ -983,17 +1019,8 @@
     }
     var nActive = firGetMeasuredColumnCount();
     var spec = (specEl.value || "").trim();
-    if (firIsQualitativeMeasuredMethod((methodEl.value || "").trim())) {
-      actualInputs.forEach(function(inp, idx) {
-        if (inp.disabled) {
-          inp.value = "";
-          return;
-        }
-        if (idx < nActive) inp.value = "OK";
-        else inp.value = "";
-      });
-      remarksEl.value = "OK";
-      updateStatusButtons();
+    if (firRowUsesQualitativeMeasured((methodEl.value || "").trim(), spec)) {
+      firFillQualitativeMeasuredRow(tr);
       return;
     }
     var paramEl = cells[1].querySelector("textarea") || cells[1].querySelector("input");
