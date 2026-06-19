@@ -400,17 +400,39 @@
   }
 
   /**
-   * Pass/fail shop gauges — measured columns are OK / Not OK only, not dimensions.
-   * Matches any method containing "gauge" / "gaug" (parallel, slip, weld fillet, thread plug, etc.).
+   * Instruments that read a numeric size (mm, R, °) — autofill uses specification, not OK.
+   * Checked before pass/fail gauge rules so "Vernier height gauge" stays dimensional.
    */
-  function firIsGaugeMethod(raw) {
+  function firIsDimensionalMeasuringMethod(raw) {
     var u = String(raw || "").trim().toUpperCase();
     if (!u) return false;
+    if (/^DVC$|^DHG$|^DHI$|^MM$|^CMM$/.test(u)) return true;
+    if (/VERNIER|CALIPER|CALLIPER|VENIRE/.test(u)) return true;
+    if (/HEIGHT\s*GAU|HIEGHT\s*GAU|HEIGHT\s*GAGE|HIEGHT/.test(u)) return true;
+    if (/DIAL\s*GAU|D\.?\s*GAU|DIAL\s*INDICATOR/.test(u)) return true;
+    if (/MICROMETER|\bMIC\b|BORE\s*GAU|DEPTH\s*GAU|DEPTH\s*MIC/.test(u)) return true;
+    if (/COORDINATE\s*MEASURING|SURFACE\s*PLATE/.test(u)) return true;
+    if (/STEEL\s*RULE|\bSCALE\b|\bRULER\b/.test(u)) return true;
+    if (/^DFT\b|DFT\s*METER/.test(u)) return true;
+    return false;
+  }
+
+  /**
+   * Go / no-go shop gauges — measured columns are OK only (parallel, slip, weld fillet, etc.).
+   * Any other method containing "gauge" / "gaug" unless listed as dimensional above.
+   */
+  function firIsPassFailGaugeMethod(raw) {
+    if (firIsDimensionalMeasuringMethod(raw)) return false;
+    var u = String(raw || "").trim().toUpperCase();
+    if (!u) return false;
+    if (/^RG$|^R\.G\.?$|RADIUS\s*GAU|PARALLEL\s*GAU|SLIP\s*GAU|FEELER|WELD\s*FILLET|SNAP\s*GAU|RING\s*GAU|PLUG\s*GAU|GO\s*NO\s*GO|GO\/NO\s*GO/.test(u)) {
+      return true;
+    }
     return /\bGAUG(E)?\b/.test(u) || u.indexOf("GAUGE") !== -1 || u.indexOf("GAUG") !== -1;
   }
 
   function firIsQualitativeMeasuredMethod(raw) {
-    return firIsVisualMethod(raw) || firIsThreadPlugGaugeMethod(raw) || firIsGaugeMethod(raw);
+    return firIsVisualMethod(raw) || firIsThreadPlugGaugeMethod(raw) || firIsPassFailGaugeMethod(raw);
   }
 
   function firRefreshQualitativeMeasuredCellsInTables() {
@@ -427,7 +449,7 @@
     });
   }
 
-  /** After sample size changes: refill OK columns for Visual / gauge / TPG rows (no preload on initial page load). */
+  /** After sample size changes: refill OK columns for Visual / pass-fail gauge / TPG rows (no preload on initial page load). */
   function firInitQualitativeMeasuredRows() {
     firRefreshQualitativeMeasuredCellsInTables();
   }
@@ -801,12 +823,10 @@
     if (!m) return 0.01;
     if (/0\.001|0,001/.test(raw)) return 0.001;
     if (/0\.02|0,02/.test(raw)) return 0.02;
-    if (/PARALLEL|FEELER|SLIP\s*GAUGE/.test(m)) return 0.02;
-    if (/VERNIER|CALIPER|CALLIPER|VENIRE|HEIGHT\s*GAUGE|HIEGHT|H\.?\s*GAUGE|DIAL\s*GAUGE|D\.?\s*GAUGE|SURFACE\s*PLATE/.test(m)) {
+    if (/^DVC$|^DHG$|^DHI$|^MM$|^CMM$|VERNIER|CALIPER|CALLIPER|VENIRE|HEIGHT\s*GAU|HIEGHT|DIAL\s*GAU|MICROMETER|\bMIC\b|BORE\s*GAU|SURFACE\s*PLATE/.test(m)) {
       return 0.01;
     }
     if (/CMM|COORDINATE\s*MEASURING/.test(m)) return 0.001;
-    if (/MICROMETER|MIC\b|BORE\s*GAUGE/.test(m)) return 0.01;
     return 0.01;
   }
 
