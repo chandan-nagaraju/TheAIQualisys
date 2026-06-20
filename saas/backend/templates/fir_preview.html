@@ -406,7 +406,7 @@
   function firIsDimensionalMeasuringMethod(raw) {
     var u = String(raw || "").trim().toUpperCase();
     if (!u) return false;
-    if (/^DVC$|^DHG$|^DHI$|^MM$|^CMM$/.test(u)) return true;
+    if (/^DVC$|^DHG$|^DHI$|^DMM$|^MM$|^CMM$/.test(u)) return true;
     if (/VERNIER|CALIPER|CALLIPER|VENIRE/.test(u)) return true;
     if (/HEIGHT\s*GAU|HIEGHT\s*GAU|HEIGHT\s*GAGE|HIEGHT/.test(u)) return true;
     if (/DIAL\s*GAU|D\.?\s*GAU|DIAL\s*INDICATOR/.test(u)) return true;
@@ -893,7 +893,7 @@
     if (!m) return 0.01;
     if (/0\.001|0,001/.test(raw)) return 0.001;
     if (/0\.02|0,02/.test(raw)) return 0.02;
-    if (/^DVC$|^DHG$|^DHI$|^MM$|^CMM$|VERNIER|CALIPER|CALLIPER|VENIRE|HEIGHT\s*GAU|HIEGHT|DIAL\s*GAU|MICROMETER|\bMIC\b|BORE\s*GAU|SURFACE\s*PLATE/.test(m)) {
+    if (/^DVC$|^DHG$|^DHI$|^DMM$|^MM$|^CMM$|VERNIER|CALIPER|CALLIPER|VENIRE|HEIGHT\s*GAU|HIEGHT|DIAL\s*GAU|MICROMETER|\bMIC\b|BORE\s*GAU|SURFACE\s*PLATE/.test(m)) {
       return 0.01;
     }
     if (/CMM|COORDINATE\s*MEASURING/.test(m)) return 0.001;

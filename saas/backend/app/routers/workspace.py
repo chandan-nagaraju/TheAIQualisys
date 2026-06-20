@@ -53,6 +53,7 @@ from app.fir_part_excel import (
     build_part_master_template_xlsx,
     parse_parts_excel_to_bundle_dict,
 )
+from app.moi_normalization import normalize_method_of_inspection
 from app.part_field_validation import sanitize_part_master_alnum_upper
 from app.subscription_logic import (
     FIR_WORKSPACE_FORBIDDEN_CODE,
@@ -1251,7 +1252,12 @@ def replace_specs(part_id: int, body: SpecBulkBody, ws: WsContext = Depends(get_
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=row.method_of_inspection,
+                method_of_inspection=normalize_method_of_inspection(
+                    row.parameter.strip(),
+                    row.specification,
+                    row.special_char,
+                    row.method_of_inspection,
+                ),
             )
         )
     ws.db.commit()
@@ -1271,7 +1277,12 @@ def replace_complaints(part_id: int, body: SpecBulkBody, ws: WsContext = Depends
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=row.method_of_inspection,
+                method_of_inspection=normalize_method_of_inspection(
+                    row.parameter.strip(),
+                    row.specification,
+                    row.special_char,
+                    row.method_of_inspection,
+                ),
             )
         )
     ws.db.commit()
@@ -1306,7 +1317,12 @@ def replace_coatings(part_id: int, body: SpecBulkBody, ws: WsContext = Depends(g
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=row.method_of_inspection,
+                method_of_inspection=normalize_method_of_inspection(
+                    row.parameter.strip(),
+                    row.specification,
+                    row.special_char,
+                    row.method_of_inspection,
+                ),
             )
         )
     ws.db.commit()
@@ -1381,6 +1397,20 @@ class PartMasterBundleBody(BaseModel):
     parts: list[PartMasterSlice]
 
 
+def _norm_moi_row(
+    parameter: str,
+    specification: str | None,
+    special_char: str | None,
+    method_of_inspection: str | None,
+) -> str | None:
+    return normalize_method_of_inspection(
+        parameter,
+        specification,
+        special_char,
+        method_of_inspection,
+    )
+
+
 def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice, *, customer_id: int) -> PartV2:
     pn = body.part.part_no
     drawing_rev = _norm_opt_str(body.part.drawing_rev)
@@ -1417,7 +1447,12 @@ def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice, *, customer_i
                 parameter=row.parameter.strip(),
                 specification=_norm_opt_str(row.specification),
                 special_char=_norm_opt_str(row.special_char),
-                method_of_inspection=_norm_opt_str(row.method_of_inspection),
+                method_of_inspection=_norm_moi_row(
+                    row.parameter.strip(),
+                    _norm_opt_str(row.specification),
+                    _norm_opt_str(row.special_char),
+                    _norm_opt_str(row.method_of_inspection),
+                ),
             )
         )
 
@@ -1431,7 +1466,12 @@ def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice, *, customer_i
                 parameter=row.parameter.strip(),
                 specification=_norm_opt_str(row.specification),
                 special_char=_norm_opt_str(row.special_char),
-                method_of_inspection=_norm_opt_str(row.method_of_inspection),
+                method_of_inspection=_norm_moi_row(
+                    row.parameter.strip(),
+                    _norm_opt_str(row.specification),
+                    _norm_opt_str(row.special_char),
+                    _norm_opt_str(row.method_of_inspection),
+                ),
             )
         )
 
@@ -1451,7 +1491,12 @@ def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice, *, customer_i
                 parameter=row.parameter.strip(),
                 specification=_norm_opt_str(row.specification),
                 special_char=_norm_opt_str(row.special_char),
-                method_of_inspection=_norm_opt_str(row.method_of_inspection),
+                method_of_inspection=_norm_moi_row(
+                    row.parameter.strip(),
+                    _norm_opt_str(row.specification),
+                    _norm_opt_str(row.special_char),
+                    _norm_opt_str(row.method_of_inspection),
+                ),
             )
         )
     return p

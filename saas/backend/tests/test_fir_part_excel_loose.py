@@ -29,7 +29,7 @@ def test_dft_meter_goes_to_method_not_special_char():
     assert row["parameter"] == "DFT"
     assert row["specification"] == "60±10 Micron"
     assert row["special_char"] is None
-    assert row["method_of_inspection"] == "DFT METER"
+    assert row["method_of_inspection"] == "DFT"
 
 
 def test_loose_fir_sections_a_b_d():
@@ -65,13 +65,15 @@ def test_loose_fir_sections_a_b_d():
 
     assert len(a_rows) == 2
     assert a_rows[0]["parameter"] == "2 HOLES DIA"
+    assert a_rows[0]["method_of_inspection"] == "DVC"
+    assert a_rows[1]["method_of_inspection"] == "DHG"
     assert len(b_rows) == 1
     assert b_rows[0]["parameter"] == "Ref Dimension"
     assert b_rows[0]["specification"] == "7±0.5"
     assert b_rows[0]["method_of_inspection"] == "DHG"
     assert len(d_rows) == 2
     assert d_rows[0]["parameter"] == "DFT"
-    assert d_rows[0]["method_of_inspection"] == "DFT METER"
+    assert d_rows[0]["method_of_inspection"] == "DFT"
     assert d_rows[0]["special_char"] is None
 
 
@@ -149,7 +151,8 @@ def test_loose_workbook_bundle_includes_section_b():
     assert len(part["spec_rows"]) >= 1
     assert len(part["ccp_rows"]) == 1
     assert part["ccp_rows"][0]["parameter"] == "Ref Dimension"
-    assert part["coating_rows"][0]["method_of_inspection"] == "DFT METER"
+    assert part["spec_rows"][0]["method_of_inspection"] == "DVC"
+    assert part["coating_rows"][0]["method_of_inspection"] == "DFT"
     assert part["coating_rows"][0]["special_char"] is None
 
 
