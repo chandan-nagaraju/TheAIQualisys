@@ -382,7 +382,19 @@
   /** Visual inspection: qualitative pass recorded as OK in measured cells. */
   function firIsVisualMethod(raw) {
     var m = String(raw || "").trim().toUpperCase();
-    return m === "VISUAL" || m === "VISUAL INSPECTION";
+    return m === "VIS" || m === "VISUAL" || m === "VISUAL INSPECTION";
+  }
+
+  function firIsVisualParameter(paramRaw) {
+    var p = String(paramRaw || "").trim().toUpperCase();
+    if (!p) return false;
+    return /\bVISUAL\b|\bRUST\b|\bDENT\b|\bDAMAGE\b|\bSCORING\b|\bWELD\b|\bBURR\b|\bAPPEARANCE\b/.test(p);
+  }
+
+  function firIsVisualSpecification(specRaw) {
+    var s = String(specRaw || "").trim().toUpperCase();
+    if (!s) return false;
+    return /\bNOT\s+ALLOWED\b|\bNOT\s+PERMITTED\b|\bNO\s+DEFECT\b|\bFREE\s+FROM\b/.test(s);
   }
 
   /**
@@ -406,14 +418,14 @@
   function firIsDimensionalMeasuringMethod(raw) {
     var u = String(raw || "").trim().toUpperCase();
     if (!u) return false;
-    if (/^DVC$|^DHG$|^DHI$|^DMM$|^MM$|^CMM$/.test(u)) return true;
+    if (/^DVC$|^DHG$|^DHI$|^DMM$|^MM$|^CMM$|^BP$|^B\.P\.?$/.test(u)) return true;
     if (/VERNIER|CALIPER|CALLIPER|VENIRE/.test(u)) return true;
     if (/HEIGHT\s*GAU|HIEGHT\s*GAU|HEIGHT\s*GAGE|HIEGHT/.test(u)) return true;
     if (/DIAL\s*GAU|D\.?\s*GAU|DIAL\s*INDICATOR/.test(u)) return true;
     if (/MICROMETER|\bMIC\b|BORE\s*GAU|DEPTH\s*GAU|DEPTH\s*MIC/.test(u)) return true;
     if (/COORDINATE\s*MEASURING|SURFACE\s*PLATE/.test(u)) return true;
     if (/STEEL\s*RULE|\bSCALE\b|\bRULER\b/.test(u)) return true;
-    if (/^DFT\b|DFT\s*METER/.test(u)) return true;
+    if (/^DFT\b|DFT\s*METER|^DFT$/.test(u)) return true;
     return false;
   }
 
@@ -447,9 +459,50 @@
     return /^M\d+(\.\d+)?[X×]\d+(\.\d+)?$/.test(s);
   }
 
-  /** Pass/fail measured cells: method (Visual, TPG, go/no-go gauge) or metric thread spec M#X#. */
-  function firRowUsesQualitativeMeasured(methodRaw, specRaw) {
-    return firIsQualitativeMeasuredMethod(methodRaw) || firIsMetricThreadSpecification(specRaw);
+  /** Pass/fail measured cells from parameter + specification + method together. */
+  function firRowUsesQualitativeMeasured(paramRaw, specRaw, methodRaw) {
+    var method = String(methodRaw || "").trim();
+    var spec = String(specRaw || "").trim();
+    var param = String(paramRaw || "").trim();
+    if (firIsQualitativeMeasuredMethod(method)) return true;
+    if (firIsMetricThreadSpecification(spec)) return true;
+    if (firIsVisualMethod(method) || (firIsVisualSpecification(spec) && (firIsVisualParameter(param) || firIsVisualMethod(method)))) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Resolve how a row fills measured values: parameter + specification + method are correlated.
+   * Returns { mode: 'qualitative' | 'numeric' | 'none', range?, param?, spec?, method? }
+   */
+  function firResolveRowMeasuredContext(paramRaw, specRaw, methodRaw) {
+    var param = String(paramRaw || "").trim();
+    var spec = String(specRaw || "").trim();
+    var method = String(methodRaw || "").trim();
+    var ctx = { param: param, spec: spec, method: method };
+
+    if (firRowUsesQualitativeMeasured(param, spec, method)) {
+      return Object.assign({ mode: "qualitative" }, ctx);
+    }
+
+    var range = parseSpec(spec);
+    if (!range) {
+      return Object.assign({ mode: "none" }, ctx);
+    }
+
+    if (firIsDftStyleRow(param, spec, method)) {
+      range = Object.assign({}, range, { step: 0.1, oneDecimal: true });
+    }
+    if (range.limitFromZero) {
+      var limitStep = firInstrumentResolutionStep(method);
+      range = Object.assign({}, range, { step: limitStep, limitResolution: limitStep });
+    }
+    if (range.isAngle || /^BP$|^B\.P\.?$/i.test(method)) {
+      range = Object.assign({}, range, { isAngle: true });
+    }
+
+    return Object.assign({ mode: "numeric", range: range }, ctx);
   }
 
   function firFillQualitativeMeasuredRow(tr) {
@@ -483,7 +536,11 @@
       var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
       if (!mel) return;
       var specRaw = specEl ? (specEl.value || "").trim() : "";
-      if (firRowUsesQualitativeMeasured((mel.value || "").trim(), specRaw)) {
+      if (firRowUsesQualitativeMeasured(
+        cells[1].querySelector("textarea") || cells[1].querySelector("input") ? (cells[1].querySelector("textarea") || cells[1].querySelector("input")).value : "",
+        specRaw,
+        (mel.value || "").trim()
+      )) {
         firUpdateRowRemarksFromMeasurements(tr);
       }
     });
@@ -946,11 +1003,13 @@
     return n >= min && n <= max;
   }
 
-  /** DFT / thickness in microns — autofill uses one decimal (e.g. 65.1). */
-  function firIsDftStyleRow(param, spec) {
+  /** DFT / thickness in microns — parameter + spec + method (DFT METER). */
+  function firIsDftStyleRow(param, spec, method) {
     var p = (param || "").toUpperCase();
     var s = (spec || "").toLowerCase();
+    var m = String(method || "").trim().toUpperCase();
     if (p.indexOf("DFT") !== -1) return true;
+    if (m === "DFT" || m === "DFT METER" || m.indexOf("DFT") === 0) return true;
     if (/\bmicron|\bmicrons\b/.test(s)) return true;
     if (/\bum\b/.test(s) || s.indexOf("µ") !== -1) return true;
     return false;
@@ -989,8 +1048,10 @@
     var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
     if (!specEl || !methodEl || !remarksEl) return;
     var methodRaw = (methodEl.value || "").trim();
+    var paramEl = cells[1].querySelector("textarea") || cells[1].querySelector("input");
+    var paramRaw = paramEl ? (paramEl.value || "").trim() : "";
     var spec = (specEl.value || "").trim();
-    if (firRowUsesQualitativeMeasured(methodRaw, spec)) {
+    if (firRowUsesQualitativeMeasured(paramRaw, spec, methodRaw)) {
       firFillQualitativeMeasuredRow(tr);
       return;
     }
@@ -1040,26 +1101,21 @@
     }
     var nActive = firGetMeasuredColumnCount();
     var spec = (specEl.value || "").trim();
-    if (firRowUsesQualitativeMeasured((methodEl.value || "").trim(), spec)) {
+    var paramEl = cells[1].querySelector("textarea") || cells[1].querySelector("input");
+    var paramText = paramEl ? (paramEl.value || "").trim() : "";
+    var methodText = (methodEl.value || "").trim();
+    var resolved = firResolveRowMeasuredContext(paramText, spec, methodText);
+    if (resolved.mode === "qualitative") {
       firFillQualitativeMeasuredRow(tr);
       return;
     }
-    var paramEl = cells[1].querySelector("textarea") || cells[1].querySelector("input");
-    var paramText = paramEl ? (paramEl.value || "").trim() : "";
-    var range = parseSpec(spec);
-    if (!range) {
+    if (resolved.mode !== "numeric" || !resolved.range) {
       actualInputs.forEach(function(inp) { inp.value = ""; });
       remarksEl.value = "";
       updateStatusButtons();
       return;
     }
-    if (firIsDftStyleRow(paramText, spec)) {
-      range = Object.assign({}, range, { step: 0.1, oneDecimal: true });
-    }
-    if (range.limitFromZero) {
-      var limitStep = firInstrumentResolutionStep(methodEl.value);
-      range = Object.assign({}, range, { step: limitStep, limitResolution: limitStep });
-    }
+    var range = resolved.range;
     var min = range.min, max = range.max, step = range.step;
     var values = [];
     for (var i = 0; i < nActive; i++) values.push(randomInRange(min, max, step));
