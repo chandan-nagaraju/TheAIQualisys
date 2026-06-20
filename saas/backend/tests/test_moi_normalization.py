@@ -25,6 +25,16 @@ def test_radius_angle_thread_dft():
     assert infer_moi_qti_from_parameter("Corner Radius") == "RG"
     assert infer_moi_qti_from_parameter("Bevel Angle") == "BP"
     assert infer_moi_qti_from_parameter("M10 Thread") == "TPG"
+    assert infer_moi_qti_from_parameter("M6") == "TPG"
+    assert infer_moi_qti_from_parameter("Tapped Hole", "M8X1.25") == "TPG"
+    assert normalize_method_of_inspection("Hole Dia", "M10X1.5", None, "DVC") == "TPG"
+
+
+def test_thread_moi_aliases():
+    assert normalize_method_of_inspection("M6", None, None, "TG") == "TPG"
+    assert normalize_method_of_inspection("M6", None, None, "M6 TG") == "TPG"
+    assert normalize_method_of_inspection("M12", None, None, "DVC") == "TPG"
+    assert normalize_method_of_inspection("Nut", None, None, "TG") == "TPG"
     assert infer_moi_qti_from_parameter("DFT") == "DFT"
 
 

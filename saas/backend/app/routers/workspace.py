@@ -1252,7 +1252,12 @@ def replace_specs(part_id: int, body: SpecBulkBody, ws: WsContext = Depends(get_
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=row.method_of_inspection,
+                method_of_inspection=normalize_method_of_inspection(
+                    row.parameter.strip(),
+                    row.specification,
+                    row.special_char,
+                    row.method_of_inspection,
+                ),
             )
         )
     ws.db.commit()
@@ -1272,7 +1277,12 @@ def replace_complaints(part_id: int, body: SpecBulkBody, ws: WsContext = Depends
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=row.method_of_inspection,
+                method_of_inspection=normalize_method_of_inspection(
+                    row.parameter.strip(),
+                    row.specification,
+                    row.special_char,
+                    row.method_of_inspection,
+                ),
             )
         )
     ws.db.commit()
@@ -1307,7 +1317,12 @@ def replace_coatings(part_id: int, body: SpecBulkBody, ws: WsContext = Depends(g
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=row.method_of_inspection,
+                method_of_inspection=normalize_method_of_inspection(
+                    row.parameter.strip(),
+                    row.specification,
+                    row.special_char,
+                    row.method_of_inspection,
+                ),
             )
         )
     ws.db.commit()

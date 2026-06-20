@@ -34,6 +34,34 @@ _PARAM_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 
 _CRITICAL_SPECIAL = re.compile(r"^(?:C|S|I|\*|CRITICAL|SAFETY|IMPORTANT)$", re.I)
 
+# Metric thread sizes (M6/M8/M10/M12) and M#X# pitch designations → TPG.
+_THREAD_SIZE = re.compile(r"\bM(?:6|8|10|12)\b", re.I)
+_THREAD_DESIGNATION = re.compile(r"\bM\d+(?:\.\d+)?\s*[X×]\d+(?:\.\d+)?\b", re.I)
+_THREAD_DESIGNATION_COMPACT = re.compile(r"^M\d+(?:\.\d+)?[X×]\d+(?:\.\d+)?$", re.I)
+_THREAD_MOI = re.compile(
+    r"^(?:M(?:6|8|10|12)\s*)?(?:TG|TPG|THREAD(?:\s*(?:PLUG)?\s*GAU(?:GE)?)?)$",
+    re.I,
+)
+
+
+def _looks_like_thread_specification(
+    parameter: str | None,
+    specification: str | None,
+) -> bool:
+    """True when parameter or specification denotes a metric thread (M6/M8/M10/M12 or M#X#)."""
+    param = _norm_key(parameter)
+    if param and _THREAD_SIZE.search(param):
+        return True
+    if param and _THREAD_DESIGNATION.search(param):
+        return True
+    for text in (parameter, specification):
+        if not text:
+            continue
+        compact = re.sub(r"\s+", "", _norm_key(text))
+        if _THREAD_DESIGNATION_COMPACT.match(compact):
+            return True
+    return False
+
 
 def _norm_key(s: str | None) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().upper())
@@ -60,6 +88,9 @@ def infer_moi_qti_from_parameter(
     special_char: str | None = None,
 ) -> str | None:
     """Return QTI code inferred from parameter / row context, or None."""
+    if _looks_like_thread_specification(parameter, specification):
+        return "TPG"
+
     if _is_critical_dimension(parameter, specification, special_char):
         return "DHG"
 
@@ -78,6 +109,9 @@ def _normalize_raw_moi(raw: str | None) -> str | None:
     s = _norm_key(raw)
     if not s:
         return None
+
+    if _THREAD_MOI.match(s):
+        return "TPG"
 
     if s in {"VISUAL", "VISUAL INSPECTION", "VISUVAL"} or "VISUAL" in s:
         return "VIS"
@@ -155,7 +189,9 @@ def _normalize_raw_moi(raw: str | None) -> str | None:
     if "PROJECTOR" in s or "PROFILE" in s:
         return "PP"
 
-    # Already a short QTI code — pass through uppercased.
+    # Already a short QTI code — normalize known aliases, else pass through uppercased.
+    if s == "TG":
+        return "TPG"
     if re.fullmatch(r"[A-Z]{2,4}", s):
         return s
 
