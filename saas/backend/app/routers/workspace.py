@@ -54,7 +54,7 @@ from app.fir_part_excel import (
     parse_parts_excel_to_bundle_dict,
 )
 from app.part_field_validation import sanitize_part_master_alnum_upper
-from app.thread_moi import normalize_thread_method_of_inspection
+from app.part_master_moi import normalize_part_master_moi
 from app.subscription_logic import (
     FIR_WORKSPACE_FORBIDDEN_CODE,
     FIR_WORKSPACE_FORBIDDEN_MESSAGE,
@@ -1252,7 +1252,7 @@ def replace_specs(part_id: int, body: SpecBulkBody, ws: WsContext = Depends(get_
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=_norm_thread_moi_row(
+                method_of_inspection=_norm_part_master_moi_row(
                     row.parameter.strip(),
                     row.specification,
                     row.special_char,
@@ -1277,7 +1277,7 @@ def replace_complaints(part_id: int, body: SpecBulkBody, ws: WsContext = Depends
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=_norm_thread_moi_row(
+                method_of_inspection=_norm_part_master_moi_row(
                     row.parameter.strip(),
                     row.specification,
                     row.special_char,
@@ -1317,7 +1317,7 @@ def replace_coatings(part_id: int, body: SpecBulkBody, ws: WsContext = Depends(g
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=_norm_thread_moi_row(
+                method_of_inspection=_norm_part_master_moi_row(
                     row.parameter.strip(),
                     row.specification,
                     row.special_char,
@@ -1336,13 +1336,13 @@ def _norm_opt_str(s: str | None) -> str | None:
     return t if t else None
 
 
-def _norm_thread_moi_row(
+def _norm_part_master_moi_row(
     parameter: str,
     specification: str | None,
     special_char: str | None,
     method_of_inspection: str | None,
 ) -> str | None:
-    return normalize_thread_method_of_inspection(
+    return normalize_part_master_moi(
         parameter,
         specification,
         special_char,
@@ -1447,7 +1447,7 @@ def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice, *, customer_i
                 parameter=row.parameter.strip(),
                 specification=_norm_opt_str(row.specification),
                 special_char=_norm_opt_str(row.special_char),
-                method_of_inspection=_norm_thread_moi_row(
+                method_of_inspection=_norm_part_master_moi_row(
                     row.parameter.strip(),
                     _norm_opt_str(row.specification),
                     _norm_opt_str(row.special_char),
@@ -1466,7 +1466,7 @@ def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice, *, customer_i
                 parameter=row.parameter.strip(),
                 specification=_norm_opt_str(row.specification),
                 special_char=_norm_opt_str(row.special_char),
-                method_of_inspection=_norm_thread_moi_row(
+                method_of_inspection=_norm_part_master_moi_row(
                     row.parameter.strip(),
                     _norm_opt_str(row.specification),
                     _norm_opt_str(row.special_char),
@@ -1491,7 +1491,7 @@ def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice, *, customer_i
                 parameter=row.parameter.strip(),
                 specification=_norm_opt_str(row.specification),
                 special_char=_norm_opt_str(row.special_char),
-                method_of_inspection=_norm_thread_moi_row(
+                method_of_inspection=_norm_part_master_moi_row(
                     row.parameter.strip(),
                     _norm_opt_str(row.specification),
                     _norm_opt_str(row.special_char),

@@ -26,7 +26,7 @@ from typing import Any
 import pandas as pd
 
 from app.part_field_validation import sanitize_part_master_alnum_upper
-from app.thread_moi import normalize_bundle_thread_moi
+from app.part_master_moi import normalize_bundle_part_master_moi
 
 BUNDLE_FORMAT = "fir_part_master_bundle_v1"
 
@@ -1065,7 +1065,7 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
             )
         )
 
-    return normalize_bundle_thread_moi(
+    return normalize_bundle_part_master_moi(
         assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
     )
 
@@ -1194,7 +1194,7 @@ def parse_parts_excel_to_bundle_dict(
             )
         )
 
-    return normalize_bundle_thread_moi(
+    return normalize_bundle_part_master_moi(
         assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
     )
 

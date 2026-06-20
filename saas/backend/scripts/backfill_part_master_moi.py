@@ -1,10 +1,10 @@
 """
-Backfill TPG Method of Inspection on existing metric thread part master rows.
+Backfill normalized Method of Inspection on part master rows (TPG + parameter rules).
 
 Run from saas/backend:
-  python3 scripts/backfill_thread_moi.py
+  python3 scripts/backfill_part_master_moi.py
 
-Uses DATABASE_URL from .env. Safe to re-run (idempotent). Only updates thread rows.
+Uses DATABASE_URL from .env. Safe to re-run (idempotent).
 """
 
 from __future__ import annotations
@@ -20,14 +20,14 @@ from sqlalchemy import select  # noqa: E402
 
 from app.database import SessionLocal  # noqa: E402
 from app.models import PartCoatingV2, PartComplaintV2, PartSpecV2  # noqa: E402
-from app.thread_moi import normalize_thread_method_of_inspection  # noqa: E402
+from app.part_master_moi import normalize_part_master_moi  # noqa: E402
 
 
 def _backfill_table(session, model) -> int:
     updated = 0
     rows = session.scalars(select(model)).all()
     for row in rows:
-        normalized = normalize_thread_method_of_inspection(
+        normalized = normalize_part_master_moi(
             row.parameter,
             row.specification,
             row.special_char,
@@ -48,7 +48,7 @@ def main() -> None:
         session.commit()
     total = spec_n + ccp_n + coat_n
     print(
-        f"Updated thread MOI on {total} row(s): "
+        f"Updated MOI on {total} row(s): "
         f"spec={spec_n}, ccp={ccp_n}, coating={coat_n}"
     )
 
