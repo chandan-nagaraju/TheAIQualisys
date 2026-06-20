@@ -923,6 +923,26 @@ def delete_part(part_id: int, ws: WsContext = Depends(get_ws)):
     return {"ok": True, "part_id": part_id}
 
 
+def _persist_normalized_moi_for_part(ws: WsContext, p: PartV2) -> None:
+    """Write normalized MOI back to DB when opening part detail (fixes legacy rows in place)."""
+    changed = False
+    for model in (PartSpecV2, PartComplaintV2, PartCoatingV2):
+        rows = ws.db.execute(select(model).where(model.part_id == p.id)).scalars().all()
+        for row in rows:
+            normalized = normalize_part_master_moi(
+                row.parameter,
+                row.specification,
+                row.special_char,
+                row.method_of_inspection,
+            )
+            current = (row.method_of_inspection or "").strip() or None
+            if normalized != current:
+                row.method_of_inspection = normalized
+                changed = True
+    if changed:
+        ws.db.commit()
+
+
 def _part_master_rows_with_continuous_sl_no(
     spec_rows: list[dict[str, Any]],
     ccp_rows: list[dict[str, Any]],
@@ -966,7 +986,9 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
             "parameter": s.parameter,
             "specification": s.specification,
             "special_char": s.special_char,
-            "method_of_inspection": s.method_of_inspection,
+            "method_of_inspection": normalize_part_master_moi(
+                s.parameter, s.specification, s.special_char, s.method_of_inspection
+            ),
         }
         for s in specs
     ]
@@ -975,7 +997,9 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
             "parameter": c.parameter,
             "specification": c.specification,
             "special_char": c.special_char,
-            "method_of_inspection": c.method_of_inspection,
+            "method_of_inspection": normalize_part_master_moi(
+                c.parameter, c.specification, c.special_char, c.method_of_inspection
+            ),
         }
         for c in cps
     ]
@@ -985,7 +1009,9 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
             "parameter": c.parameter,
             "specification": c.specification,
             "special_char": c.special_char,
-            "method_of_inspection": c.method_of_inspection,
+            "method_of_inspection": normalize_part_master_moi(
+                c.parameter, c.specification, c.special_char, c.method_of_inspection
+            ),
         }
         for c in coats
     ]
@@ -1129,6 +1155,7 @@ def download_part_master_excel_template():
 def get_part_detail(part_id: int, ws: WsContext = Depends(get_ws)):
     p = _get_part(ws, part_id)
     _reconcile_stale_drawing_metadata(ws, p)
+    _persist_normalized_moi_for_part(ws, p)
     return _serialize_part_detail(ws, p)
 
 

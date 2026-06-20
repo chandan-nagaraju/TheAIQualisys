@@ -26,7 +26,7 @@ from typing import Any
 import pandas as pd
 
 from app.part_field_validation import sanitize_part_master_alnum_upper
-from app.part_master_moi import normalize_bundle_part_master_moi
+from app.part_master_moi import normalize_ad_row_moi, normalize_bundle_part_master_moi
 
 BUNDLE_FORMAT = "fir_part_master_bundle_v1"
 
@@ -217,12 +217,14 @@ def _ad_rows_from_df(df: pd.DataFrame) -> list[dict[str, Any]]:
         if not param:
             continue
         rows.append(
-            {
-                "parameter": param,
-                "specification": _cell(r.get("specification")) or None,
-                "special_char": _cell(r.get("special_char")) or None,
-                "method_of_inspection": _cell(r.get("method_of_inspection")) or None,
-            }
+            normalize_ad_row_moi(
+                {
+                    "parameter": param,
+                    "specification": _cell(r.get("specification")) or None,
+                    "special_char": _cell(r.get("special_char")) or None,
+                    "method_of_inspection": _cell(r.get("method_of_inspection")) or None,
+                }
+            )
         )
     return rows
 
@@ -490,12 +492,14 @@ def _ad_row_from_loose_row_vals(vals: list[str]) -> dict[str, Any] | None:
     if not parameter or _norm(parameter) in {"parameter", "part", "part no", "part number"}:
         return None
     spec, special, method = _parse_ad_fields_from_rest(non_empty[idx + 1 :])
-    return {
-        "parameter": parameter,
-        "specification": spec,
-        "special_char": special,
-        "method_of_inspection": method,
-    }
+    return normalize_ad_row_moi(
+        {
+            "parameter": parameter,
+            "specification": spec,
+            "special_char": special,
+            "method_of_inspection": method,
+        }
+    )
 
 
 def _find_ad_header_row(df: pd.DataFrame, min_row: int = 0) -> int | None:
@@ -584,12 +588,14 @@ def _parse_loose_ad_table(
                 sch = parsed.get("special_char") or sch
                 meth = parsed.get("method_of_inspection") or meth
         rows.append(
-            {
-                "parameter": param,
-                "specification": spec_v or None,
-                "special_char": sch or None,
-                "method_of_inspection": meth or None,
-            }
+            normalize_ad_row_moi(
+                {
+                    "parameter": param,
+                    "specification": spec_v or None,
+                    "special_char": sch or None,
+                    "method_of_inspection": meth or None,
+                }
+            )
         )
     return rows
 
@@ -620,12 +626,14 @@ def _ad_row_from_colmap(df: pd.DataFrame, r: int, cmap: dict[str, int]) -> dict[
             spec_v = parsed.get("specification") or spec_v
             sch = parsed.get("special_char") or sch
             meth = parsed.get("method_of_inspection") or meth
-    return {
-        "parameter": param,
-        "specification": spec_v or None,
-        "special_char": sch or None,
-        "method_of_inspection": meth or None,
-    }
+    return normalize_ad_row_moi(
+        {
+            "parameter": param,
+            "specification": spec_v or None,
+            "special_char": sch or None,
+            "method_of_inspection": meth or None,
+        }
+    )
 
 
 def _is_section_b_boilerplate_row(joined_norm: str) -> bool:

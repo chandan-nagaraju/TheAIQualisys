@@ -50,9 +50,15 @@ def test_thread_spec_overrides_dvc():
     assert normalize_part_master_moi("Hole", "M10X1.5", None, "DVC") == "TPG"
 
 
-def test_unmatched_moi_unchanged():
+def test_real_world_part_master_rows():
+    assert normalize_part_master_moi("4 HOLE DIAMETER", "Ø8.5 - 0.2", None, "Vernier Caliper") == "DVC"
+    assert normalize_part_master_moi("HOLE PITCH", "18.4 ± 0.3", None, "Vernier Hight Guage") == "DHG"
+    assert normalize_part_master_moi("BUSH HEIGHT", "15.-0.3", None, "Vernier Caliper") == "DHG"
+    assert normalize_part_master_moi("PERPANDICULARITY", "0.5 MAX", None, "Vernier Hight Guage") == "DHG"
+    assert normalize_part_master_moi("DIMENSION", "47.5+0.5", None, "Vernier Hight Guage") == "DHG"
+    assert normalize_part_master_moi("RUST/DENT & DAMAGES/ SCORING MARK/", "NOT ALLOWED", None, "Visual") == "VIS"
     assert normalize_part_master_moi("Ref Dimension", "7±0.5", "C", "DHG") == "DHG"
-    assert normalize_part_master_moi("DFT", "60±10 Micron", None, "DFT METER") == "DFT METER"
+    assert normalize_part_master_moi("DFT", "60±10 Micron", None, "DFT METER") == "DFT"
 
 
 def test_excel_import_normalizes_parameter_moi():
@@ -78,4 +84,4 @@ def test_excel_import_normalizes_parameter_moi():
     assert part["spec_rows"][0]["method_of_inspection"] == "DVC"
     assert part["spec_rows"][1]["method_of_inspection"] == "DMM"
     assert part["spec_rows"][2]["method_of_inspection"] == "TPG"
-    assert part["coating_rows"][0]["method_of_inspection"] == "DFT METER"
+    assert part["coating_rows"][0]["method_of_inspection"] == "DFT"
