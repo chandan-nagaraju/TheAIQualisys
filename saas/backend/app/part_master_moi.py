@@ -1,15 +1,14 @@
 """
 Part master Method of Inspection normalization on import/edit.
 
-Rules (parameter → QTI, in priority order):
+Scope (parameter → QTI only):
   • Metric thread (M6/M8/M10/M12, M#X#) → TPG
   • Thickness → DMM
   • Radius → RG
   • Angle → BP
   • Dia, Width, OD, ID → DVC
 
-Thread MOI aliases (TG, M6 TG, …) → TPG when parameter does not match above.
-Other MOI values are left unchanged.
+Thread MOI aliases (TG, M6 TG, …) → TPG. All other MOI values are unchanged.
 """
 
 from __future__ import annotations
@@ -25,17 +24,10 @@ _THREAD_MOI = re.compile(
     re.I,
 )
 
-# Parameter-name patterns → QTI (after thread check; order matters).
 _PARAM_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bTHICKNESS\b|\bTHK\b|\bTHICK\b", re.I), "DMM"),
     (re.compile(r"\bRADIUS\b|\bRAD\b", re.I), "RG"),
     (re.compile(r"\bANGLE\b|\bBEVEL\b", re.I), "BP"),
-    (re.compile(r"\bPITCH\b", re.I), "DHG"),
-    (re.compile(r"\bHEIGHT\b|\bHIGHT\b|\bHIEGHT\b", re.I), "DHG"),
-    (re.compile(r"\bPERPENDICULAR\b", re.I), "DHG"),
-    (re.compile(r"\bHOLE\s*(?:CENTRE|CENTER|REF(?:ERENCE)?)\b", re.I), "DHG"),
-    (re.compile(r"\bLOCATION\b", re.I), "DHG"),
-    (re.compile(r"\b(?:X|Y)\s*(?:COORD(?:INATE)?S?)\b", re.I), "DHG"),
     (
         re.compile(
             r"\bDIA\b|\bDIAM\b|\bDIAMETER\b|\bWIDTH\b|\bOD\b|\bID\b|\bO\.?\s*D\.?\b|\bI\.?\s*D\.?\b",
@@ -103,60 +95,13 @@ def _normalize_raw_thread_moi(raw: str | None) -> str | None:
     return None
 
 
-def _normalize_raw_moi(raw: str | None) -> str | None:
-    """Map common raw MOI spellings to QTI when parameter inference does not apply."""
-    s = _norm_key(raw)
-    if not s:
-        return None
-
-    if s in {"VISUAL", "VISUAL INSPECTION", "VISUVAL"} or "VISUAL" in s:
-        return "VIS"
-
-    if "DFT" in s:
-        return "DFT"
-
-    tpg = _normalize_raw_thread_moi(raw)
-    if tpg:
-        return tpg
-
-    if s in {"DHG", "DHI", "VHG", "V.H.G", "V.H.G.", "DGH"}:
-        return "DHG"
-    if re.search(r"HEIGHT\s*(GAU|GAGE|GUAGE)|HIEGHT|HIGHT\s*GU", s):
-        return "DHG"
-    if "VERNIER HEIGHT" in s or "VENIRE HEIGHT" in s or "VENIRE HIGHT" in s:
-        return "DHG"
-
-    if s in {"DVC", "VC", "V.C", "V.C."}:
-        return "DVC"
-    if re.search(r"VERNIER|VENIRE|VERNNIER|CALLIPER|CALIPER|CALPER|CALIPPER", s):
-        if "HEIGHT" in s or "HIGHT" in s or "HIEGHT" in s:
-            return "DHG"
-        return "DVC"
-
-    if re.match(r"^(MIC|MM|DMM|MICRO\s*METER|MICROMETER|MICRO\s*METRE)$", s.replace(".", "")):
-        return "DMM"
-    if "MICROMETER" in s or "MICROMET" in s or s.startswith("MIC ") or s == "MIC":
-        return "DMM"
-
-    if s in {"RG", "R.G", "R.G."} or ("RADIUS" in s and "GAU" in s):
-        return "RG"
-
-    if s in {"BP", "BEVEL", "B.P", "B.P."} or "PROTRACTOR" in s or "PROTECTOR" in s:
-        return "BP"
-
-    if s == "TG":
-        return "TPG"
-
-    return None
-
-
 def normalize_part_master_moi(
     parameter: str | None,
     specification: str | None = None,
     special_char: str | None = None,
     raw_moi: str | None = None,
 ) -> str | None:
-    """Normalize MOI for a spec / CCP / coating row."""
+    """Normalize MOI for a spec / CCP / coating row (scoped rules only)."""
     _ = special_char
 
     if looks_like_thread_specification(parameter, specification):
@@ -166,15 +111,14 @@ def normalize_part_master_moi(
     if inferred:
         return inferred
 
-    normalized_raw = _normalize_raw_moi(raw_moi)
-    if normalized_raw:
-        return normalized_raw
+    tpg = _normalize_raw_thread_moi(raw_moi)
+    if tpg:
+        return tpg
 
     raw = (raw_moi or "").strip()
     return raw or None
 
 
-# Backward-compatible aliases used during incremental rollout.
 normalize_thread_method_of_inspection = normalize_part_master_moi
 
 

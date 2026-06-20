@@ -1,4 +1,4 @@
-"""Tests for part master Method of Inspection normalization."""
+"""Tests for scoped part master MOI normalization (DVC, DMM, RG, BP, TPG only)."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ def test_thread_sizes_and_designations():
 
 def test_parameter_dvc_dmm_rg_bp():
     assert infer_moi_from_parameter("2 HOLES DIA") == "DVC"
+    assert infer_moi_from_parameter("4 HOLE DIAMETER") == "DVC"
     assert infer_moi_from_parameter("Overall Width") == "DVC"
     assert infer_moi_from_parameter("Shaft OD") == "DVC"
     assert infer_moi_from_parameter("Bore ID") == "DVC"
@@ -30,10 +31,12 @@ def test_parameter_dvc_dmm_rg_bp():
     assert infer_moi_from_parameter("THK") == "DMM"
     assert infer_moi_from_parameter("Corner Radius") == "RG"
     assert infer_moi_from_parameter("Bevel Angle") == "BP"
+    assert infer_moi_from_parameter("HOLE PITCH") is None
 
 
 def test_parameter_inference_overrides_raw_moi():
     assert normalize_part_master_moi("2 HOLES DIA", "20.5+0.5", None, "Vernier Caliper") == "DVC"
+    assert normalize_part_master_moi("4 HOLE DIAMETER", "Ø8.5 - 0.2", None, "Vernier Caliper") == "DVC"
     assert normalize_part_master_moi("Plate Thickness", "12±0.5", None, "Micrometer") == "DMM"
     assert normalize_part_master_moi("Corner Radius", "R5", None, "Radius Gauge") == "RG"
     assert normalize_part_master_moi("Bevel Angle", "45°", None, "Bevel Protractor") == "BP"
@@ -50,24 +53,27 @@ def test_thread_spec_overrides_dvc():
     assert normalize_part_master_moi("Hole", "M10X1.5", None, "DVC") == "TPG"
 
 
-def test_real_world_part_master_rows():
-    assert normalize_part_master_moi("4 HOLE DIAMETER", "Ø8.5 - 0.2", None, "Vernier Caliper") == "DVC"
-    assert normalize_part_master_moi("HOLE PITCH", "18.4 ± 0.3", None, "Vernier Hight Guage") == "DHG"
-    assert normalize_part_master_moi("BUSH HEIGHT", "15.-0.3", None, "Vernier Caliper") == "DHG"
-    assert normalize_part_master_moi("PERPANDICULARITY", "0.5 MAX", None, "Vernier Hight Guage") == "DHG"
-    assert normalize_part_master_moi("DIMENSION", "47.5+0.5", None, "Vernier Hight Guage") == "DHG"
-    assert normalize_part_master_moi("RUST/DENT & DAMAGES/ SCORING MARK/", "NOT ALLOWED", None, "Visual") == "VIS"
+def test_out_of_scope_moi_unchanged():
+    assert (
+        normalize_part_master_moi("HOLE PITCH", "18.4 ± 0.3", None, "Vernier Hight Guage")
+        == "Vernier Hight Guage"
+    )
+    assert normalize_part_master_moi("BUSH HEIGHT", "15.-0.3", None, "Vernier Caliper") == "Vernier Caliper"
+    assert (
+        normalize_part_master_moi("RUST/DENT & DAMAGES/", "NOT ALLOWED", None, "Visual") == "Visual"
+    )
     assert normalize_part_master_moi("Ref Dimension", "7±0.5", "C", "DHG") == "DHG"
-    assert normalize_part_master_moi("DFT", "60±10 Micron", None, "DFT METER") == "DFT"
+    assert normalize_part_master_moi("DFT", "60±10 Micron", None, "DFT METER") == "DFT METER"
 
 
-def test_excel_import_normalizes_parameter_moi():
+def test_excel_import_normalizes_scoped_rules_only():
     grid = [
         ["PART NO", "FS465913", "", "DESCRIPTION", "LINK ROD"],
         ["A) Dimension Parameters", "", "", "", ""],
         ["Parameter", "Specification (mm)", "Special Characteristics", "Method of Inspection", ""],
         ["2 HOLES DIA", "20.5+0.5", "", "Vernier Caliper", ""],
         ["Plate Thickness", "12±0.5", "", "Micrometer", ""],
+        ["Hole pitch", "200±0.25", "", "Vernier Height Gauge", ""],
         ["M6", "M6X1.0", "", "TG", ""],
         ["D) Surface Coating", "", "", "", ""],
         ["Parameter", "Specification", "Special Char", "Method", ""],
@@ -83,5 +89,6 @@ def test_excel_import_normalizes_parameter_moi():
     part = bundle["parts"][0]
     assert part["spec_rows"][0]["method_of_inspection"] == "DVC"
     assert part["spec_rows"][1]["method_of_inspection"] == "DMM"
-    assert part["spec_rows"][2]["method_of_inspection"] == "TPG"
-    assert part["coating_rows"][0]["method_of_inspection"] == "DFT"
+    assert part["spec_rows"][2]["method_of_inspection"] == "Vernier Height Gauge"
+    assert part["spec_rows"][3]["method_of_inspection"] == "TPG"
+    assert part["coating_rows"][0]["method_of_inspection"] == "DFT METER"
