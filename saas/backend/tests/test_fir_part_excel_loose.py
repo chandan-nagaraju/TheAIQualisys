@@ -80,6 +80,48 @@ def _find_b(df: pd.DataFrame) -> int:
     return _find_section_anchor_row(df, "b") or 0
 
 
+def test_section_b_without_repeated_header():
+    """Real QTI layout: Section B title then data row directly (no Parameter header repeat)."""
+    grid = [
+        ["PART NO", "FS465913", "", "DESCRIPTION", "LINK ROD PLATE"],
+        ["A) Dimension Parameters", "", "", "", ""],
+        ["Sl No", "Parameter", "Specification (mm)", "Special Characteristics", "Method of Inspection"],
+        ["1", "2 HOLES DIA", "20.5+0.5", "", "Vernier Caliper"],
+        ["", "", "", "", ""],
+        ["", "", "", "", ""],
+        ["", "", "", "", ""],
+        ["", "", "", "", ""],
+        ["", "", "", "", ""],
+        ["", "", "", "", ""],
+        [
+            "B) Customer End Complaints Parameters & Check points( All CPI Issues to be covered and measured 100%)",
+            "",
+            "",
+            "",
+            "",
+        ],
+        ["1", "Ref Dimension", "7±0.5", "", "DHG"],
+        ["C) Material Grade", "", "", "", ""],
+        ["1", "BSK46", "", "", ""],
+        ["D) Surface Coating", "", "", "", ""],
+        ["1", "DFT", "60±10 Micron", "", "DFT METER"],
+        ["2", "Black Powder Coating", "", "", ""],
+    ]
+    df = _df_from_grid(grid)
+    b_rows = _scan_section_b_rows(df)
+    assert len(b_rows) == 1
+    assert b_rows[0]["parameter"] == "Ref Dimension"
+    assert b_rows[0]["specification"] == "7±0.5"
+    assert b_rows[0]["method_of_inspection"] == "DHG"
+
+    bio = io.BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="FIR", index=False, header=False)
+    bundle = parse_parts_excel_to_bundle_dict(bio.getvalue(), source_filename="FS465913.xlsx")
+    assert len(bundle["parts"][0]["ccp_rows"]) == 1
+    assert bundle["parts"][0]["ccp_rows"][0]["parameter"] == "Ref Dimension"
+
+
 def test_loose_workbook_bundle_includes_section_b():
     grid = [
         ["PART NO", "FS465913", "", "DESCRIPTION", "LINK ROD"],

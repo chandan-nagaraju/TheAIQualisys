@@ -344,6 +344,7 @@ def _find_section_anchor_row(df: pd.DataFrame, section: str) -> int | None:
             continue
         if section == "b" and (
             "section b" in joined
+            or joined.startswith("b)")
             or ("customer" in joined and "complaint" in joined)
             or "check points" in joined
             or "checkpoints" in joined
@@ -363,11 +364,14 @@ def _is_fir_section_boundary_row(df: pd.DataFrame, r: int) -> bool:
     if not joined:
         return False
     return (
-        "section b" in joined
-        or ("customer" in joined and "complaint" in joined)
+        joined.startswith("b)")
+        or joined.startswith("c)")
+        or joined.startswith("d)")
+        or "section b" in joined
         or "section c" in joined
-        or ("material" in joined and "grade" in joined and "section" in joined)
         or "section d" in joined
+        or ("customer" in joined and "complaint" in joined)
+        or ("material" in joined and "grade" in joined)
         or "surface coating" in joined
     )
 
@@ -570,13 +574,101 @@ def _parse_loose_ad_table(
     return rows
 
 
+def _ad_row_from_colmap(df: pd.DataFrame, r: int, cmap: dict[str, int]) -> dict[str, Any] | None:
+    """Read one A/B/D-style row using a header column map from Section A."""
+    pc = cmap.get("parameter")
+    if pc is None:
+        return None
+    param = _cell(df.iloc[r, pc])
+    if not param or _norm(param) in {"parameter", "part", "part no", "part number"}:
+        return None
+    sc = cmap.get("specification")
+    spc = cmap.get("special_char")
+    moi = cmap.get("method_of_inspection")
+    spec_v = _cell(df.iloc[r, sc]) if sc is not None else ""
+    sch = _cell(df.iloc[r, spc]) if spc is not None else ""
+    meth = _cell(df.iloc[r, moi]) if moi is not None else ""
+    if sch and not meth and _looks_like_inspection_method(sch):
+        meth, sch = sch, ""
+    if not spec_v and not sch and not meth:
+        vals = [_cell(df.iloc[r, c]) for c in range(min(25, df.shape[1]))]
+        parsed = _ad_row_from_loose_row_vals(vals)
+        if parsed and parsed["parameter"] == param:
+            spec_v = parsed.get("specification") or spec_v
+            sch = parsed.get("special_char") or sch
+            meth = parsed.get("method_of_inspection") or meth
+    return {
+        "parameter": param,
+        "specification": spec_v or None,
+        "special_char": sch or None,
+        "method_of_inspection": meth or None,
+    }
+
+
+def _is_section_b_boilerplate_row(joined_norm: str) -> bool:
+    if not joined_norm:
+        return True
+    if joined_norm.startswith("b)") or joined_norm.startswith("section b"):
+        return True
+    if "cpi" in joined_norm and ("issue" in joined_norm or "100" in joined_norm):
+        return True
+    if "customer" in joined_norm and "complaint" in joined_norm:
+        return True
+    return False
+
+
+def _dedupe_ad_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str | None, str | None, str | None]] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        key = (
+            row["parameter"],
+            row.get("specification"),
+            row.get("special_char"),
+            row.get("method_of_inspection"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
+
+
 def _scan_section_b_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
     """Parse Section B (CCP) from loose single-sheet FIR layouts."""
     b_anchor = _find_section_anchor_row(df, "b")
     if b_anchor is None:
         return []
     c_anchor = _find_section_anchor_row(df, "c")
-    return _parse_loose_ad_table(df, start_row=b_anchor, end_row=c_anchor)
+
+    rows = _parse_loose_ad_table(df, start_row=b_anchor, end_row=c_anchor)
+    if rows:
+        return rows
+
+    # Many FIR templates omit the repeated Parameter/Specification header under Section B.
+    hdr = _find_ad_header_row(df, min_row=0)
+    cmap = _ad_colmap_from_header_row(df, hdr) if hdr is not None else {}
+    stop = c_anchor if c_anchor is not None else len(df)
+    out: list[dict[str, Any]] = []
+    for r in range(b_anchor + 1, min(stop, len(df))):
+        joined = _row_joined_norm(df, r)
+        if not joined:
+            continue
+        if _is_fir_section_boundary_row(df, r):
+            break
+        if _is_section_b_boilerplate_row(joined):
+            continue
+        vals = [_cell(df.iloc[r, c]) for c in range(min(25, df.shape[1]))]
+        if _is_ad_table_header_row(vals):
+            continue
+        row: dict[str, Any] | None = None
+        if cmap.get("parameter") is not None:
+            row = _ad_row_from_colmap(df, r, cmap)
+        if row is None:
+            row = _ad_row_from_loose_row_vals(vals)
+        if row:
+            out.append(row)
+    return _dedupe_ad_rows(out)
 
 
 def _scan_material_grade_cells(df: pd.DataFrame) -> list[dict[str, Any]]:
