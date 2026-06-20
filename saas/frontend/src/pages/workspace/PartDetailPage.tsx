@@ -10,6 +10,7 @@ import {
 
 type Spec = {
   id?: number;
+  sl_no?: number;
   parameter: string;
   specification: string;
   special_char: string;
@@ -35,7 +36,7 @@ type Detail = {
   revision_rows?: RevRow[];
   spec_rows: Spec[];
   ccp_rows: Spec[];
-  material_rows: { material_grade: string }[];
+  material_rows: { material_grade: string; sl_no?: number }[];
   coating_rows: Spec[];
 };
 
@@ -228,6 +229,7 @@ function SpecSectionWithPaste({
   hint,
   pasteLabel,
   placeholder,
+  slNoStart,
   rows,
   setRows,
   onSave,
@@ -238,6 +240,7 @@ function SpecSectionWithPaste({
   hint: string;
   pasteLabel: string;
   placeholder: string;
+  slNoStart: number;
   rows: Spec[];
   setRows: (r: Spec[]) => void;
   onSave: () => void | Promise<void>;
@@ -279,6 +282,7 @@ function SpecSectionWithPaste({
         <table className="min-w-full border-collapse text-sm">
           <thead>
             <tr className="bg-slate-100">
+              <th className="border border-slate-200 px-2 py-1.5 text-left w-12">Sl No</th>
               <th className="border border-slate-200 px-2 py-1.5 text-left">Parameter</th>
               <th className="border border-slate-200 px-2 py-1.5 text-left">Specification</th>
               <th className="border border-slate-200 px-2 py-1.5 text-left">Special char</th>
@@ -289,6 +293,9 @@ function SpecSectionWithPaste({
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
+                <td className="border border-slate-200 px-2 py-1.5 text-center font-mono text-slate-600">
+                  {r.sl_no ?? slNoStart + i}
+                </td>
                 {(["parameter", "specification", "special_char", "method_of_inspection"] as const).map((k) => (
                   <td key={k} className="border border-slate-200 p-0 align-top">
                     {k === "special_char" ? (
@@ -336,10 +343,12 @@ function SpecSectionWithPaste({
 
 function MaterialSectionWithPaste({
   rows,
+  slNoStart,
   setRows,
   onSave,
 }: {
   rows: string[];
+  slNoStart: number;
   setRows: (r: string[]) => void;
   onSave: () => void | Promise<void>;
 }) {
@@ -375,16 +384,18 @@ function MaterialSectionWithPaste({
       </div>
       <div className="mt-4 space-y-2">
         {rows.map((g, i) => (
-          <input
-            key={i}
-            className="block w-full max-w-md rounded border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
-            value={g}
-            onChange={(e) => {
-              const n = [...rows];
-              n[i] = e.target.value;
-              setRows(n);
-            }}
-          />
+          <div key={i} className="flex max-w-md items-center gap-2">
+            <span className="w-8 shrink-0 text-center font-mono text-sm text-slate-600">{slNoStart + i}</span>
+            <input
+              className="block w-full rounded border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+              value={g}
+              onChange={(e) => {
+                const n = [...rows];
+                n[i] = e.target.value;
+                setRows(n);
+              }}
+            />
+          </div>
         ))}
       </div>
       <button type="button" className="mt-2 text-sm text-blue-700 underline" onClick={() => setRows([...rows, ""])}>
@@ -563,6 +574,11 @@ export default function PartDetailPage() {
 
   const pastePlaceholderA = "HOLE DIA\tØ 8.5 + 0.20\t\tDVC\nPITCH\t38 ± 0.25\t\tDHG";
 
+  const slA = 1;
+  const slB = slA + specs.length;
+  const slC = slB + ccps.length;
+  const slD = slC + mats.length;
+
   const showDrawingActions = d.drawing_file_present ?? Boolean(d.drawing_pdf_filename);
 
   return (
@@ -661,6 +677,7 @@ export default function PartDetailPage() {
         hint="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method) or add a row, then edit and save. Special char: choose Critical / Safety / Important to show your Global FIR settings images in the cell (other values in the paste are ignored)."
         pasteLabel="Paste from Excel (columns: Parameter, Specification, Special char, Method — tab-separated, one row per line):"
         placeholder={pastePlaceholderA}
+        slNoStart={slA}
         rows={specs}
         setRows={setSpecs}
         onSave={saveSpecs}
@@ -672,19 +689,21 @@ export default function PartDetailPage() {
         hint="Paste from Excel (tab-separated) or add a row, edit and save. Loaded into the FIR when you generate the report. Special char uses the same Critical / Safety / Important dropdown and images as section A."
         pasteLabel="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method):"
         placeholder={pastePlaceholderA}
+        slNoStart={slB}
         rows={ccps}
         setRows={setCcps}
         onSave={saveCcp}
         charLegendUrls={charLegendUrls}
       />
 
-      <MaterialSectionWithPaste rows={mats} setRows={setMats} onSave={saveMat} />
+      <MaterialSectionWithPaste rows={mats} slNoStart={slC} setRows={setMats} onSave={saveMat} />
 
       <SpecSectionWithPaste
         title="D) Surface coating"
         hint="Paste from Excel (tab-separated) or add a row, edit and save. Three columns from Excel (Parameter, Specification, Method) map correctly; a single cell like “Black Powder Coating” splits into Specification BLACK, Method VISUAL."
         pasteLabel="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method — or 3 columns: Parameter, Specification, Method):"
         placeholder={pastePlaceholderA}
+        slNoStart={slD}
         rows={coats}
         setRows={setCoats}
         onSave={saveCoat}

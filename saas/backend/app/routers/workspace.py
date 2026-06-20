@@ -48,7 +48,11 @@ from app.fir_intelligence_ingest import (
     parse_row_for_intelligence,
     preview_fir_intelligence_batch,
 )
-from app.fir_part_excel import build_part_master_template_xlsx, parse_parts_excel_to_bundle_dict
+from app.fir_part_excel import (
+    assign_continuous_sl_numbers,
+    build_part_master_template_xlsx,
+    parse_parts_excel_to_bundle_dict,
+)
 from app.part_field_validation import sanitize_part_master_alnum_upper
 from app.subscription_logic import (
     FIR_WORKSPACE_FORBIDDEN_CODE,
@@ -918,6 +922,22 @@ def delete_part(part_id: int, ws: WsContext = Depends(get_ws)):
     return {"ok": True, "part_id": part_id}
 
 
+def _part_master_rows_with_continuous_sl_no(
+    spec_rows: list[dict[str, Any]],
+    ccp_rows: list[dict[str, Any]],
+    material_rows: list[dict[str, Any]],
+    coating_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    payload = {
+        "spec_rows": spec_rows,
+        "ccp_rows": ccp_rows,
+        "material_rows": material_rows,
+        "coating_rows": coating_rows,
+    }
+    assign_continuous_sl_numbers(payload)
+    return payload["spec_rows"], payload["ccp_rows"], payload["material_rows"], payload["coating_rows"]
+
+
 def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
     specs = (
         ws.db.execute(select(PartSpecV2).where(PartSpecV2.part_id == p.id).order_by(PartSpecV2.id))
@@ -938,6 +958,38 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
         ws.db.execute(select(PartCoatingV2).where(PartCoatingV2.part_id == p.id).order_by(PartCoatingV2.id))
         .scalars()
         .all()
+    )
+    spec_rows = [
+        {
+            "id": s.id,
+            "parameter": s.parameter,
+            "specification": s.specification,
+            "special_char": s.special_char,
+            "method_of_inspection": s.method_of_inspection,
+        }
+        for s in specs
+    ]
+    ccp_rows = [
+        {
+            "parameter": c.parameter,
+            "specification": c.specification,
+            "special_char": c.special_char,
+            "method_of_inspection": c.method_of_inspection,
+        }
+        for c in cps
+    ]
+    material_rows = [{"material_grade": m.material_grade} for m in mats]
+    coating_rows = [
+        {
+            "parameter": c.parameter,
+            "specification": c.specification,
+            "special_char": c.special_char,
+            "method_of_inspection": c.method_of_inspection,
+        }
+        for c in coats
+    ]
+    spec_rows, ccp_rows, material_rows, coating_rows = _part_master_rows_with_continuous_sl_no(
+        spec_rows, ccp_rows, material_rows, coating_rows
     )
     revs = (
         ws.db.execute(
@@ -972,35 +1024,10 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
             }
             for r in revs
         ],
-        "spec_rows": [
-            {
-                "id": s.id,
-                "parameter": s.parameter,
-                "specification": s.specification,
-                "special_char": s.special_char,
-                "method_of_inspection": s.method_of_inspection,
-            }
-            for s in specs
-        ],
-        "ccp_rows": [
-            {
-                "parameter": c.parameter,
-                "specification": c.specification,
-                "special_char": c.special_char,
-                "method_of_inspection": c.method_of_inspection,
-            }
-            for c in cps
-        ],
-        "material_rows": [{"material_grade": m.material_grade} for m in mats],
-        "coating_rows": [
-            {
-                "parameter": c.parameter,
-                "specification": c.specification,
-                "special_char": c.special_char,
-                "method_of_inspection": c.method_of_inspection,
-            }
-            for c in coats
-        ],
+        "spec_rows": spec_rows,
+        "ccp_rows": ccp_rows,
+        "material_rows": material_rows,
+        "coating_rows": coating_rows,
     }
 
 
@@ -1890,6 +1917,9 @@ def fir_preview(
                 .scalars()
                 .all()
             ]
+            spec_data, ccp_data, material_data, coating_data = _part_master_rows_with_continuous_sl_no(
+                spec_data, ccp_data, material_data, coating_data
+            )
 
     st = db.execute(
         _company_settings_select(company.id, load_asset_blobs=not s3_assets_configured(settings))

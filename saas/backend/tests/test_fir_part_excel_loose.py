@@ -12,6 +12,7 @@ from app.fir_part_excel import (
     _parse_loose_ad_table,
     _scan_section_b_rows,
     _scan_section_d_rows,
+    assign_continuous_sl_numbers,
     parse_parts_excel_to_bundle_dict,
 )
 
@@ -150,3 +151,19 @@ def test_loose_workbook_bundle_includes_section_b():
     assert part["ccp_rows"][0]["parameter"] == "Ref Dimension"
     assert part["coating_rows"][0]["method_of_inspection"] == "DFT METER"
     assert part["coating_rows"][0]["special_char"] is None
+
+
+def test_continuous_sl_numbers_across_sections():
+    part = assign_continuous_sl_numbers(
+        {
+            "part": {"part_no": "FS465913"},
+            "spec_rows": [{"parameter": "A1"}, {"parameter": "A2"}],
+            "ccp_rows": [{"parameter": "Ref Dimension"}],
+            "material_rows": [{"material_grade": "BSK46"}],
+            "coating_rows": [{"parameter": "DFT"}, {"parameter": "Black Powder Coating"}],
+        }
+    )
+    assert [r["sl_no"] for r in part["spec_rows"]] == [1, 2]
+    assert part["ccp_rows"][0]["sl_no"] == 3
+    assert part["material_rows"][0]["sl_no"] == 4
+    assert [r["sl_no"] for r in part["coating_rows"]] == [5, 6]

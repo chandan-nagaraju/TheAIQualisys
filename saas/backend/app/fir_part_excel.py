@@ -30,6 +30,25 @@ from app.part_field_validation import sanitize_part_master_alnum_upper
 BUNDLE_FORMAT = "fir_part_master_bundle_v1"
 
 
+def assign_continuous_sl_numbers(part: dict[str, Any]) -> dict[str, Any]:
+    """
+    Assign one global Sl No sequence across sections A → B → C → D.
+    Excel often restarts at 1 in each section; part master / FIR use one continuous run.
+    """
+    n = 1
+    for key in ("spec_rows", "ccp_rows", "material_rows", "coating_rows"):
+        for row in part.get(key) or []:
+            row["sl_no"] = n
+            n += 1
+    return part
+
+
+def assign_continuous_sl_numbers_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
+    for part in bundle.get("parts") or []:
+        assign_continuous_sl_numbers(part)
+    return bundle
+
+
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", str(s).strip().lower())
 
@@ -580,6 +599,9 @@ def _ad_row_from_colmap(df: pd.DataFrame, r: int, cmap: dict[str, int]) -> dict[
     if pc is None:
         return None
     param = _cell(df.iloc[r, pc])
+    if _is_serial_only(param):
+        vals = [_cell(df.iloc[r, c]) for c in range(min(25, df.shape[1]))]
+        return _ad_row_from_loose_row_vals(vals)
     if not param or _norm(param) in {"parameter", "part", "part no", "part number"}:
         return None
     sc = cmap.get("specification")
@@ -1027,20 +1049,22 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
     for pn in sorted(buckets.keys()):
         b = buckets[pn]
         parts_out.append(
-            {
-                "part": {
-                    "part_no": pn,
-                    "drawing_rev": b.get("drawing_rev"),
-                    "description": b.get("description"),
-                },
-                "spec_rows": _dedupe_ad(b["spec_rows"]),
-                "ccp_rows": _dedupe_ad(b["ccp_rows"]),
-                "material_rows": _dedupe_material(b["material_rows"]),
-                "coating_rows": _dedupe_ad(b.get("coating_rows", [])),
-            }
+            assign_continuous_sl_numbers(
+                {
+                    "part": {
+                        "part_no": pn,
+                        "drawing_rev": b.get("drawing_rev"),
+                        "description": b.get("description"),
+                    },
+                    "spec_rows": _dedupe_ad(b["spec_rows"]),
+                    "ccp_rows": _dedupe_ad(b["ccp_rows"]),
+                    "material_rows": _dedupe_material(b["material_rows"]),
+                    "coating_rows": _dedupe_ad(b.get("coating_rows", [])),
+                }
+            )
         )
 
-    return {"format": BUNDLE_FORMAT, "parts": parts_out}
+    return assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
 
 
 def _group_by_part(df: pd.DataFrame, part_col: str, builder):
@@ -1152,20 +1176,22 @@ def parse_parts_excel_to_bundle_dict(
     for pn in sorted(all_parts):
         m = meta.get(pn, {})
         parts_out.append(
-            {
-                "part": {
-                    "part_no": pn,
-                    "drawing_rev": m.get("drawing_rev"),
-                    "description": m.get("description"),
-                },
-                "spec_rows": by_a.get(pn, []),
-                "ccp_rows": by_b.get(pn, []),
-                "material_rows": by_c.get(pn, []),
-                "coating_rows": by_d.get(pn, []),
-            }
+            assign_continuous_sl_numbers(
+                {
+                    "part": {
+                        "part_no": pn,
+                        "drawing_rev": m.get("drawing_rev"),
+                        "description": m.get("description"),
+                    },
+                    "spec_rows": by_a.get(pn, []),
+                    "ccp_rows": by_b.get(pn, []),
+                    "material_rows": by_c.get(pn, []),
+                    "coating_rows": by_d.get(pn, []),
+                }
+            )
         )
 
-    return {"format": BUNDLE_FORMAT, "parts": parts_out}
+    return assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
 
 
 def build_part_master_template_xlsx() -> bytes:

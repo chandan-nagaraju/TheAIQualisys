@@ -526,6 +526,19 @@
     return '';
   }
 
+  function firRowSlNo(row, counter) {
+    if (row && row.sl_no != null && row.sl_no !== "") {
+      var n = parseInt(row.sl_no, 10);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    return counter;
+  }
+
+  function firAdvanceSlNo(row, counter) {
+    var sn = firRowSlNo(row, counter);
+    return Math.max(counter, sn + 1);
+  }
+
   if (!partName || !description) {
     document.body.innerHTML = `<h2 style='text-align:center;color:red;'>Missing part data. Please go back and fill the form.</h2>
     <div style='text-align:center;'><button onclick='history.back()'>Go Back</button></div>`;
@@ -597,7 +610,9 @@
       const idx = i - 1;
       const row = FIR_SPEC_DATA[idx];
       if (row) {
-        html += `<tr><td>${slno++}</td><td>${wrapCell(row.parameter)}</td><td>${wrapCell(row.specification)}</td><td>${specialCharCell(row.special_char)}</td><td>${methodInput(row.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+        var snA = firRowSlNo(row, slno);
+        slno = firAdvanceSlNo(row, slno);
+        html += `<tr><td>${snA}</td><td>${wrapCell(row.parameter)}</td><td>${wrapCell(row.specification)}</td><td>${specialCharCell(row.special_char)}</td><td>${methodInput(row.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
       } else {
         html += `<tr><td>${slno++}</td><td>${wrapCell()}</td><td>${wrapCell()}</td><td>${specialCharCell()}</td><td>${methodInput()}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
       }
@@ -610,7 +625,9 @@
         let bHtml = '<div class="section-title">B) Customer End Complaints Parameters & Check Points</div><table class="data-table" id="ccp-table"><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         if (FIR_CCP_DATA.length > 0) {
           FIR_CCP_DATA.forEach(function(r, idx) {
-            bHtml += `<tr><td style="width:5%;">${slno++}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharCell(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+            var snB = firRowSlNo(r, slno);
+            slno = firAdvanceSlNo(r, slno);
+            bHtml += `<tr><td style="width:5%;">${snB}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharCell(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
           });
         }
         bHtml += '</tbody></table>';
@@ -618,7 +635,9 @@
         let cHtml = '<div class="section-title">C) Material Grade</div><table class="data-table" id="material-table"><tbody>';
         if (FIR_MATERIAL_DATA.length > 0) {
           FIR_MATERIAL_DATA.forEach(function(r) {
-            cHtml += `<tr><td style="width:5%;">${slno++}</td><td style="width:85%;">${wrapCell(r.material_grade)}</td><td style="width:10%;">${cRemarksInput}</td></tr>`;
+            var snC = firRowSlNo(r, slno);
+            slno = firAdvanceSlNo(r, slno);
+            cHtml += `<tr><td style="width:5%;">${snC}</td><td style="width:85%;">${wrapCell(r.material_grade)}</td><td style="width:10%;">${cRemarksInput}</td></tr>`;
           });
         } else {
           cHtml += `<tr><td style="width:5%;">${slno++}</td><td style="width:85%;">${wrapCell()}</td><td style="width:10%;">${cRemarksInput}</td></tr>`;
@@ -627,7 +646,9 @@
         let dHtml = '<div class="section-title">D) Surface Coating</div><table class="data-table" id="coating-table"><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         if (FIR_COATING_DATA.length > 0) {
           FIR_COATING_DATA.forEach(function(r) {
-            dHtml += `<tr><td>${slno++}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharCell(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
+            var snD = firRowSlNo(r, slno);
+            slno = firAdvanceSlNo(r, slno);
+            dHtml += `<tr><td>${snD}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharCell(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
           });
         } else {
           dHtml += `<tr><td>${slno++}</td><td>${wrapCell()}</td><td>${wrapCell()}</td><td>${specialCharCell()}</td><td>${methodInput()}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
