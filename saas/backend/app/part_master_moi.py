@@ -7,6 +7,7 @@ Scope (parameter → QTI only):
   • Radius → RG
   • Angle → BP
   • Dia, Width, OD, ID → DVC
+  • DFT → DFT METER
 
 Thread MOI aliases (TG, M6 TG, …) → TPG. All other MOI values are unchanged.
 """
@@ -25,6 +26,7 @@ _THREAD_MOI = re.compile(
 )
 
 _PARAM_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bDFT\b", re.I), "DFT METER"),
     (re.compile(r"\bTHICKNESS\b|\bTHK\b|\bTHICK\b", re.I), "DMM"),
     (re.compile(r"\bRADIUS\b|\bRAD\b", re.I), "RG"),
     (re.compile(r"\bANGLE\b|\bBEVEL\b", re.I), "BP"),

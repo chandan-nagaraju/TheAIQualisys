@@ -53,6 +53,13 @@ def test_thread_spec_overrides_dvc():
     assert normalize_part_master_moi("Hole", "M10X1.5", None, "DVC") == "TPG"
 
 
+def test_dft_parameter_maps_to_dft_meter():
+    assert infer_moi_from_parameter("DFT") == "DFT METER"
+    assert normalize_part_master_moi("DFT", "60±10 Micron", None, "DFT METER") == "DFT METER"
+    assert normalize_part_master_moi("DFT", "60±10 Micron", None, "DFT") == "DFT METER"
+    assert normalize_part_master_moi("DFT", "60±10 Micron", None, None) == "DFT METER"
+
+
 def test_out_of_scope_moi_unchanged():
     assert (
         normalize_part_master_moi("HOLE PITCH", "18.4 ± 0.3", None, "Vernier Hight Guage")
@@ -63,7 +70,6 @@ def test_out_of_scope_moi_unchanged():
         normalize_part_master_moi("RUST/DENT & DAMAGES/", "NOT ALLOWED", None, "Visual") == "Visual"
     )
     assert normalize_part_master_moi("Ref Dimension", "7±0.5", "C", "DHG") == "DHG"
-    assert normalize_part_master_moi("DFT", "60±10 Micron", None, "DFT METER") == "DFT METER"
 
 
 def test_excel_import_normalizes_scoped_rules_only():
