@@ -26,6 +26,7 @@ from typing import Any
 import pandas as pd
 
 from app.part_field_validation import sanitize_part_master_alnum_upper
+from app.thread_moi import normalize_bundle_thread_moi
 
 BUNDLE_FORMAT = "fir_part_master_bundle_v1"
 
@@ -1064,7 +1065,9 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
             )
         )
 
-    return assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
+    return normalize_bundle_thread_moi(
+        assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
+    )
 
 
 def _group_by_part(df: pd.DataFrame, part_col: str, builder):
@@ -1191,7 +1194,9 @@ def parse_parts_excel_to_bundle_dict(
             )
         )
 
-    return assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
+    return normalize_bundle_thread_moi(
+        assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
+    )
 
 
 def build_part_master_template_xlsx() -> bytes:
