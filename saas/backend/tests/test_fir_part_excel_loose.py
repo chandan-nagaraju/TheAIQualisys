@@ -66,7 +66,7 @@ def test_loose_fir_sections_a_b_d():
     assert len(a_rows) == 2
     assert a_rows[0]["parameter"] == "2 HOLES DIA"
     assert a_rows[0]["method_of_inspection"] == "DVC"
-    assert a_rows[1]["method_of_inspection"] == "Vernier Height Gauge"
+    assert a_rows[1]["method_of_inspection"] == "DHG"
     assert len(b_rows) == 1
     assert b_rows[0]["parameter"] == "Ref Dimension"
     assert b_rows[0]["specification"] == "7±0.5"

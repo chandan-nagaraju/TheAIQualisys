@@ -1,15 +1,15 @@
 """
 Part master Method of Inspection normalization on import/edit.
 
-Scope (parameter → QTI only):
-  • Metric thread (M6/M8/M10/M12, M#X#) → TPG
-  • Thickness → DMM
-  • Radius → RG
-  • Angle → BP
-  • Dia, Width, OD, ID → DVC
-  • DFT → DFT METER
+1. Identify expected MOI from specification (and parameter context).
 
-Thread MOI aliases (TG, M6 TG, …) → TPG. All other MOI values are unchanged.
+2. Auto-correct when the row is NOT Pitch / Hole Ref / Hole Center / Dimension / Height,
+   and the specification indicates:
+     Thread → TPG, Radius → RG, Thickness → DMM,
+     Diameter → DVC, DFT → DFT METER, Visual → VIS
+
+3. For Pitch, Hole Ref, Hole Center, Dimension, Height parameters:
+   do not auto-correct — only standardize MOI name aliases (e.g. Vernier Hight Guage → DHG).
 """
 
 from __future__ import annotations
@@ -20,28 +20,46 @@ from typing import Any
 _THREAD_SIZE = re.compile(r"\bM(?:6|8|10|12)\b", re.I)
 _THREAD_DESIGNATION = re.compile(r"\bM\d+(?:\.\d+)?\s*[X×]\d+(?:\.\d+)?\b", re.I)
 _THREAD_DESIGNATION_COMPACT = re.compile(r"^M\d+(?:\.\d+)?[X×]\d+(?:\.\d+)?$", re.I)
-_THREAD_MOI = re.compile(
-    r"^(?:M(?:6|8|10|12)\s*)?(?:TG|TPG|THREAD(?:\s*(?:PLUG)?\s*GAU(?:GE)?)?)$",
+
+_NO_AUTO_CORRECT_PARAM = re.compile(
+    r"\bPITCH\b|"
+    r"\bHOLE\s*REF(?:ERENCE)?\b|"
+    r"\bHOLE\s*(?:CENTRE|CENTER)\b|"
+    r"\bDIMENSION\b|"
+    r"\bHEIGHT\b|\bHIGHT\b|\bHIEGHT\b",
     re.I,
 )
 
-_PARAM_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\bDFT\b", re.I), "DFT METER"),
-    (re.compile(r"\bTHICKNESS\b|\bTHK\b|\bTHICK\b", re.I), "DMM"),
-    (re.compile(r"\bRADIUS\b|\bRAD\b", re.I), "RG"),
-    (re.compile(r"\bANGLE\b|\bBEVEL\b", re.I), "BP"),
-    (
-        re.compile(
-            r"\bDIA\b|\bDIAM\b|\bDIAMETER\b|\bWIDTH\b|\bOD\b|\bID\b|\bO\.?\s*D\.?\b|\bI\.?\s*D\.?\b",
-            re.I,
-        ),
-        "DVC",
-    ),
-]
+# Specification patterns for auto-correct (checked in priority order).
+_SPEC_VISUAL = re.compile(
+    r"\bNOT\s+ALLOWED\b|\bNOT\s+PERMITTED\b|\bNO\s+DEFECT\b|\bFREE\s+FROM\b|\bSHALL\s+BE\s+FREE\b",
+    re.I,
+)
+_SPEC_DIAMETER = re.compile(r"[Ø∅Φ]|(?:\bDIA\.?\b|\bDIAMETER\b)", re.I)
+_SPEC_DIAMETER_NUMERIC = re.compile(
+    r"^\s*\d+(?:\.\d+)?\s*(?:[\+\-±]|\+|\-|\±)\s*\d",
+    re.I,
+)
+_SPEC_RADIUS = re.compile(r"(?:\bRADIUS\b|\bRAD\b|\bR\s*\d|\bR\d+(?:\.\d+)?\b)", re.I)
+_SPEC_DFT = re.compile(r"\b(?:MICRON|MICRONS|µM|UM)\b|\bDFT\b", re.I)
+_SPEC_THICKNESS_PARAM = re.compile(r"\bTHICKNESS\b|\bTHK\b|\bTHICK\b", re.I)
+_SPEC_DIAMETER_PARAM = re.compile(
+    r"\bDIA\b|\bDIAM\b|\bDIAMETER\b|\bWIDTH\b|\bOD\b|\bID\b|\bO\.?\s*D\.?\b|\bI\.?\s*D\.?\b",
+    re.I,
+)
+_SPEC_VISUAL_PARAM = re.compile(
+    r"\bVISUAL\b|\bRUST\b|\bDENT\b|\bDAMAGE\b|\bSCORING\b|\bWELD\b|\bBURR\b|\bAPPEARANCE\b",
+    re.I,
+)
 
 
 def _norm_key(s: str | None) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().upper())
+
+
+def is_no_auto_correct_parameter(parameter: str | None) -> bool:
+    """Pitch, Hole Ref/Center, Dimension, Height — standardize MOI names only."""
+    return bool(_NO_AUTO_CORRECT_PARAM.search(_norm_key(parameter)))
 
 
 def looks_like_thread_specification(
@@ -63,37 +81,95 @@ def looks_like_thread_specification(
     return False
 
 
-def infer_moi_from_parameter(parameter: str | None) -> str | None:
-    """Return QTI code inferred from parameter name, or None."""
-    text = _norm_key(parameter)
-    if not text:
-        return None
-    for pattern, code in _PARAM_PATTERNS:
-        if pattern.search(text):
-            return code
-    return None
-
-
-def _normalize_raw_thread_moi(raw: str | None) -> str | None:
-    """Map thread-related raw MOI aliases to TPG."""
+def _standardize_moi_name(raw: str | None) -> str | None:
+    """Map raw MOI spellings to canonical QTI names without inferring from parameter/spec."""
     s = _norm_key(raw)
     if not s:
         return None
-    if _THREAD_MOI.match(s):
+
+    if s in {"VISUAL", "VISUAL INSPECTION", "VISUVAL"} or (s == "VISUAL"):
+        return "VIS"
+    if "VISUAL" in s and len(s) < 40:
+        return "VIS"
+
+    if s in {"DFT", "DFT METER", "DFT METRE"} or (s.startswith("DFT ") and "METER" in s):
+        return "DFT METER"
+
+    if re.match(r"^(?:M(?:6|8|10|12)\s*)?(?:TG|TPG)$", s):
         return "TPG"
-    if s in {
-        "TPG",
-        "TG",
-        "THREAD PLUG GAUGE",
-        "THREAD PLUG GUAGE",
-        "THREAD GAUGE",
-        "THREAD GUAGE",
-    }:
+    if s in {"TG", "THREAD PLUG GAUGE", "THREAD PLUG GUAGE", "THREAD GAUGE", "THREAD GUAGE"}:
         return "TPG"
     if "THREAD PLUG" in s or "THREAD GAUGE" in s or "GO AND NO GO THREAD" in s:
         return "TPG"
-    if "THREAD RING" in s or ("PLUG GAU" in s and "THREAD" in s):
+
+    if s in {"DHG", "DHI", "VHG", "V.H.G", "V.H.G.", "DGH"}:
+        return "DHG"
+    if re.search(r"HEIGHT\s*(GAU|GAGE|GUAGE)|HIEGHT|HIGHT\s*GU", s):
+        return "DHG"
+    if "VERNIER HEIGHT" in s or "VENIRE HEIGHT" in s or "VENIRE HIGHT" in s:
+        return "DHG"
+
+    if s in {"DVC", "VC", "V.C", "V.C."}:
+        return "DVC"
+    if re.search(r"VERNIER|VENIRE|VERNNIER|CALLIPER|CALIPER|CALPER|CALIPPER", s):
+        if "HEIGHT" in s or "HIGHT" in s or "HIEGHT" in s:
+            return "DHG"
+        return "DVC"
+
+    if re.match(r"^(MIC|MM|DMM|MICRO\s*METER|MICROMETER|MICRO\s*METRE)$", s.replace(".", "")):
+        return "DMM"
+    if "MICROMETER" in s or "MICROMET" in s or s.startswith("MIC ") or s == "MIC":
+        return "DMM"
+
+    if s in {"RG", "R.G", "R.G."} or ("RADIUS" in s and "GAU" in s):
+        return "RG"
+
+    if s in {"BP", "BEVEL", "B.P", "B.P."} or "PROTRACTOR" in s or "PROTECTOR" in s:
+        return "BP"
+
+    if s in {"TPG", "DVC", "DMM", "RG", "BP", "DHG", "VIS", "DFT METER", "CMM", "CG"}:
+        return s
+
+    return None
+
+
+def expected_moi_from_specification(
+    parameter: str | None,
+    specification: str | None,
+) -> str | None:
+    """
+    Infer expected MOI from specification (and parameter when needed).
+    Used only for auto-correct rows.
+    """
+    param = _norm_key(parameter)
+    spec = (specification or "").strip()
+    spec_u = _norm_key(specification)
+    spec_compact = re.sub(r"\s+", "", spec_u)
+
+    if _SPEC_VISUAL_PARAM.search(param) or (spec_u and _SPEC_VISUAL.search(spec_u)):
+        return "VIS"
+
+    if looks_like_thread_specification(parameter, specification):
         return "TPG"
+
+    if param and re.search(r"\bDFT\b", param):
+        return "DFT METER"
+    if spec_u and _SPEC_DFT.search(spec_u):
+        return "DFT METER"
+
+    if spec_u and _SPEC_RADIUS.search(spec_u):
+        return "RG"
+    if param and re.search(r"\bRADIUS\b|\bRAD\b", param):
+        return "RG"
+
+    if param and _SPEC_THICKNESS_PARAM.search(param) and spec_u:
+        return "DMM"
+
+    if spec and (_SPEC_DIAMETER.search(spec) or _SPEC_DIAMETER_NUMERIC.match(spec)):
+        return "DVC"
+    if param and _SPEC_DIAMETER_PARAM.search(param) and spec_u:
+        return "DVC"
+
     return None
 
 
@@ -103,25 +179,35 @@ def normalize_part_master_moi(
     special_char: str | None = None,
     raw_moi: str | None = None,
 ) -> str | None:
-    """Normalize MOI for a spec / CCP / coating row (scoped rules only)."""
+    """Normalize MOI for a spec / CCP / coating row."""
     _ = special_char
 
-    if looks_like_thread_specification(parameter, specification):
-        return "TPG"
+    if is_no_auto_correct_parameter(parameter):
+        standardized = _standardize_moi_name(raw_moi)
+        raw = (raw_moi or "").strip()
+        return standardized or raw or None
 
-    inferred = infer_moi_from_parameter(parameter)
-    if inferred:
-        return inferred
+    expected = expected_moi_from_specification(parameter, specification)
+    if expected:
+        return expected
 
-    tpg = _normalize_raw_thread_moi(raw_moi)
-    if tpg:
-        return tpg
+    standardized = _standardize_moi_name(raw_moi)
+    if standardized:
+        return standardized
 
     raw = (raw_moi or "").strip()
     return raw or None
 
 
+# Backward-compatible aliases
 normalize_thread_method_of_inspection = normalize_part_master_moi
+
+
+def infer_moi_from_parameter(parameter: str | None) -> str | None:
+    """Legacy helper: expected MOI when treating parameter as auto-correct context."""
+    if is_no_auto_correct_parameter(parameter):
+        return None
+    return expected_moi_from_specification(parameter, None)
 
 
 def normalize_ad_row_moi(row: dict[str, Any]) -> dict[str, Any]:
