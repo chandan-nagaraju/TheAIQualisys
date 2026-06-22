@@ -56,10 +56,12 @@ def test_qr_code_parameter_maps_to_qr_scanner():
 
 
 def test_flatness_and_parallel_gdt_parameters():
-    assert normalize_part_master_moi("FLATNESS", "0.5", None, "DVC") == "FEELER GAUGE"
+    assert normalize_part_master_moi("FLATNESS", "0.5", None, "DVC") == "FG"
+    assert normalize_part_master_moi("FLATENESS", "0.5", None, "DVC") == "FG"
     assert normalize_part_master_moi("PARALLEL", "1", None, "DVC") == "PARALLEL GAUGE"
     assert normalize_part_master_moi("PARALLELISM", "1 MAX", None, "DHG") == "PARALLEL GAUGE"
-    assert expected_moi_from_specification("FLATNESS", "0.5") == "FEELER GAUGE"
+    assert expected_moi_from_specification("FLATNESS", "0.5") == "FG"
+    assert expected_moi_from_specification("FLATENESS", "0.5") == "FG"
     assert expected_moi_from_specification("PARALLEL", "1") == "PARALLEL GAUGE"
 
 

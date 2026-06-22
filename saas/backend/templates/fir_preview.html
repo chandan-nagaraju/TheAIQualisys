@@ -411,7 +411,7 @@
 
   /** GD&T shop gauges — flatness / parallelism checked with pass-fail gauges; actual = OK. */
   function firIsFlatnessParameter(paramRaw) {
-    return /\bFLATNESS\b/i.test(String(paramRaw || ""));
+    return /\b(?:FLATNESS|FLATENESS)\b/i.test(String(paramRaw || ""));
   }
 
   function firIsParallelismParameter(paramRaw) {
@@ -419,7 +419,8 @@
   }
 
   function firIsFeelerGaugeMethod(raw) {
-    return /\bFEELER\b/i.test(String(raw || ""));
+    var u = String(raw || "").trim().toUpperCase();
+    return u === "FG" || /\bFEELER\b/.test(u);
   }
 
   function firIsParallelGaugeMethod(raw) {
@@ -466,7 +467,7 @@
     if (firIsDimensionalMeasuringMethod(raw)) return false;
     var u = String(raw || "").trim().toUpperCase();
     if (!u) return false;
-    if (/^RG$|^R\.G\.?$|RADIUS\s*GAU|PARALLEL\s*GAU|SLIP\s*GAU|FEELER|WELD\s*FILLET|SNAP\s*GAU|RING\s*GAU|PLUG\s*GAU|GO\s*NO\s*GO|GO\/NO\s*GO/.test(u)) {
+    if (/^RG$|^R\.G\.?$|^FG$|RADIUS\s*GAU|PARALLEL\s*GAU|SLIP\s*GAU|FEELER|WELD\s*FILLET|SNAP\s*GAU|RING\s*GAU|PLUG\s*GAU|GO\s*NO\s*GO|GO\/NO\s*GO/.test(u)) {
       return true;
     }
     return /\bGAUG(E)?\b/.test(u) || u.indexOf("GAUGE") !== -1 || u.indexOf("GAUG") !== -1;
