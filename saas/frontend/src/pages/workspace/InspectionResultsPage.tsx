@@ -2,6 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import JSZip from "jszip";
 import { firPreviewUrl, workspaceFetch } from "../../api";
+import {
+  clearInspectionSession,
+  loadInspectionResults,
+  resolvePersistedRouteState,
+  saveInspectionResults,
+} from "../../workspace/inspectionSession";
 
 type Row = Record<string, unknown> & {
   draw_rev?: string;
@@ -232,7 +238,17 @@ function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: s
 export default function InspectionResultsPage() {
   const loc = useLocation();
   const nav = useNavigate();
-  const st = loc.state as { rows: Row[]; filename?: string } | null;
+  const locState = loc.state as { rows: Row[]; filename?: string } | null;
+  const st = useMemo(
+    () => resolvePersistedRouteState(locState, loadInspectionResults),
+    [locState],
+  );
+
+  useEffect(() => {
+    if (st?.rows?.length) {
+      saveInspectionResults({ rows: st.rows, filename: st.filename });
+    }
+  }, [st?.rows, st?.filename]);
   const [data, setData] = useState<EnrichRes | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const iframeRefs = useRef<(HTMLIFrameElement | null)[]>([]);
@@ -613,7 +629,14 @@ export default function InspectionResultsPage() {
     return (
       <div className="rounded-xl border bg-white p-6">
         <p>No results. </p>
-        <button className="text-blue-700 underline" type="button" onClick={() => nav("/workspace/upload")}>
+        <button
+          className="text-blue-700 underline"
+          type="button"
+          onClick={() => {
+            clearInspectionSession();
+            nav("/workspace/upload");
+          }}
+        >
           Start over
         </button>
       </div>

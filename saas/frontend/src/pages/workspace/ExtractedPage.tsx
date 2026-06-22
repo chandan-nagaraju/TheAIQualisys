@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { workspaceFetch } from "../../api";
 import { useTheme } from "../../theme/ThemeContext";
+import {
+  loadInspectionExtracted,
+  resolvePersistedRouteState,
+  saveInspectionExtracted,
+} from "../../workspace/inspectionSession";
 
 type LocState = { rows: Record<string, unknown>[]; columns: string[]; filename?: string };
 
@@ -15,10 +20,20 @@ export default function ExtractedPage() {
   const loc = useLocation();
   const nav = useNavigate();
   const { theme } = useTheme();
-  const st = loc.state as LocState | null;
+  const locState = loc.state as LocState | null;
+  const st = useMemo(
+    () => resolvePersistedRouteState(locState, loadInspectionExtracted),
+    [locState],
+  );
   const [enriched, setEnriched] = useState<InspectionEnrichRes | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [enrichErr, setEnrichErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (st?.rows?.length) {
+      saveInspectionExtracted({ rows: st.rows, columns: st.columns, filename: st.filename });
+    }
+  }, [st?.rows, st?.columns, st?.filename]);
 
   useEffect(() => {
     if (!st?.rows?.length) return;
