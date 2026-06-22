@@ -55,6 +55,14 @@ def test_qr_code_parameter_maps_to_qr_scanner():
     assert expected_moi_from_specification("QR code MISS MATCH", "NOT ALLOWED") == "QR SCANNER"
 
 
+def test_flatness_and_parallel_gdt_parameters():
+    assert normalize_part_master_moi("FLATNESS", "0.5", None, "DVC") == "FEELER GAUGE"
+    assert normalize_part_master_moi("PARALLEL", "1", None, "DVC") == "PARALLEL GAUGE"
+    assert normalize_part_master_moi("PARALLELISM", "1 MAX", None, "DHG") == "PARALLEL GAUGE"
+    assert expected_moi_from_specification("FLATNESS", "0.5") == "FEELER GAUGE"
+    assert expected_moi_from_specification("PARALLEL", "1") == "PARALLEL GAUGE"
+
+
 def test_no_auto_correct_only_standardizes_names():
     assert (
         normalize_part_master_moi("HOLE PITCH", "18.4 ± 0.3", None, "Vernier Hight Guage") == "DHG"

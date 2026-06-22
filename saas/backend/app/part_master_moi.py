@@ -52,11 +52,30 @@ _SPEC_VISUAL_PARAM = re.compile(
     re.I,
 )
 _QR_CODE_PARAM = re.compile(r"\bQR\s*CODE\b", re.I)
+_FLATNESS_PARAM = re.compile(r"\bFLATNESS\b", re.I)
+_PARALLEL_PARAM = re.compile(r"\bPARALLEL(?:ISM)?\b", re.I)
 
 
 def is_qr_code_parameter(parameter: str | None) -> bool:
     """True when parameter denotes QR code verification (e.g. QR code MISS MATCH)."""
     return bool(_QR_CODE_PARAM.search(_norm_key(parameter)))
+
+
+def is_flatness_parameter(parameter: str | None) -> bool:
+    return bool(_FLATNESS_PARAM.search(_norm_key(parameter)))
+
+
+def is_parallelism_parameter(parameter: str | None) -> bool:
+    return bool(_PARALLEL_PARAM.search(_norm_key(parameter)))
+
+
+def moi_for_gdt_shop_gauge_parameter(parameter: str | None) -> str | None:
+    """Flatness → Feeler gauge; Parallel / Parallelism → Parallel gauge."""
+    if is_flatness_parameter(parameter):
+        return "FEELER GAUGE"
+    if is_parallelism_parameter(parameter):
+        return "PARALLEL GAUGE"
+    return None
 
 
 def _norm_key(s: str | None) -> str:
@@ -136,7 +155,27 @@ def _standardize_moi_name(raw: str | None) -> str | None:
     if s in {"QRS", "QR SCAN", "QR SCANNER"} or (s.startswith("QR") and "SCAN" in s):
         return "QR SCANNER"
 
-    if s in {"TPG", "DVC", "DMM", "RG", "BP", "DHG", "VIS", "DFT METER", "CMM", "CG", "QR SCANNER"}:
+    if "FEELER" in s:
+        return "FEELER GAUGE"
+
+    if "PARALLEL" in s and "GAU" in s:
+        return "PARALLEL GAUGE"
+
+    if s in {
+        "TPG",
+        "DVC",
+        "DMM",
+        "RG",
+        "BP",
+        "DHG",
+        "VIS",
+        "DFT METER",
+        "CMM",
+        "CG",
+        "QR SCANNER",
+        "FEELER GAUGE",
+        "PARALLEL GAUGE",
+    }:
         return s
 
     return None
@@ -156,6 +195,10 @@ def expected_moi_from_specification(
 
     if is_qr_code_parameter(parameter):
         return "QR SCANNER"
+
+    gdt_moi = moi_for_gdt_shop_gauge_parameter(parameter)
+    if gdt_moi:
+        return gdt_moi
 
     spec_compact = re.sub(r"\s+", "", spec_u)
 
@@ -197,6 +240,10 @@ def normalize_part_master_moi(
 
     if is_qr_code_parameter(parameter):
         return "QR SCANNER"
+
+    gdt_moi = moi_for_gdt_shop_gauge_parameter(parameter)
+    if gdt_moi:
+        return gdt_moi
 
     if is_no_auto_correct_parameter(parameter):
         standardized = _standardize_moi_name(raw_moi)

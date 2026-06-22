@@ -409,6 +409,23 @@
     return /\bQR\b/.test(u) && /\bSCAN/.test(u);
   }
 
+  /** GD&T shop gauges — flatness / parallelism checked with pass-fail gauges; actual = OK. */
+  function firIsFlatnessParameter(paramRaw) {
+    return /\bFLATNESS\b/i.test(String(paramRaw || ""));
+  }
+
+  function firIsParallelismParameter(paramRaw) {
+    return /\bPARALLEL(?:ISM)?\b/i.test(String(paramRaw || ""));
+  }
+
+  function firIsFeelerGaugeMethod(raw) {
+    return /\bFEELER\b/i.test(String(raw || ""));
+  }
+
+  function firIsParallelGaugeMethod(raw) {
+    return /\bPARALLEL\s*GAU/i.test(String(raw || ""));
+  }
+
   /**
    * Thread plug gauge — TPG or full phrase (case-insensitive).
    * Also accepts common truncation/typo (e.g. "hread plug gau…").
@@ -482,6 +499,8 @@
     var spec = String(specRaw || "").trim();
     var param = String(paramRaw || "").trim();
     if (firIsQrCodeParameter(param) || firIsQrScannerMethod(method)) return true;
+    if (firIsFlatnessParameter(param) || firIsParallelismParameter(param)) return true;
+    if (firIsFeelerGaugeMethod(method) || firIsParallelGaugeMethod(method)) return true;
     if (firIsQualitativeMeasuredMethod(method)) return true;
     if (firIsMetricThreadSpecification(spec)) return true;
     if (firIsVisualMethod(method) || (firIsVisualSpecification(spec) && (firIsVisualParameter(param) || firIsVisualMethod(method)))) {
