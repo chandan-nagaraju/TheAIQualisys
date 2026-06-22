@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getWorkspaceCustomerId, setWorkspaceCustomerId, workspaceFetch, workspaceUploadInvoice } from "../../api";
+import { clearInspectionSession } from "../../workspace/inspectionSession";
 
 type CustomerRow = { id: number; vendor_code: string; name: string };
 
@@ -74,6 +75,7 @@ export default function UploadPage() {
         return;
       }
       const res = await workspaceUploadInvoice(file);
+      clearInspectionSession();
       nav("/workspace/extracted", { state: { rows: res.rows, columns: res.columns, filename: res.filename } });
     } catch (ex) {
       const msg = ex instanceof Error ? ex.message : "Upload failed";

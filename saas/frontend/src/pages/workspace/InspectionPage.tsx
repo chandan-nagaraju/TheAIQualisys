@@ -1,13 +1,28 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import {
+  loadInspectionSelection,
+  resolvePersistedRouteState,
+  saveInspectionSelection,
+} from "../../workspace/inspectionSession";
 
 type LocState = { rows: Record<string, unknown>[]; columns: string[]; filename?: string };
 
 export default function InspectionPage() {
   const loc = useLocation();
   const nav = useNavigate();
-  const st = loc.state as LocState | null;
+  const locState = loc.state as LocState | null;
+  const st = useMemo(
+    () => resolvePersistedRouteState(locState, loadInspectionSelection),
+    [locState],
+  );
   const [sel, setSel] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (st?.rows?.length) {
+      saveInspectionSelection({ rows: st.rows, columns: st.columns, filename: st.filename });
+    }
+  }, [st?.rows, st?.columns, st?.filename]);
 
   useEffect(() => {
     if (st?.rows?.length) {

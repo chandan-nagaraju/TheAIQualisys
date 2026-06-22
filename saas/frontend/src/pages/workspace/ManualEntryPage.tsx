@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getWorkspaceCustomerId, setWorkspaceCustomerId, workspaceFetch } from "../../api";
+import { clearInspectionSession } from "../../workspace/inspectionSession";
 import { sanitizePartNoUpper } from "../../utils/partFields";
 
 type ManualRow = {
@@ -264,6 +265,7 @@ export default function ManualEntryPage() {
           `Part Number not found in Parts master: ${uniq.join(", ")}. Add these in Parts master first.`,
         );
       }
+      clearInspectionSession();
       nav("/workspace/extracted", {
         state: {
           rows: enrichedRows,
