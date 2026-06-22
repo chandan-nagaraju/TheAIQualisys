@@ -72,7 +72,7 @@ def is_parallelism_parameter(parameter: str | None) -> bool:
 def moi_for_gdt_shop_gauge_parameter(parameter: str | None) -> str | None:
     """Flatness → Feeler gauge; Parallel / Parallelism → Parallel gauge."""
     if is_flatness_parameter(parameter):
-        return "FG"
+        return "Feeler gauge (FG)"
     if is_parallelism_parameter(parameter):
         return "PARALLEL GAUGE"
     return None
@@ -156,7 +156,7 @@ def _standardize_moi_name(raw: str | None) -> str | None:
         return "QR SCANNER"
 
     if "FEELER" in s or s == "FG":
-        return "FG"
+        return "Feeler gauge (FG)"
 
     if "PARALLEL" in s and "GAU" in s:
         return "PARALLEL GAUGE"
@@ -173,11 +173,11 @@ def _standardize_moi_name(raw: str | None) -> str | None:
         "CMM",
         "CG",
         "QR SCANNER",
-        "FEELER GAUGE",
+        "Feeler gauge (FG)",
         "FG",
         "PARALLEL GAUGE",
     }:
-        return s
+        return s if s != "FG" else "Feeler gauge (FG)"
 
     return None
 

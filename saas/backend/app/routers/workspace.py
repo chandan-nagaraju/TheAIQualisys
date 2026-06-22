@@ -1949,7 +1949,9 @@ def fir_preview(
                     "parameter": s.parameter,
                     "specification": s.specification,
                     "special_char": s.special_char,
-                    "method_of_inspection": s.method_of_inspection,
+                    "method_of_inspection": normalize_part_master_moi(
+                        s.parameter, s.specification, s.special_char, s.method_of_inspection
+                    ),
                 }
                 for s in db.execute(select(PartSpecV2).where(PartSpecV2.part_id == part.id).order_by(PartSpecV2.id))
                 .scalars()
@@ -1960,7 +1962,9 @@ def fir_preview(
                     "parameter": s.parameter,
                     "specification": s.specification,
                     "special_char": s.special_char,
-                    "method_of_inspection": s.method_of_inspection,
+                    "method_of_inspection": normalize_part_master_moi(
+                        s.parameter, s.specification, s.special_char, s.method_of_inspection
+                    ),
                 }
                 for s in db.execute(
                     select(PartComplaintV2).where(PartComplaintV2.part_id == part.id).order_by(PartComplaintV2.id)
@@ -1981,7 +1985,9 @@ def fir_preview(
                     "parameter": s.parameter,
                     "specification": s.specification,
                     "special_char": s.special_char,
-                    "method_of_inspection": s.method_of_inspection,
+                    "method_of_inspection": normalize_part_master_moi(
+                        s.parameter, s.specification, s.special_char, s.method_of_inspection
+                    ),
                 }
                 for s in db.execute(
                     select(PartCoatingV2).where(PartCoatingV2.part_id == part.id).order_by(PartCoatingV2.id)
