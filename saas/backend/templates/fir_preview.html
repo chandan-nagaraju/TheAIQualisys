@@ -397,6 +397,18 @@
     return /\bNOT\s+ALLOWED\b|\bNOT\s+PERMITTED\b|\bNO\s+DEFECT\b|\bFREE\s+FROM\b/.test(s);
   }
 
+  /** QR code verification — parameter contains "QR code"; measured values are OK only. */
+  function firIsQrCodeParameter(paramRaw) {
+    return /\bQR\s*CODE\b/i.test(String(paramRaw || ""));
+  }
+
+  function firIsQrScannerMethod(raw) {
+    var u = String(raw || "").trim().replace(/\s+/g, " ").toUpperCase();
+    if (!u) return false;
+    if (u === "QRS" || u === "QR SCANNER" || u === "QR SCAN") return true;
+    return /\bQR\b/.test(u) && /\bSCAN/.test(u);
+  }
+
   /**
    * Thread plug gauge — TPG or full phrase (case-insensitive).
    * Also accepts common truncation/typo (e.g. "hread plug gau…").
@@ -444,7 +456,12 @@
   }
 
   function firIsQualitativeMeasuredMethod(raw) {
-    return firIsVisualMethod(raw) || firIsThreadPlugGaugeMethod(raw) || firIsPassFailGaugeMethod(raw);
+    return (
+      firIsVisualMethod(raw) ||
+      firIsQrScannerMethod(raw) ||
+      firIsThreadPlugGaugeMethod(raw) ||
+      firIsPassFailGaugeMethod(raw)
+    );
   }
 
   /**
@@ -464,6 +481,7 @@
     var method = String(methodRaw || "").trim();
     var spec = String(specRaw || "").trim();
     var param = String(paramRaw || "").trim();
+    if (firIsQrCodeParameter(param) || firIsQrScannerMethod(method)) return true;
     if (firIsQualitativeMeasuredMethod(method)) return true;
     if (firIsMetricThreadSpecification(spec)) return true;
     if (firIsVisualMethod(method) || (firIsVisualSpecification(spec) && (firIsVisualParameter(param) || firIsVisualMethod(method)))) {

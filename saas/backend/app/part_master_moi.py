@@ -51,6 +51,12 @@ _SPEC_VISUAL_PARAM = re.compile(
     r"\bVISUAL\b|\bRUST\b|\bDENT\b|\bDAMAGE\b|\bSCORING\b|\bWELD\b|\bBURR\b|\bAPPEARANCE\b",
     re.I,
 )
+_QR_CODE_PARAM = re.compile(r"\bQR\s*CODE\b", re.I)
+
+
+def is_qr_code_parameter(parameter: str | None) -> bool:
+    """True when parameter denotes QR code verification (e.g. QR code MISS MATCH)."""
+    return bool(_QR_CODE_PARAM.search(_norm_key(parameter)))
 
 
 def _norm_key(s: str | None) -> str:
@@ -127,7 +133,10 @@ def _standardize_moi_name(raw: str | None) -> str | None:
     if s in {"BP", "BEVEL", "B.P", "B.P."} or "PROTRACTOR" in s or "PROTECTOR" in s:
         return "BP"
 
-    if s in {"TPG", "DVC", "DMM", "RG", "BP", "DHG", "VIS", "DFT METER", "CMM", "CG"}:
+    if s in {"QRS", "QR SCAN", "QR SCANNER"} or (s.startswith("QR") and "SCAN" in s):
+        return "QR SCANNER"
+
+    if s in {"TPG", "DVC", "DMM", "RG", "BP", "DHG", "VIS", "DFT METER", "CMM", "CG", "QR SCANNER"}:
         return s
 
     return None
@@ -144,6 +153,10 @@ def expected_moi_from_specification(
     param = _norm_key(parameter)
     spec = (specification or "").strip()
     spec_u = _norm_key(specification)
+
+    if is_qr_code_parameter(parameter):
+        return "QR SCANNER"
+
     spec_compact = re.sub(r"\s+", "", spec_u)
 
     if _SPEC_VISUAL_PARAM.search(param) or (spec_u and _SPEC_VISUAL.search(spec_u)):
@@ -181,6 +194,9 @@ def normalize_part_master_moi(
 ) -> str | None:
     """Normalize MOI for a spec / CCP / coating row."""
     _ = special_char
+
+    if is_qr_code_parameter(parameter):
+        return "QR SCANNER"
 
     if is_no_auto_correct_parameter(parameter):
         standardized = _standardize_moi_name(raw_moi)

@@ -46,6 +46,15 @@ def test_auto_correct_overrides_raw_moi():
     assert normalize_part_master_moi("RUST/DENT & DAMAGES/", "NOT ALLOWED", None, "Visual") == "VIS"
 
 
+def test_qr_code_parameter_maps_to_qr_scanner():
+    from app.part_master_moi import is_qr_code_parameter
+
+    assert is_qr_code_parameter("QR code MISS MATCH")
+    assert normalize_part_master_moi("QR code MISS MATCH", "NOT ALLOWED", None, "VIS") == "QR SCANNER"
+    assert normalize_part_master_moi("QR code MISS MATCH", "NOT ALLOWED", None, None) == "QR SCANNER"
+    assert expected_moi_from_specification("QR code MISS MATCH", "NOT ALLOWED") == "QR SCANNER"
+
+
 def test_no_auto_correct_only_standardizes_names():
     assert (
         normalize_part_master_moi("HOLE PITCH", "18.4 ± 0.3", None, "Vernier Hight Guage") == "DHG"
