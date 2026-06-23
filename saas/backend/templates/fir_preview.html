@@ -944,7 +944,7 @@
     }
 
     // "Min 12 micron" / "Max 12 micron" — miswritten lone limit; plating band is (upper − 4)…upper µm
-    const minMaxMicron = s.match(/^\s*(?:min\.?|minimum|max\.?|maximum)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:µm|um|micron|microns)\s*$/i);
+    const minMaxMicron = s.match(/^\s*(?:min\.?|minimum|max\.?|maximum)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:µm|um|micron|microns|mic)?\s*$/i);
     if (minMaxMicron) {
       var upperMic = parseFloat(minMaxMicron[1]);
       if (!isNaN(upperMic)) {
@@ -1085,7 +1085,7 @@
     var m = String(method || "").trim().toUpperCase();
     if (p.indexOf("DFT") !== -1) return true;
     if (m === "DFT" || m === "DFT METER" || m.indexOf("DFT") === 0) return true;
-    if (/\bmicron|\bmicrons\b/.test(s)) return true;
+    if (/\bmicron|\bmicrons\b|\bmic\b/.test(s)) return true;
     if (/\bum\b/.test(s) || s.indexOf("µ") !== -1) return true;
     return false;
   }

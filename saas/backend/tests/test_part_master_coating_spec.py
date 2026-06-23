@@ -51,6 +51,18 @@ def test_range_form_kept():
     assert normalize_plating_thickness_specification("PLATING THICKNESS", "8 – 12 µm") == "8 – 12 µm"
 
 
+def test_min_only_mic_abbreviation_rewritten():
+    assert normalize_plating_thickness_specification("Plating thickness", "Min 12 mic") == "8 – 12 µm"
+    assert normalize_plating_thickness_specification("PLATING THICKNESS", "Min 12 mic") == "8 – 12 µm"
+
+
+def test_plating_thickness_moi_is_dft_meter():
+    from app.part_master_moi import normalize_part_master_moi
+
+    assert normalize_part_master_moi("Plating thickness", "Min 12 mic", None, "DMM") == "DFT METER"
+    assert normalize_part_master_moi("Plating thickness", "Min 12 mic", None, "Micrometer") == "DFT METER"
+
+
 def test_excel_import_normalizes_plating_min_spec():
     import io
 

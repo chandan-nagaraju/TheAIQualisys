@@ -17,6 +17,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.part_master_coating_spec import is_plating_thickness_row
+
 _THREAD_SIZE = re.compile(r"\bM(?:6|8|10|12)\b", re.I)
 _THREAD_DESIGNATION = re.compile(r"\bM\d+(?:\.\d+)?\s*[X×]\d+(?:\.\d+)?\b", re.I)
 _THREAD_DESIGNATION_COMPACT = re.compile(r"^M\d+(?:\.\d+)?[X×]\d+(?:\.\d+)?$", re.I)
@@ -41,7 +43,7 @@ _SPEC_DIAMETER_NUMERIC = re.compile(
     re.I,
 )
 _SPEC_RADIUS = re.compile(r"(?:\bRADIUS\b|\bRAD\b|\bR\s*\d|\bR\d+(?:\.\d+)?\b)", re.I)
-_SPEC_DFT = re.compile(r"\b(?:MICRON|MICRONS|µM|UM)\b|\bDFT\b", re.I)
+_SPEC_DFT = re.compile(r"\b(?:MICRON|MICRONS|µM|UM|MIC)\b|\bDFT\b", re.I)
 _SPEC_THICKNESS_PARAM = re.compile(r"\bTHICKNESS\b|\bTHK\b|\bTHICK\b", re.I)
 _SPEC_DIAMETER_PARAM = re.compile(
     r"\bDIA\b|\bDIAM\b|\bDIAMETER\b|\bWIDTH\b|\bOD\b|\bID\b|\bO\.?\s*D\.?\b|\bI\.?\s*D\.?\b",
@@ -210,6 +212,8 @@ def expected_moi_from_specification(
         return "TPG"
 
     if param and re.search(r"\bDFT\b", param):
+        return "DFT METER"
+    if is_plating_thickness_row(parameter, specification):
         return "DFT METER"
     if spec_u and _SPEC_DFT.search(spec_u):
         return "DFT METER"

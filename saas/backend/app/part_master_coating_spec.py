@@ -14,8 +14,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-_MICRON_UNIT = r"(?:µm|um|micron|microns)\b"
-_MICRON_ANYWHERE = re.compile(rf"\b{_MICRON_UNIT}|µ", re.I)
+_MICRON_UNIT = r"(?:µm|um|micron|microns|mic)\b"
+_MICRON_ANYWHERE = re.compile(rf"\b{_MICRON_UNIT}|µ|\bmic\b", re.I)
 
 _PLATING_PARAM = re.compile(
     r"\b(?:PLATING|COATING|ZINC|CHROME|NICKEL|PHOSPHATE|POWDER)\b.*\bTHICK(?:NESS)?\b|"
@@ -40,6 +40,10 @@ _MIN_ONLY_SPEC = re.compile(
 )
 _MAX_ONLY_SPEC = re.compile(
     rf"^\s*(?:max\.?|maximum)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:{_MICRON_UNIT})?\s*$",
+    re.I,
+)
+_MIN_ONLY_PLATING_LOOSE = re.compile(
+    r"^\s*(?:min\.?|minimum|max\.?|maximum)\s*([0-9]+(?:\.[0-9]+)?)\s*$",
     re.I,
 )
 
@@ -84,10 +88,16 @@ def is_plating_thickness_row(parameter: str | None, specification: str | None = 
     return False
 
 
-def parse_plating_thickness_spec(specification: str | None) -> PlatingThicknessRange | None:
+def parse_plating_thickness_spec(
+    specification: str | None,
+    parameter: str | None = None,
+) -> PlatingThicknessRange | None:
     """Parse a micron thickness spec into lower/upper limits (µm)."""
     spec = _norm_key(specification)
-    if not spec or not _MICRON_ANYWHERE.search(spec):
+    if not spec:
+        return None
+    plating = is_plating_thickness_row(parameter, spec)
+    if not plating and not _MICRON_ANYWHERE.search(spec):
         return None
 
     m = _RANGE_SPEC.match(spec)
@@ -113,6 +123,15 @@ def parse_plating_thickness_spec(specification: str | None) -> PlatingThicknessR
         nominal = (lower + upper) / 2
         tol = (upper - lower) / 2
         return PlatingThicknessRange(lower, upper, nominal, tol if tol > 0 else None)
+
+    if plating:
+        m = _MIN_ONLY_PLATING_LOOSE.match(spec)
+        if m:
+            upper = float(m.group(1))
+            lower = max(0.0, upper - _DEFAULT_BAND_WIDTH_UM)
+            nominal = (lower + upper) / 2
+            tol = (upper - lower) / 2
+            return PlatingThicknessRange(lower, upper, nominal, tol if tol > 0 else None)
 
     return None
 
@@ -152,7 +171,7 @@ def normalize_plating_thickness_specification(
     if not is_plating_thickness_row(parameter, raw):
         return raw
 
-    band = parse_plating_thickness_spec(raw)
+    band = parse_plating_thickness_spec(raw, parameter)
     if not band:
         return raw
 
