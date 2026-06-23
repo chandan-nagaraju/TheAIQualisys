@@ -26,9 +26,18 @@ from typing import Any
 import pandas as pd
 
 from app.part_field_validation import sanitize_part_master_alnum_upper
+from app.part_master_coating_spec import normalize_ad_row_coating_spec, normalize_bundle_part_master_coating_spec
 from app.part_master_moi import normalize_ad_row_moi, normalize_bundle_part_master_moi
 
 BUNDLE_FORMAT = "fir_part_master_bundle_v1"
+
+
+def _normalize_ad_row(row: dict[str, Any]) -> dict[str, Any]:
+    return normalize_ad_row_coating_spec(normalize_ad_row_moi(row))
+
+
+def _normalize_bundle_part_master(bundle: dict[str, Any]) -> dict[str, Any]:
+    return normalize_bundle_part_master_coating_spec(normalize_bundle_part_master_moi(bundle))
 
 
 def assign_continuous_sl_numbers(part: dict[str, Any]) -> dict[str, Any]:
@@ -217,7 +226,7 @@ def _ad_rows_from_df(df: pd.DataFrame) -> list[dict[str, Any]]:
         if not param:
             continue
         rows.append(
-            normalize_ad_row_moi(
+            _normalize_ad_row(
                 {
                     "parameter": param,
                     "specification": _cell(r.get("specification")) or None,
@@ -492,7 +501,7 @@ def _ad_row_from_loose_row_vals(vals: list[str]) -> dict[str, Any] | None:
     if not parameter or _norm(parameter) in {"parameter", "part", "part no", "part number"}:
         return None
     spec, special, method = _parse_ad_fields_from_rest(non_empty[idx + 1 :])
-    return normalize_ad_row_moi(
+    return _normalize_ad_row(
         {
             "parameter": parameter,
             "specification": spec,
@@ -588,7 +597,7 @@ def _parse_loose_ad_table(
                 sch = parsed.get("special_char") or sch
                 meth = parsed.get("method_of_inspection") or meth
         rows.append(
-            normalize_ad_row_moi(
+            _normalize_ad_row(
                 {
                     "parameter": param,
                     "specification": spec_v or None,
@@ -626,7 +635,7 @@ def _ad_row_from_colmap(df: pd.DataFrame, r: int, cmap: dict[str, int]) -> dict[
             spec_v = parsed.get("specification") or spec_v
             sch = parsed.get("special_char") or sch
             meth = parsed.get("method_of_inspection") or meth
-    return normalize_ad_row_moi(
+    return _normalize_ad_row(
         {
             "parameter": param,
             "specification": spec_v or None,
@@ -1073,7 +1082,7 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
             )
         )
 
-    return normalize_bundle_part_master_moi(
+    return _normalize_bundle_part_master(
         assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
     )
 
@@ -1202,7 +1211,7 @@ def parse_parts_excel_to_bundle_dict(
             )
         )
 
-    return normalize_bundle_part_master_moi(
+    return _normalize_bundle_part_master(
         assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
     )
 

@@ -54,6 +54,7 @@ from app.fir_part_excel import (
     parse_parts_excel_to_bundle_dict,
 )
 from app.part_field_validation import sanitize_part_master_alnum_upper
+from app.part_master_coating_spec import normalize_plating_thickness_specification
 from app.part_master_moi import normalize_part_master_moi
 from app.subscription_logic import (
     FIR_WORKSPACE_FORBIDDEN_CODE,
@@ -924,9 +925,9 @@ def delete_part(part_id: int, ws: WsContext = Depends(get_ws)):
 
 
 def _persist_normalized_moi_for_part(ws: WsContext, p: PartV2) -> None:
-    """Write normalized MOI back to DB when opening part detail (fixes legacy rows in place)."""
+    """Write normalized MOI and Section D coating specs back to DB when opening part detail."""
     changed = False
-    for model in (PartSpecV2, PartComplaintV2, PartCoatingV2):
+    for model in (PartSpecV2, PartComplaintV2):
         rows = ws.db.execute(select(model).where(model.part_id == p.id)).scalars().all()
         for row in rows:
             normalized = normalize_part_master_moi(
@@ -939,6 +940,23 @@ def _persist_normalized_moi_for_part(ws: WsContext, p: PartV2) -> None:
             if normalized != current:
                 row.method_of_inspection = normalized
                 changed = True
+    coat_rows = ws.db.execute(select(PartCoatingV2).where(PartCoatingV2.part_id == p.id)).scalars().all()
+    for row in coat_rows:
+        normalized_moi = normalize_part_master_moi(
+            row.parameter,
+            row.specification,
+            row.special_char,
+            row.method_of_inspection,
+        )
+        current_moi = (row.method_of_inspection or "").strip() or None
+        if normalized_moi != current_moi:
+            row.method_of_inspection = normalized_moi
+            changed = True
+        normalized_spec = _norm_coating_spec_row(row.parameter, row.specification)
+        current_spec = (row.specification or "").strip() or None
+        if normalized_spec != current_spec:
+            row.specification = normalized_spec
+            changed = True
     if changed:
         ws.db.commit()
 
@@ -1007,7 +1025,7 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
     coating_rows = [
         {
             "parameter": c.parameter,
-            "specification": c.specification,
+            "specification": _norm_coating_spec_row(c.parameter, c.specification),
             "special_char": c.special_char,
             "method_of_inspection": normalize_part_master_moi(
                 c.parameter, c.specification, c.special_char, c.method_of_inspection
@@ -1342,7 +1360,7 @@ def replace_coatings(part_id: int, body: SpecBulkBody, ws: WsContext = Depends(g
             PartCoatingV2(
                 part_id=p.id,
                 parameter=row.parameter.strip(),
-                specification=row.specification,
+                specification=_norm_coating_spec_row(row.parameter.strip(), row.specification),
                 special_char=row.special_char,
                 method_of_inspection=_norm_part_master_moi_row(
                     row.parameter.strip(),
@@ -1375,6 +1393,13 @@ def _norm_part_master_moi_row(
         special_char,
         method_of_inspection,
     )
+
+
+def _norm_coating_spec_row(parameter: str, specification: str | None) -> str | None:
+    normalized = normalize_plating_thickness_specification(parameter, specification)
+    if normalized:
+        return normalized
+    return _norm_opt_str(specification)
 
 
 class PartMasterPartBlock(BaseModel):
@@ -1516,7 +1541,10 @@ def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice, *, customer_i
             PartCoatingV2(
                 part_id=p.id,
                 parameter=row.parameter.strip(),
-                specification=_norm_opt_str(row.specification),
+                specification=_norm_coating_spec_row(
+                    row.parameter.strip(),
+                    _norm_opt_str(row.specification),
+                ),
                 special_char=_norm_opt_str(row.special_char),
                 method_of_inspection=_norm_part_master_moi_row(
                     row.parameter.strip(),
@@ -1983,7 +2011,7 @@ def fir_preview(
             coating_data = [
                 {
                     "parameter": s.parameter,
-                    "specification": s.specification,
+                    "specification": _norm_coating_spec_row(s.parameter, s.specification),
                     "special_char": s.special_char,
                     "method_of_inspection": normalize_part_master_moi(
                         s.parameter, s.specification, s.special_char, s.method_of_inspection

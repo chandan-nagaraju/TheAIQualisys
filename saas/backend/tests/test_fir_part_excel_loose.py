@@ -27,7 +27,7 @@ def test_dft_meter_goes_to_method_not_special_char():
     row = _ad_row_from_loose_row_vals(["1", "DFT", "60±10 Micron", "DFT METER"])
     assert row is not None
     assert row["parameter"] == "DFT"
-    assert row["specification"] == "60±10 Micron"
+    assert row["specification"] == "60 ± 10 µm"
     assert row["special_char"] is None
     assert row["method_of_inspection"] == "DFT METER"
 

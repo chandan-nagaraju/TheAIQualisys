@@ -923,7 +923,44 @@
       }
     }
 
-    // "R3±R1", "R3±1", "R 3 ± R 1" → symmetric band around nominal R
+    // "8 – 12 µm", "8-12 micron", "8 to 12 µm" → explicit micron acceptance band
+    const micronRange = s.match(/\b([0-9]+(?:\.[0-9]+)?)\s*(?:[-–—]|to)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:µm|um|micron|microns)\b/i);
+    if (micronRange) {
+      var loM = parseFloat(micronRange[1]);
+      var hiM = parseFloat(micronRange[2]);
+      if (!isNaN(loM) && !isNaN(hiM)) {
+        var loMic = Math.min(loM, hiM);
+        var hiMic = Math.max(loM, hiM);
+        return {
+          min: loMic,
+          max: hiMic,
+          nominal: (loMic + hiMic) / 2,
+          step: 0.1,
+          oneDecimal: true,
+          isRadius: false,
+          isAngle: false,
+        };
+      }
+    }
+
+    // "Min 12 micron" / "Max 12 micron" — miswritten lone limit; plating band is (upper − 4)…upper µm
+    const minMaxMicron = s.match(/^\s*(?:min\.?|minimum|max\.?|maximum)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:µm|um|micron|microns)\s*$/i);
+    if (minMaxMicron) {
+      var upperMic = parseFloat(minMaxMicron[1]);
+      if (!isNaN(upperMic)) {
+        var lowerMic = Math.max(0, upperMic - 4);
+        return {
+          min: lowerMic,
+          max: upperMic,
+          nominal: (lowerMic + upperMic) / 2,
+          step: 0.1,
+          oneDecimal: true,
+          isRadius: false,
+          isAngle: false,
+        };
+      }
+    }
+
     const rBand = s.match(/R\s*([0-9]+(?:\.[0-9]+)?)\s*±\s*R?\s*([0-9]+(?:\.[0-9]+)?)/i);
     if (rBand) {
       const nominalR = parseFloat(rBand[1]);
