@@ -55,17 +55,24 @@ def test_qr_code_parameter_maps_to_qr_scanner():
     assert expected_moi_from_specification("QR code MISS MATCH", "NOT ALLOWED") == "QR SCANNER"
 
 
-def test_flatness_and_parallel_gdt_parameters():
+def test_flatness_parallel_perpendicular_gdt_parameters():
     assert normalize_part_master_moi("FLATNESS", "0.5", None, "DVC") == "Feeler gauge (FG)"
     assert normalize_part_master_moi("FLATENESS", "0.5", None, "DVC") == "Feeler gauge (FG)"
+    assert normalize_part_master_moi("FLATNESS", "0.5", None, "DHG") == "DHG"
     assert normalize_part_master_moi("PARALLEL", "1", None, "DVC") == "PARALLEL GAUGE"
     assert normalize_part_master_moi("PARALLELISM", "1 MAX", None, "DHG") == "DHG"
     assert normalize_part_master_moi("PARALLEL", "1", None, "VHG") == "DHG"
     assert normalize_part_master_moi("PARALLELISM", "1", None, "HG") == "DHG"
     assert normalize_part_master_moi("PARALLEL", "1", None, "Digital Height Gauge") == "DHG"
+    assert normalize_part_master_moi("PERPENDICULARITY", "0.05", None, "DVC") == "PERPENDICULAR GAUGE"
+    assert normalize_part_master_moi("PERPENDICULAR", "0.1", None, "DVC") == "PERPENDICULAR GAUGE"
+    assert normalize_part_master_moi("PERPENDIVULARITY", "0.1", None, "DVC") == "PERPENDICULAR GAUGE"
+    assert normalize_part_master_moi("PERPENDICULARITY", "0.05", None, "DHG") == "DHG"
+    assert normalize_part_master_moi("PERPENDICULARITY", "0.05", None, "VHG") == "DHG"
     assert expected_moi_from_specification("FLATNESS", "0.5") == "Feeler gauge (FG)"
     assert expected_moi_from_specification("FLATENESS", "0.5") == "Feeler gauge (FG)"
     assert expected_moi_from_specification("PARALLEL", "1") == "PARALLEL GAUGE"
+    assert expected_moi_from_specification("PERPENDICULARITY", "0.05") == "PERPENDICULAR GAUGE"
 
 
 def test_no_auto_correct_only_standardizes_names():

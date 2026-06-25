@@ -56,6 +56,10 @@ _SPEC_VISUAL_PARAM = re.compile(
 _QR_CODE_PARAM = re.compile(r"\bQR\s*CODE\b", re.I)
 _FLATNESS_PARAM = re.compile(r"\b(?:FLATNESS|FLATENESS)\b", re.I)
 _PARALLEL_PARAM = re.compile(r"\bPARALLEL(?:ISM)?\b", re.I)
+_PERPENDICULARITY_PARAM = re.compile(
+    r"\bPERPEND(?:ICULAR(?:ITY)?|IVULAR(?:ITY)?)\b",
+    re.I,
+)
 
 
 def is_qr_code_parameter(parameter: str | None) -> bool:
@@ -69,6 +73,19 @@ def is_flatness_parameter(parameter: str | None) -> bool:
 
 def is_parallelism_parameter(parameter: str | None) -> bool:
     return bool(_PARALLEL_PARAM.search(_norm_key(parameter)))
+
+
+def is_perpendicularity_parameter(parameter: str | None) -> bool:
+    """Flatness / parallelism / perpendicularity GD&T shop-gauge parameters."""
+    return bool(_PERPENDICULARITY_PARAM.search(_norm_key(parameter)))
+
+
+def is_gdt_shop_gauge_parameter(parameter: str | None) -> bool:
+    return (
+        is_flatness_parameter(parameter)
+        or is_parallelism_parameter(parameter)
+        or is_perpendicularity_parameter(parameter)
+    )
 
 
 def _is_height_gauge_moi(raw_moi: str | None) -> bool:
@@ -87,13 +104,15 @@ def moi_for_gdt_shop_gauge_parameter(
     parameter: str | None,
     raw_moi: str | None = None,
 ) -> str | None:
-    """Flatness → Feeler gauge; Parallel / Parallelism → Parallel gauge (unless height gauge set)."""
+    """Flatness / parallelism / perpendicularity → shop gauge MOI (unless height gauge set)."""
     if _is_height_gauge_moi(raw_moi):
         return None
     if is_flatness_parameter(parameter):
         return "Feeler gauge (FG)"
     if is_parallelism_parameter(parameter):
         return "PARALLEL GAUGE"
+    if is_perpendicularity_parameter(parameter):
+        return "PERPENDICULAR GAUGE"
     return None
 
 
@@ -180,6 +199,9 @@ def _standardize_moi_name(raw: str | None) -> str | None:
     if "PARALLEL" in s and "GAU" in s:
         return "PARALLEL GAUGE"
 
+    if "PERPEND" in s and "GAU" in s:
+        return "PERPENDICULAR GAUGE"
+
     if s in {
         "TPG",
         "DVC",
@@ -195,6 +217,7 @@ def _standardize_moi_name(raw: str | None) -> str | None:
         "Feeler gauge (FG)",
         "FG",
         "PARALLEL GAUGE",
+        "PERPENDICULAR GAUGE",
     }:
         return s if s != "FG" else "Feeler gauge (FG)"
 
@@ -267,9 +290,7 @@ def normalize_part_master_moi(
     if gdt_moi:
         return gdt_moi
 
-    if (is_flatness_parameter(parameter) or is_parallelism_parameter(parameter)) and _is_height_gauge_moi(
-        raw_moi
-    ):
+    if (is_gdt_shop_gauge_parameter(parameter)) and _is_height_gauge_moi(raw_moi):
         standardized = _standardize_moi_name(raw_moi)
         if standardized:
             return standardized

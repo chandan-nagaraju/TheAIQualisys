@@ -409,13 +409,25 @@
     return /\bQR\b/.test(u) && /\bSCAN/.test(u);
   }
 
-  /** GD&T shop gauges — flatness / parallelism checked with pass-fail gauges; actual = OK. */
+  /** GD&T shop gauges — flatness / parallelism / perpendicularity; actual = OK or numeric. */
   function firIsFlatnessParameter(paramRaw) {
     return /\b(?:FLATNESS|FLATENESS)\b/i.test(String(paramRaw || ""));
   }
 
   function firIsParallelismParameter(paramRaw) {
     return /\bPARALLEL(?:ISM)?\b/i.test(String(paramRaw || ""));
+  }
+
+  function firIsPerpendicularityParameter(paramRaw) {
+    return /\bPERPEND(?:ICULAR(?:ITY)?|IVULAR(?:ITY)?)\b/i.test(String(paramRaw || ""));
+  }
+
+  function firIsGdtShopGaugeParameter(paramRaw) {
+    return (
+      firIsFlatnessParameter(paramRaw) ||
+      firIsParallelismParameter(paramRaw) ||
+      firIsPerpendicularityParameter(paramRaw)
+    );
   }
 
   function firIsFeelerGaugeMethod(raw) {
@@ -427,6 +439,10 @@
     return /\bPARALLEL\s*GAU/i.test(String(raw || ""));
   }
 
+  function firIsPerpendicularGaugeMethod(raw) {
+    return /\bPERPEND(?:ICULAR|IVULAR)?\s*GAU/i.test(String(raw || ""));
+  }
+
   function firIsHeightGaugeMethod(raw) {
     if (firIsDimensionalMeasuringMethod(raw)) {
       var u = String(raw || "").trim().toUpperCase();
@@ -436,11 +452,11 @@
     return false;
   }
 
-  /** GD&T flatness / parallelism: OK for pass-fail gauges; numeric when height gauge is used. */
+  /** GD&T flatness / parallelism / perpendicularity: OK for pass-fail gauges; numeric for height gauge. */
   function firGdtParameterUsesQualitativeMeasured(paramRaw, methodRaw) {
     var param = String(paramRaw || "").trim();
     var method = String(methodRaw || "").trim();
-    if (!firIsFlatnessParameter(param) && !firIsParallelismParameter(param)) return false;
+    if (!firIsGdtShopGaugeParameter(param)) return false;
     if (firIsHeightGaugeMethod(method)) return false;
     if (firIsDimensionalMeasuringMethod(method)) return false;
     return true;
@@ -486,7 +502,7 @@
     if (firIsDimensionalMeasuringMethod(raw)) return false;
     var u = String(raw || "").trim().toUpperCase();
     if (!u) return false;
-    if (/^RG$|^R\.G\.?$|^FG$|RADIUS\s*GAU|PARALLEL\s*GAU|SLIP\s*GAU|FEELER|WELD\s*FILLET|SNAP\s*GAU|RING\s*GAU|PLUG\s*GAU|GO\s*NO\s*GO|GO\/NO\s*GO/.test(u)) {
+    if (/^RG$|^R\.G\.?$|^FG$|RADIUS\s*GAU|PARALLEL\s*GAU|PERPEND(?:ICULAR|IVULAR)?\s*GAU|SLIP\s*GAU|FEELER|WELD\s*FILLET|SNAP\s*GAU|RING\s*GAU|PLUG\s*GAU|GO\s*NO\s*GO|GO\/NO\s*GO/.test(u)) {
       return true;
     }
     return /\bGAUG(E)?\b/.test(u) || u.indexOf("GAUGE") !== -1 || u.indexOf("GAUG") !== -1;
@@ -520,7 +536,7 @@
     var param = String(paramRaw || "").trim();
     if (firIsQrCodeParameter(param) || firIsQrScannerMethod(method)) return true;
     if (firGdtParameterUsesQualitativeMeasured(param, method)) return true;
-    if (firIsFeelerGaugeMethod(method) || firIsParallelGaugeMethod(method)) return true;
+    if (firIsFeelerGaugeMethod(method) || firIsParallelGaugeMethod(method) || firIsPerpendicularGaugeMethod(method)) return true;
     if (firIsQualitativeMeasuredMethod(method)) return true;
     if (firIsMetricThreadSpecification(spec)) return true;
     if (firIsVisualMethod(method) || (firIsVisualSpecification(spec) && (firIsVisualParameter(param) || firIsVisualMethod(method)))) {
