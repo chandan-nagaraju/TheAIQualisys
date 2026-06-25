@@ -71,8 +71,25 @@ def is_parallelism_parameter(parameter: str | None) -> bool:
     return bool(_PARALLEL_PARAM.search(_norm_key(parameter)))
 
 
-def moi_for_gdt_shop_gauge_parameter(parameter: str | None) -> str | None:
-    """Flatness → Feeler gauge; Parallel / Parallelism → Parallel gauge."""
+def _is_height_gauge_moi(raw_moi: str | None) -> bool:
+    """True when MOI is a height / digital height gauge (numeric GD&T readout, not pass-fail)."""
+    if _standardize_moi_name(raw_moi) == "DHG":
+        return True
+    s = _norm_key(raw_moi)
+    if s in {"DHG", "DHI", "VHG", "HG", "V.H.G", "V.H.G."}:
+        return True
+    if re.search(r"DIGITAL\s*HEIGHT|HEIGHT\s*(GAU|GAGE|GUAGE)|VERNIER\s*HEIGHT|HIEGHT", s):
+        return True
+    return False
+
+
+def moi_for_gdt_shop_gauge_parameter(
+    parameter: str | None,
+    raw_moi: str | None = None,
+) -> str | None:
+    """Flatness → Feeler gauge; Parallel / Parallelism → Parallel gauge (unless height gauge set)."""
+    if _is_height_gauge_moi(raw_moi):
+        return None
     if is_flatness_parameter(parameter):
         return "Feeler gauge (FG)"
     if is_parallelism_parameter(parameter):
@@ -129,7 +146,7 @@ def _standardize_moi_name(raw: str | None) -> str | None:
     if "THREAD PLUG" in s or "THREAD GAUGE" in s or "GO AND NO GO THREAD" in s:
         return "TPG"
 
-    if s in {"DHG", "DHI", "VHG", "V.H.G", "V.H.G.", "DGH"}:
+    if s in {"DHG", "DHI", "VHG", "V.H.G", "V.H.G.", "DGH", "HG"}:
         return "DHG"
     if re.search(r"HEIGHT\s*(GAU|GAGE|GUAGE)|HIEGHT|HIGHT\s*GU", s):
         return "DHG"
@@ -199,7 +216,7 @@ def expected_moi_from_specification(
     if is_qr_code_parameter(parameter):
         return "QR SCANNER"
 
-    gdt_moi = moi_for_gdt_shop_gauge_parameter(parameter)
+    gdt_moi = moi_for_gdt_shop_gauge_parameter(parameter, None)
     if gdt_moi:
         return gdt_moi
 
@@ -246,9 +263,18 @@ def normalize_part_master_moi(
     if is_qr_code_parameter(parameter):
         return "QR SCANNER"
 
-    gdt_moi = moi_for_gdt_shop_gauge_parameter(parameter)
+    gdt_moi = moi_for_gdt_shop_gauge_parameter(parameter, raw_moi)
     if gdt_moi:
         return gdt_moi
+
+    if (is_flatness_parameter(parameter) or is_parallelism_parameter(parameter)) and _is_height_gauge_moi(
+        raw_moi
+    ):
+        standardized = _standardize_moi_name(raw_moi)
+        if standardized:
+            return standardized
+        raw = (raw_moi or "").strip()
+        return raw or None
 
     if is_no_auto_correct_parameter(parameter):
         standardized = _standardize_moi_name(raw_moi)

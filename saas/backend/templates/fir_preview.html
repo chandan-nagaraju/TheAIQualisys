@@ -427,6 +427,25 @@
     return /\bPARALLEL\s*GAU/i.test(String(raw || ""));
   }
 
+  function firIsHeightGaugeMethod(raw) {
+    if (firIsDimensionalMeasuringMethod(raw)) {
+      var u = String(raw || "").trim().toUpperCase();
+      if (/^DHG$|^DHI$|^VHG$|^HG$|^V\.?H\.?G\.?$/.test(u)) return true;
+      if (/HEIGHT\s*GAU|HIEGHT|DIGITAL\s*HEIGHT|VERNIER\s*HEIGHT/.test(u)) return true;
+    }
+    return false;
+  }
+
+  /** GD&T flatness / parallelism: OK for pass-fail gauges; numeric when height gauge is used. */
+  function firGdtParameterUsesQualitativeMeasured(paramRaw, methodRaw) {
+    var param = String(paramRaw || "").trim();
+    var method = String(methodRaw || "").trim();
+    if (!firIsFlatnessParameter(param) && !firIsParallelismParameter(param)) return false;
+    if (firIsHeightGaugeMethod(method)) return false;
+    if (firIsDimensionalMeasuringMethod(method)) return false;
+    return true;
+  }
+
   /**
    * Thread plug gauge — TPG or full phrase (case-insensitive).
    * Also accepts common truncation/typo (e.g. "hread plug gau…").
@@ -448,7 +467,7 @@
   function firIsDimensionalMeasuringMethod(raw) {
     var u = String(raw || "").trim().toUpperCase();
     if (!u) return false;
-    if (/^DVC$|^DHG$|^DHI$|^DMM$|^MM$|^CMM$|^BP$|^B\.P\.?$/.test(u)) return true;
+    if (/^DVC$|^DHG$|^DHI$|^DMM$|^MM$|^CMM$|^BP$|^B\.P\.?$|^VHG$|^HG$|^V\.?H\.?G\.?$/.test(u)) return true;
     if (/VERNIER|CALIPER|CALLIPER|VENIRE/.test(u)) return true;
     if (/HEIGHT\s*GAU|HIEGHT\s*GAU|HEIGHT\s*GAGE|HIEGHT/.test(u)) return true;
     if (/DIAL\s*GAU|D\.?\s*GAU|DIAL\s*INDICATOR/.test(u)) return true;
@@ -500,7 +519,7 @@
     var spec = String(specRaw || "").trim();
     var param = String(paramRaw || "").trim();
     if (firIsQrCodeParameter(param) || firIsQrScannerMethod(method)) return true;
-    if (firIsFlatnessParameter(param) || firIsParallelismParameter(param)) return true;
+    if (firGdtParameterUsesQualitativeMeasured(param, method)) return true;
     if (firIsFeelerGaugeMethod(method) || firIsParallelGaugeMethod(method)) return true;
     if (firIsQualitativeMeasuredMethod(method)) return true;
     if (firIsMetricThreadSpecification(spec)) return true;
@@ -873,7 +892,25 @@
         if (e.target && e.target.classList && e.target.classList.contains('remarks-value')) updateStatusButtons();
         if (e.target && e.target.classList && e.target.classList.contains('method-input')) {
           var trM = e.target.closest('tr');
-          if (trM) firUpdateRowRemarksFromMeasurements(trM);
+          if (trM) {
+            var cellsM = trM.querySelectorAll(":scope > td");
+            var paramElM = cellsM[1] ? (cellsM[1].querySelector("textarea") || cellsM[1].querySelector("input")) : null;
+            var specElM = cellsM[2] ? (cellsM[2].querySelector("textarea") || cellsM[2].querySelector("input")) : null;
+            var paramM = paramElM ? (paramElM.value || "").trim() : "";
+            var specM = specElM ? (specElM.value || "").trim() : "";
+            var methodM = (e.target.value || "").trim();
+            if (firRowUsesQualitativeMeasured(paramM, specM, methodM)) {
+              firFillQualitativeMeasuredRow(trM);
+            } else {
+              for (var ciM = 5; ciM <= 9; ciM++) {
+                var tdM = cellsM[ciM];
+                if (!tdM) continue;
+                var inpM = tdM.querySelector("input.actual-value") || tdM.querySelector('input[type="text"]');
+                if (inpM && !inpM.disabled && (inpM.value || "").trim().toUpperCase() === "OK") inpM.value = "";
+              }
+            }
+            firUpdateRowRemarksFromMeasurements(trM);
+          }
         }
         if (e.target && e.target.tagName === 'TEXTAREA') {
           var trTa = e.target.closest('tr');
@@ -888,7 +925,25 @@
         if (e.target && e.target.classList && e.target.classList.contains('remarks-value')) updateStatusButtons();
         if (e.target && e.target.classList && e.target.classList.contains('method-input')) {
           var trM2 = e.target.closest('tr');
-          if (trM2) firUpdateRowRemarksFromMeasurements(trM2);
+          if (trM2) {
+            var cellsM2 = trM2.querySelectorAll(":scope > td");
+            var paramElM2 = cellsM2[1] ? (cellsM2[1].querySelector("textarea") || cellsM2[1].querySelector("input")) : null;
+            var specElM2 = cellsM2[2] ? (cellsM2[2].querySelector("textarea") || cellsM2[2].querySelector("input")) : null;
+            var paramM2 = paramElM2 ? (paramElM2.value || "").trim() : "";
+            var specM2 = specElM2 ? (specElM2.value || "").trim() : "";
+            var methodM2 = (e.target.value || "").trim();
+            if (firRowUsesQualitativeMeasured(paramM2, specM2, methodM2)) {
+              firFillQualitativeMeasuredRow(trM2);
+            } else {
+              for (var ciM2 = 5; ciM2 <= 9; ciM2++) {
+                var tdM2 = cellsM2[ciM2];
+                if (!tdM2) continue;
+                var inpM2 = tdM2.querySelector("input.actual-value") || tdM2.querySelector('input[type="text"]');
+                if (inpM2 && !inpM2.disabled && (inpM2.value || "").trim().toUpperCase() === "OK") inpM2.value = "";
+              }
+            }
+            firUpdateRowRemarksFromMeasurements(trM2);
+          }
         }
         if (e.target && e.target.tagName === 'TEXTAREA') {
           var trTa2 = e.target.closest('tr');
