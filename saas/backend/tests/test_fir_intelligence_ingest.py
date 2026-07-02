@@ -18,6 +18,21 @@ def test_parse_invoice_date_iso() -> None:
     assert _parse_invoice_date("2026-05-09") == date(2026, 5, 9)
 
 
+def test_parse_invoice_date_rejects_garbage_years() -> None:
+    assert _parse_invoice_date("6475") is None
+    assert _parse_invoice_date("35") is None
+    assert _parse_invoice_date("3") is None
+    assert _parse_invoice_date("26-27") is None
+    assert _parse_invoice_date("3492/26-27") is None
+
+
+def test_parse_invoice_date_excel_serial() -> None:
+    # 45292 ≈ 2024-01-15 in Excel
+    d = _parse_invoice_date(45292.0)
+    assert d is not None
+    assert 2020 <= d.year <= 2030
+
+
 def test_event_uid_stable() -> None:
     key = build_event_uid_key(
         company_id=42,

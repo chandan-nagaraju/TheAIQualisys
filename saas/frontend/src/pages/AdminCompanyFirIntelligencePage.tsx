@@ -346,6 +346,7 @@ export default function AdminCompanyFirIntelligencePage() {
     if (!intelMonths?.length) return [];
     const set = new Set<number>();
     for (const r of intelMonths) {
+      if (r.year < 2000 || r.year > 2100) continue;
       set.add(fyAprilStartFromCalendarMonth(r.year, r.month));
     }
     return [...set].sort((a, b) => b - a);
@@ -354,7 +355,12 @@ export default function AdminCompanyFirIntelligencePage() {
   const monthsInSelectedFy = useMemo(() => {
     if (!intelMonths || intelPickerFyStart === "") return [];
     return intelMonths
-      .filter((r) => fyAprilStartFromCalendarMonth(r.year, r.month) === intelPickerFyStart)
+      .filter(
+        (r) =>
+          r.year >= 2000 &&
+          r.year <= 2100 &&
+          fyAprilStartFromCalendarMonth(r.year, r.month) === intelPickerFyStart,
+      )
       .sort((a, b) => (a.year !== b.year ? b.year - a.year : b.month - a.month));
   }, [intelMonths, intelPickerFyStart]);
 
@@ -374,19 +380,20 @@ export default function AdminCompanyFirIntelligencePage() {
       });
       setIntelMonths(rows);
       setIntelErr(null);
+      const sane = rows.filter((r) => r.year >= 2000 && r.year <= 2100);
       setIntelPickerFyStart((prev) => {
-        if (!rows.length) return "";
-        const latestFy = fyAprilStartFromCalendarMonth(rows[0].year, rows[0].month);
-        if (prev !== "" && rows.some((r) => fyAprilStartFromCalendarMonth(r.year, r.month) === prev)) return prev;
+        if (!sane.length) return "";
+        const latestFy = fyAprilStartFromCalendarMonth(sane[0].year, sane[0].month);
+        if (prev !== "" && sane.some((r) => fyAprilStartFromCalendarMonth(r.year, r.month) === prev)) return prev;
         return latestFy;
       });
       setIntelYm((prev) => {
         if (prev) {
-          const ok = rows.some((r) => `${r.year}-${String(r.month).padStart(2, "0")}` === prev);
+          const ok = sane.some((r) => `${r.year}-${String(r.month).padStart(2, "0")}` === prev);
           if (ok) return prev;
         }
-        if (!rows.length) return "";
-        return `${rows[0].year}-${String(rows[0].month).padStart(2, "0")}`;
+        if (!sane.length) return "";
+        return `${sane[0].year}-${String(sane[0].month).padStart(2, "0")}`;
       });
     } catch (e) {
       setIntelMonths([]);

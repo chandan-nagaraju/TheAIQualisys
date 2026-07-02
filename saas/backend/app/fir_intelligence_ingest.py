@@ -51,36 +51,94 @@ def _cell_str(val: Any) -> str:
     return str(val).strip()
 
 
+INVOICE_DATE_MIN_YEAR = 2000
+INVOICE_DATE_MAX_YEAR = 2100
+# Excel serial day range ≈ 1982–2050 (serial 30_000–55_000).
+_EXCEL_SERIAL_MIN = 30_000
+_EXCEL_SERIAL_MAX = 55_000
+
+
+def is_plausible_invoice_date(d: date | None) -> bool:
+    if d is None:
+        return False
+    return INVOICE_DATE_MIN_YEAR <= d.year <= INVOICE_DATE_MAX_YEAR
+
+
+def _date_from_excel_serial(n: float) -> date | None:
+    if not (_EXCEL_SERIAL_MIN <= n <= _EXCEL_SERIAL_MAX):
+        return None
+    ts = pd.to_datetime(n, unit="D", origin="1899-12-30", errors="coerce")
+    if pd.isna(ts):
+        return None
+    d = ts.date()
+    return d if is_plausible_invoice_date(d) else None
+
+
 def _parse_invoice_date(val: Any) -> date | None:
     if val is None:
         return None
     if isinstance(val, float) and pd.isna(val):
         return None
     if isinstance(val, date) and not isinstance(val, datetime):
-        return val
+        return val if is_plausible_invoice_date(val) else None
     if isinstance(val, datetime):
-        return val.date()
+        d = val.date()
+        return d if is_plausible_invoice_date(d) else None
+
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
+        return _date_from_excel_serial(float(val))
+
     s = str(val).strip()
     if not s:
         return None
+
+    # FY / invoice fragments — not calendar dates (e.g. "26-27", "3492/26-27").
+    if re.fullmatch(r"\d{1,2}\s*[-/]\s*\d{1,2}", s):
+        return None
+    if re.search(r"/\d{1,2}\s*[-–]\s*\d{1,2}\b", s):
+        return None
+
+    # Bare year or junk integer in Date column (e.g. "6475", "35", "3").
+    if re.fullmatch(r"\d{1,5}", s):
+        n = int(s)
+        if INVOICE_DATE_MIN_YEAR <= n <= INVOICE_DATE_MAX_YEAR:
+            return None
+        excel_d = _date_from_excel_serial(float(n))
+        return excel_d
+
     try:
-        return date.fromisoformat(s[:10])
+        iso = date.fromisoformat(s[:10])
+        return iso if is_plausible_invoice_date(iso) else None
     except ValueError:
         pass
-    # Excel EU-style: 09.05.2026 — treat as invoice date (same semantic as canonical "Date" column).
+
+    # Excel EU-style: 09.05.2026
     m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})$", s)
     if m:
         day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
         try:
-            return date(year, month, day)
+            d = date(year, month, day)
+            return d if is_plausible_invoice_date(d) else None
         except ValueError:
             return None
+
+    # dd/mm/yyyy or dd-mm-yyyy with 4-digit year
+    m = re.match(r"^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$", s)
+    if m:
+        day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            d = date(year, month, day)
+            return d if is_plausible_invoice_date(d) else None
+        except ValueError:
+            return None
+
     ts = pd.to_datetime(s, errors="coerce", dayfirst=True)
     if pd.isna(ts):
         ts = pd.to_datetime(s, errors="coerce", dayfirst=False)
     if pd.isna(ts):
         return None
-    return ts.date()
+    d = ts.date()
+    return d if is_plausible_invoice_date(d) else None
 
 
 def _normalize_quantity(val: Any) -> str | None:

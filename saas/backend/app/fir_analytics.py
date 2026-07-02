@@ -10,9 +10,10 @@ from decimal import Decimal, InvalidOperation
 from statistics import median
 from typing import Any
 
-from sqlalchemy import extract, func, select
+from sqlalchemy import case, extract, func, select
 from sqlalchemy.orm import Session
 
+from app.fir_intelligence_ingest import INVOICE_DATE_MAX_YEAR, INVOICE_DATE_MIN_YEAR, is_plausible_invoice_date
 from app.models import Customer, FirReportEvent, PartV2
 
 
@@ -29,9 +30,19 @@ def _last_day_of_calendar_month(year: int, month: int) -> date:
 
 
 def _fir_event_invoice_day(ev: FirReportEvent) -> date:
-    if ev.invoice_date is not None:
+    if ev.invoice_date is not None and is_plausible_invoice_date(ev.invoice_date):
         return ev.invoice_date
     return _utc_date(ev.created_at)
+
+
+def _effective_invoice_date_sql():
+    """SQL expression: plausible invoice_date, else logged-at date (UTC)."""
+    lo = date(INVOICE_DATE_MIN_YEAR, 1, 1)
+    hi = date(INVOICE_DATE_MAX_YEAR, 12, 31)
+    return case(
+        (FirReportEvent.invoice_date.between(lo, hi), FirReportEvent.invoice_date),
+        else_=func.date(FirReportEvent.created_at),
+    )
 
 
 def _event_day_for_fy_series(ev: Any, *, use_invoice_date: bool) -> date:
@@ -39,7 +50,9 @@ def _event_day_for_fy_series(ev: Any, *, use_invoice_date: bool) -> date:
     if use_invoice_date:
         inv = getattr(ev, "invoice_date", None)
         if inv is not None:
-            return inv if isinstance(inv, date) else date.fromisoformat(str(inv))
+            d = inv if isinstance(inv, date) else date.fromisoformat(str(inv))
+            if is_plausible_invoice_date(d):
+                return d
     ca = getattr(ev, "created_at", None)
     if ca is None:
         raise ValueError("event missing created_at")
@@ -180,12 +193,17 @@ def _classify_rhythm(
 
 
 def list_fir_invoice_months(db: Session, company_id: int) -> list[dict[str, Any]]:
-    """Distinct calendar months that have FIR intelligence rows, by invoice_date (newest first)."""
-    ycol = extract("year", FirReportEvent.invoice_date)
-    mcol = extract("month", FirReportEvent.invoice_date)
+    """Distinct calendar months with FIR rows (effective invoice date), newest first."""
+    eff = _effective_invoice_date_sql()
+    ycol = extract("year", eff)
+    mcol = extract("month", eff)
     rows = db.execute(
         select(ycol, mcol, func.count(FirReportEvent.id))
-        .where(FirReportEvent.company_id == company_id)
+        .where(
+            FirReportEvent.company_id == company_id,
+            ycol >= INVOICE_DATE_MIN_YEAR,
+            ycol <= INVOICE_DATE_MAX_YEAR,
+        )
         .group_by(ycol, mcol)
         .order_by(ycol.desc(), mcol.desc())
     ).fetchall()
