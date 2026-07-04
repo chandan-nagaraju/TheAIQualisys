@@ -141,6 +141,20 @@ def _parse_invoice_date(val: Any) -> date | None:
     return d if is_plausible_invoice_date(d) else None
 
 
+def format_invoice_date_for_display(val: Any) -> str | None:
+    """Normalize invoice/date cell to dd.mm.yyyy for FIR header and upload rows."""
+    d = _parse_invoice_date(val)
+    if d is None:
+        return None
+    return f"{d.day:02d}.{d.month:02d}.{d.year}"
+
+
+def normalize_invoice_date_field(val: Any) -> str:
+    """Return dd.mm.yyyy when valid; empty string when missing or garbage."""
+    formatted = format_invoice_date_for_display(val)
+    return formatted or ""
+
+
 def _normalize_quantity(val: Any) -> str | None:
     if val is None:
         return None

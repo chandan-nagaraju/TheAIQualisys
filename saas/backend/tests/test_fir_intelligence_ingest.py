@@ -33,6 +33,16 @@ def test_parse_invoice_date_excel_serial() -> None:
     assert 2020 <= d.year <= 2030
 
 
+def test_format_invoice_date_rejects_garbage() -> None:
+    from app.fir_intelligence_ingest import format_invoice_date_for_display, normalize_invoice_date_field
+
+    assert format_invoice_date_for_display("09.05.2026") == "09.05.2026"
+    assert format_invoice_date_for_display("31.12.0012") is None
+    assert format_invoice_date_for_display("6475") is None
+    assert normalize_invoice_date_field("31.12.0012") == ""
+    assert normalize_invoice_date_field("2026-05-09") == "09.05.2026"
+
+
 def test_event_uid_stable() -> None:
     key = build_event_uid_key(
         company_id=42,

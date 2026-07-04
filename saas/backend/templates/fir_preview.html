@@ -321,7 +321,30 @@
   const customer = urlParams.get('customer') || "";
   const reportNo = urlParams.get('reportNo') || "";
   const invoiceNo = urlParams.get('invoiceNo') || "";
-  const reportDate = urlParams.get('reportDate') || "";
+  function firNormalizeReportDate(raw) {
+    var s = String(raw || "").trim();
+    if (!s) return "";
+    if (/^\d{1,2}\s*[-/]\s*\d{1,2}$/.test(s)) return "";
+    var dmY = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+    if (dmY) {
+      var y = parseInt(dmY[3], 10);
+      if (y >= 2000 && y <= 2100) {
+        return dmY[1].padStart(2, "0") + "." + dmY[2].padStart(2, "0") + "." + dmY[3];
+      }
+      return "";
+    }
+    var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) {
+      var yi = parseInt(iso[1], 10);
+      if (yi >= 2000 && yi <= 2100) {
+        return iso[3] + "." + iso[2] + "." + iso[1];
+      }
+      return "";
+    }
+    if (/^\d{1,5}$/.test(s)) return "";
+    return "";
+  }
+  const reportDate = firNormalizeReportDate(urlParams.get('reportDate') || "");
   const lotQty = urlParams.get('quantity') || "";
   const sampleSize = urlParams.get('sampleSize') || "";
   const noOfParamsParam = parseInt(urlParams.get('noOfParams'));
@@ -981,8 +1004,9 @@
     const isRadius = /R\s*\d/i.test(s);
     const isAngle = /°|\bdeg(?:ree)?s?\b/i.test(s);
 
-    // "96.91/97.16" or "5/6" → allowable range [min, max] (order-independent)
-    const slashRange = s.match(/\b([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\b/);
+    // "96.91/97.16" or "95.5/96" → allowable range [min, max] (order-independent).
+    // Do not use \\b — in JS the dot in 95.5 is non-word, so \\b can match "5/96" instead of "95.5/96".
+    const slashRange = s.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
     if (slashRange) {
       const a = parseFloat(slashRange[1]);
       const b = parseFloat(slashRange[2]);
@@ -991,6 +1015,20 @@
         const hi = Math.max(a, b);
         const nominal = (lo + hi) / 2;
         return { min: lo, max: hi, nominal, step: isRadius ? 0.5 : null, isRadius, isAngle };
+      }
+    }
+
+    // "95.5 - 96" / "95.5 to 96" explicit limits (not ± tolerance)
+    if (!/±/.test(s)) {
+      const dashRange = s.match(/^(\d+(?:\.\d+)?)\s*(?:[-–—]|to)\s*(\d+(?:\.\d+)?)\s*$/i);
+      if (dashRange) {
+        const a = parseFloat(dashRange[1]);
+        const b = parseFloat(dashRange[2]);
+        if (!isNaN(a) && !isNaN(b)) {
+          const lo = Math.min(a, b);
+          const hi = Math.max(a, b);
+          return { min: lo, max: hi, nominal: (lo + hi) / 2, step: isRadius ? 0.5 : null, isRadius, isAngle };
+        }
       }
     }
 

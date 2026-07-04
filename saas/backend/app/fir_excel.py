@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 
 from app.part_field_validation import sanitize_part_master_alnum_upper
+from app.fir_intelligence_ingest import normalize_invoice_date_field
 
 
 def _norm_header(s: Any) -> str:
@@ -418,6 +419,7 @@ def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple
         pn = row.get("Part Number")
         if pn is not None:
             row["Part Number"] = sanitize_part_master_alnum_upper(str(pn))
+        row["Date"] = normalize_invoice_date_field(row.get("Date"))
     return rows, DISPLAY_COLS
 
 
@@ -496,5 +498,6 @@ def enrich_rows_with_parts(
             row["num_params"] = default_num_params
         if resolved_from_master:
             row["Description"] = (master_description or "").strip()
+        row["Date"] = normalize_invoice_date_field(row.get("Date"))
         out.append(row)
     return out

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import JSZip from "jszip";
 import { firPreviewUrl, workspaceFetch } from "../../api";
+import { reportDateForFIR } from "../../utils/invoiceDate";
 import {
   clearInspectionSession,
   loadInspectionResults,
@@ -201,14 +202,6 @@ function firIframeTargetOrigin(iframe: HTMLIFrameElement | null): string {
   }
 }
 
-/** FIR header DATE: use invoice row date from upload when present, else server fallback (ISO → dd.mm.yyyy). */
-function reportDateForFIR(r: Row, fallbackIso: string): string {
-  const raw = String(r["Date"] ?? "").trim();
-  if (raw) return raw;
-  const m = fallbackIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) return `${m[3]}.${m[2]}.${m[1]}`;
-  return fallbackIso;
-}
 
 function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: string): Record<string, string> {
   const partName = String(r["Part Number"] ?? "").trim();
@@ -231,7 +224,7 @@ function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: s
     vendorCode,
     customer: customerName,
     reportNo: "1",
-    reportDate: reportDateForFIR(r, currentDate),
+    reportDate: reportDateForFIR(String(r["Date"] ?? ""), currentDate),
   };
 }
 

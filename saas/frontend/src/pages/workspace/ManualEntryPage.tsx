@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { getWorkspaceCustomerId, setWorkspaceCustomerId, workspaceFetch } from "../../api";
 import { clearInspectionSession } from "../../workspace/inspectionSession";
 import { sanitizePartNoUpper } from "../../utils/partFields";
+import { isValidInvoiceDateInput } from "../../utils/invoiceDate";
 
 type ManualRow = {
   partNumber: string;
@@ -214,6 +215,10 @@ export default function ManualEntryPage() {
       }
       if (!r.Date) {
         setErr(`Row ${i + 1}: Date is required.`);
+        return;
+      }
+      if (!isValidInvoiceDateInput(r.Date)) {
+        setErr(`Row ${i + 1}: Date must be valid (dd.mm.yyyy, year 2000–2100).`);
         return;
       }
     }
