@@ -19,9 +19,16 @@ from typing import Any
 
 from app.part_master_coating_spec import is_plating_thickness_row
 
-_THREAD_SIZE = re.compile(r"\bM(?:6|8|10|12)\b", re.I)
-_THREAD_DESIGNATION = re.compile(r"\bM\d+(?:\.\d+)?\s*[X×]\d+(?:\.\d+)?\b", re.I)
-_THREAD_DESIGNATION_COMPACT = re.compile(r"^M\d+(?:\.\d+)?[X×]\d+(?:\.\d+)?$", re.I)
+# Metric thread / bolt designations: M8, M8X1.25, M8X1.25X35 (size × pitch × length).
+_THREAD_SIZE = re.compile(r"\bM\d+(?:\.\d+)?\b", re.I)
+_THREAD_DESIGNATION = re.compile(
+    r"\bM\d+(?:\.\d+)?(?:\s*[X×]\s*\d+(?:\.\d+)?){1,2}\b",
+    re.I,
+)
+_THREAD_DESIGNATION_COMPACT = re.compile(
+    r"^M\d+(?:\.\d+)?(?:[X×]\d+(?:\.\d+)?){0,2}$",
+    re.I,
+)
 
 _NO_AUTO_CORRECT_PARAM = re.compile(
     r"\bPITCH\b|"
@@ -129,7 +136,7 @@ def looks_like_thread_specification(
     parameter: str | None,
     specification: str | None,
 ) -> bool:
-    """True when parameter or specification denotes a metric thread (M6/M8/M10/M12 or M#X#)."""
+    """True when parameter or specification denotes a metric thread/bolt (M8, M8X1.25, M8X1.25X35)."""
     param = _norm_key(parameter)
     if param and _THREAD_SIZE.search(param):
         return True
@@ -140,6 +147,11 @@ def looks_like_thread_specification(
             continue
         compact = re.sub(r"\s+", "", _norm_key(text))
         if _THREAD_DESIGNATION_COMPACT.match(compact):
+            return True
+        if _THREAD_DESIGNATION.search(compact):
+            return True
+        # Spec starting with metric size alone (e.g. "M8", "M10 THREAD")
+        if re.match(r"^M\d+(?:\.\d+)?(?:\b|$)", compact):
             return True
     return False
 

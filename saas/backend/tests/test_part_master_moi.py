@@ -93,7 +93,15 @@ def test_pitch_does_not_auto_correct_to_dvc_from_numeric_spec():
 def test_thread_sizes_and_designations():
     assert looks_like_thread_specification("M6", None)
     assert looks_like_thread_specification("Tapped Hole", "M8X1.25")
+    assert looks_like_thread_specification("Boult", "M8X1.25")
+    assert looks_like_thread_specification("Boult", "M8x1.25x35")
+    assert looks_like_thread_specification("BOLT", "M10")
+    assert looks_like_thread_specification("Thread", "M12X1.75X40")
     assert not looks_like_thread_specification("2 HOLES DIA", "20.5+0.5")
+    assert normalize_part_master_moi("Boult", "M8x1.25x35", None, "DVC") == "TPG"
+    assert normalize_part_master_moi("BOLT", "M8X1.25", None, "DVC") == "TPG"
+    assert normalize_part_master_moi("Boult", "M8", None, "Vernier Caliper") == "TPG"
+    assert expected_moi_from_specification("Boult", "M8x1.25x35") == "TPG"
 
 
 def test_excel_import_applies_rules():

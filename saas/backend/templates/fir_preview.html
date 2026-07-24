@@ -541,15 +541,21 @@
   }
 
   /**
-   * Metric thread designation (weld nut, tapped hole) — e.g. M6X1, M8X1.5, M10X1.25, M10X1.5.
-   * Checked with thread plug gauge: measured values are OK only, not a numeric pitch readout.
+   * Metric thread / bolt designation — M8, M6X1, M8X1.25, M8X1.25X35 (size × pitch × length).
+   * Checked with thread plug gauge (TPG): measured values are OK only.
    */
   function firIsMetricThreadSpecification(specRaw) {
     var s = String(specRaw || "")
       .trim()
       .toUpperCase()
       .replace(/\s+/g, "");
-    return /^M\d+(\.\d+)?[X×]\d+(\.\d+)?$/.test(s);
+    if (!s) return false;
+    // M8 / M8X1.25 / M8X1.25X35 (optional pitch and length)
+    if (/^M\d+(\.\d+)?([X×]\d+(\.\d+)?){0,2}$/.test(s)) return true;
+    // Embedded designation e.g. "THREAD M8X1.25" or "M8X1.25X35 LG"
+    if (/\bM\d+(\.\d+)?([X×]\d+(\.\d+)?){1,2}\b/.test(s)) return true;
+    if (/^M\d+(\.\d+)?\b/.test(s)) return true;
+    return false;
   }
 
   /** Pass/fail measured cells from parameter + specification + method together. */
@@ -1290,6 +1296,9 @@
     var methodText = (methodEl.value || "").trim();
     var resolved = firResolveRowMeasuredContext(paramText, spec, methodText);
     if (resolved.mode === "qualitative") {
+      if (firIsMetricThreadSpecification(spec)) {
+        methodEl.value = "TPG";
+      }
       firFillQualitativeMeasuredRow(tr);
       return;
     }
