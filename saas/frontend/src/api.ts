@@ -380,14 +380,43 @@ export async function fetchFirPreviewHtml(params: Record<string, string>): Promi
 }
 
 /**
- * srcdoc documents resolve relative /api/app asset URLs against the parent (Amplify), not Railway.
- * Inject <base> plus a frame index (srcdoc has no query string for previewFrameIndex).
+ * srcdoc documents have no query string (and inherit the parent page).
+ * - Strip parser-blocking html2pdf so the report can paint (old API HTML still has this tag).
+ * - Inject FIR_QUERY + URLSearchParams shim so part/invoice fields exist without location.search.
+ * - <base> so /api/app logos/fonts still load from the API host.
  */
-export function wrapFirPreviewHtmlForEmbed(html: string, frameIndex: number): string {
+export function wrapFirPreviewHtmlForEmbed(
+  html: string,
+  frameIndex: number,
+  query: Record<string, string> = {},
+): string {
   const origin = apiOrigin().replace(/["'<>]/g, "");
   const idx = Number.isFinite(frameIndex) ? Math.max(0, Math.floor(frameIndex)) : 0;
+  const safeQuery: Record<string, string> = {};
+  for (const [k, v] of Object.entries(query)) {
+    safeQuery[k] = String(v ?? "");
+  }
+  const queryJson = JSON.stringify(safeQuery).replace(/</g, "\\u003c");
+  const stripped = html.replace(/<script\b[^>]*\bsrc=["'][^"']*html2pdf[^"']*["'][^>]*>\s*<\/script>/gi, "");
   const inject =
-    `<base href="${origin}/">` + `<script>window.FIR_PREVIEW_FRAME_INDEX=${idx};</script>`;
-  const replaced = html.replace(/<head[^>]*>/i, (open) => `${open}${inject}`);
-  return replaced !== html ? replaced : `${inject}${html}`;
+    (origin ? `<base href="${origin}/">` : "") +
+    `<style>html.fir-embedded .download-btn,html.fir-embedded .autofill-btn{display:none!important}</style>` +
+    `<script>` +
+    `document.documentElement.classList.add("fir-embedded");` +
+    `window.FIR_PREVIEW_FRAME_INDEX=${idx};` +
+    `window.FIR_QUERY=${queryJson};` +
+    `(function(){` +
+    `var baked=window.FIR_QUERY||{};` +
+    `var orig=URLSearchParams.prototype.get;` +
+    `URLSearchParams.prototype.get=function(key){` +
+    `var v=orig.call(this,key);` +
+    `if(v!=null&&String(v).length)return v;` +
+    `var b=baked[key];` +
+    `if(b!=null&&String(b).length)return String(b);` +
+    `return v;` +
+    `};` +
+    `})();` +
+    `</script>`;
+  const replaced = stripped.replace(/<head[^>]*>/i, (open) => `${open}${inject}`);
+  return replaced !== stripped ? replaced : `${inject}${stripped}`;
 }
