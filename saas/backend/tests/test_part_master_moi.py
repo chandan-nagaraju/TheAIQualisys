@@ -12,6 +12,7 @@ from app.part_master_moi import (
     is_no_auto_correct_parameter,
     looks_like_thread_specification,
     normalize_part_master_moi,
+    preserve_user_part_master_moi,
 )
 
 
@@ -125,8 +126,18 @@ def test_excel_import_applies_rules():
         df.to_excel(writer, sheet_name="FIR", index=False, header=False)
     bundle = parse_parts_excel_to_bundle_dict(bio.getvalue(), source_filename="FS465913.xlsx")
     part = bundle["parts"][0]
-    assert part["spec_rows"][0]["method_of_inspection"] == "DVC"
-    assert part["spec_rows"][1]["method_of_inspection"] == "DMM"
+    assert part["spec_rows"][0]["method_of_inspection"] == "Vernier Caliper"
+    assert part["spec_rows"][1]["method_of_inspection"] == "Micrometer"
     assert part["spec_rows"][2]["method_of_inspection"] == "DHG"
-    assert part["spec_rows"][3]["method_of_inspection"] == "TPG"
+    assert part["spec_rows"][3]["method_of_inspection"] == "TG"
     assert part["coating_rows"][0]["method_of_inspection"] == "DFT METER"
+
+
+def test_preserve_user_part_master_moi_only_canonicalizes_height_gauge_aliases():
+    assert preserve_user_part_master_moi("Digital Height Gauge") == "DHG"
+    assert preserve_user_part_master_moi("VHG") == "DHG"
+    assert preserve_user_part_master_moi("HG") == "DHG"
+    assert preserve_user_part_master_moi("DVC") == "DVC"
+    assert preserve_user_part_master_moi("TPG") == "TPG"
+    assert preserve_user_part_master_moi("Parallel Gauge") == "Parallel Gauge"
+    assert preserve_user_part_master_moi("") is None

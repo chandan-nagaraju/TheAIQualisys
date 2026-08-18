@@ -27,17 +27,18 @@ import pandas as pd
 
 from app.part_field_validation import sanitize_part_master_alnum_upper
 from app.part_master_coating_spec import normalize_ad_row_coating_spec, normalize_bundle_part_master_coating_spec
-from app.part_master_moi import normalize_ad_row_moi, normalize_bundle_part_master_moi
+from app.part_master_moi import preserve_user_part_master_moi
 
 BUNDLE_FORMAT = "fir_part_master_bundle_v1"
 
 
 def _normalize_ad_row(row: dict[str, Any]) -> dict[str, Any]:
-    return normalize_ad_row_coating_spec(normalize_ad_row_moi(row))
+    normalized = normalize_ad_row_coating_spec(row)
+    return {**normalized, "method_of_inspection": preserve_user_part_master_moi(normalized.get("method_of_inspection"))}
 
 
 def _normalize_bundle_part_master(bundle: dict[str, Any]) -> dict[str, Any]:
-    return normalize_bundle_part_master_coating_spec(normalize_bundle_part_master_moi(bundle))
+    return normalize_bundle_part_master_coating_spec(bundle)
 
 
 def assign_continuous_sl_numbers(part: dict[str, Any]) -> dict[str, Any]:

@@ -286,6 +286,17 @@ def expected_moi_from_specification(
     return None
 
 
+def preserve_user_part_master_moi(raw_moi: str | None) -> str | None:
+    """Keep user-entered MOI as-is, except canonicalize height gauge aliases to DHG."""
+    raw = (raw_moi or "").strip()
+    if not raw:
+        return None
+    standardized = _standardize_moi_name(raw)
+    if standardized == "DHG":
+        return "DHG"
+    return raw
+
+
 def normalize_part_master_moi(
     parameter: str | None,
     specification: str | None = None,

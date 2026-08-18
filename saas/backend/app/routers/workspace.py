@@ -55,7 +55,7 @@ from app.fir_part_excel import (
 )
 from app.part_field_validation import sanitize_part_master_alnum_upper
 from app.part_master_coating_spec import normalize_plating_thickness_specification
-from app.part_master_moi import normalize_part_master_moi
+from app.part_master_moi import normalize_part_master_moi, preserve_user_part_master_moi
 from app.subscription_logic import (
     FIR_WORKSPACE_FORBIDDEN_CODE,
     FIR_WORKSPACE_FORBIDDEN_MESSAGE,
@@ -925,38 +925,22 @@ def delete_part(part_id: int, ws: WsContext = Depends(get_ws)):
 
 
 def _persist_normalized_moi_for_part(ws: WsContext, p: PartV2) -> None:
-    """Write normalized MOI and Section D coating specs back to DB when opening part detail."""
+    """Only persist safe canonicalizations: user MOI stays raw except DHG aliases; Section D spec may normalize."""
     changed = False
-    for model in (PartSpecV2, PartComplaintV2):
+    for model in (PartSpecV2, PartComplaintV2, PartCoatingV2):
         rows = ws.db.execute(select(model).where(model.part_id == p.id)).scalars().all()
         for row in rows:
-            normalized = normalize_part_master_moi(
-                row.parameter,
-                row.specification,
-                row.special_char,
-                row.method_of_inspection,
-            )
-            current = (row.method_of_inspection or "").strip() or None
-            if normalized != current:
-                row.method_of_inspection = normalized
+            preserved_moi = preserve_user_part_master_moi(row.method_of_inspection)
+            current_moi = (row.method_of_inspection or "").strip() or None
+            if preserved_moi != current_moi:
+                row.method_of_inspection = preserved_moi
                 changed = True
-    coat_rows = ws.db.execute(select(PartCoatingV2).where(PartCoatingV2.part_id == p.id)).scalars().all()
-    for row in coat_rows:
-        normalized_moi = normalize_part_master_moi(
-            row.parameter,
-            row.specification,
-            row.special_char,
-            row.method_of_inspection,
-        )
-        current_moi = (row.method_of_inspection or "").strip() or None
-        if normalized_moi != current_moi:
-            row.method_of_inspection = normalized_moi
-            changed = True
-        normalized_spec = _norm_coating_spec_row(row.parameter, row.specification)
-        current_spec = (row.specification or "").strip() or None
-        if normalized_spec != current_spec:
-            row.specification = normalized_spec
-            changed = True
+            if model is PartCoatingV2:
+                normalized_spec = _norm_coating_spec_row(row.parameter, row.specification)
+                current_spec = (row.specification or "").strip() or None
+                if normalized_spec != current_spec:
+                    row.specification = normalized_spec
+                    changed = True
     if changed:
         ws.db.commit()
 
@@ -1004,9 +988,7 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
             "parameter": s.parameter,
             "specification": s.specification,
             "special_char": s.special_char,
-            "method_of_inspection": normalize_part_master_moi(
-                s.parameter, s.specification, s.special_char, s.method_of_inspection
-            ),
+            "method_of_inspection": preserve_user_part_master_moi(s.method_of_inspection),
         }
         for s in specs
     ]
@@ -1015,9 +997,7 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
             "parameter": c.parameter,
             "specification": c.specification,
             "special_char": c.special_char,
-            "method_of_inspection": normalize_part_master_moi(
-                c.parameter, c.specification, c.special_char, c.method_of_inspection
-            ),
+            "method_of_inspection": preserve_user_part_master_moi(c.method_of_inspection),
         }
         for c in cps
     ]
@@ -1027,9 +1007,7 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
             "parameter": c.parameter,
             "specification": _norm_coating_spec_row(c.parameter, c.specification),
             "special_char": c.special_char,
-            "method_of_inspection": normalize_part_master_moi(
-                c.parameter, c.specification, c.special_char, c.method_of_inspection
-            ),
+            "method_of_inspection": preserve_user_part_master_moi(c.method_of_inspection),
         }
         for c in coats
     ]
@@ -1387,12 +1365,8 @@ def _norm_part_master_moi_row(
     special_char: str | None,
     method_of_inspection: str | None,
 ) -> str | None:
-    return normalize_part_master_moi(
-        parameter,
-        specification,
-        special_char,
-        method_of_inspection,
-    )
+    _ = parameter, specification, special_char
+    return preserve_user_part_master_moi(method_of_inspection)
 
 
 def _norm_coating_spec_row(parameter: str, specification: str | None) -> str | None:
@@ -1977,9 +1951,7 @@ def fir_preview(
                     "parameter": s.parameter,
                     "specification": s.specification,
                     "special_char": s.special_char,
-                    "method_of_inspection": normalize_part_master_moi(
-                        s.parameter, s.specification, s.special_char, s.method_of_inspection
-                    ),
+                    "method_of_inspection": preserve_user_part_master_moi(s.method_of_inspection),
                 }
                 for s in db.execute(select(PartSpecV2).where(PartSpecV2.part_id == part.id).order_by(PartSpecV2.id))
                 .scalars()
@@ -1990,9 +1962,7 @@ def fir_preview(
                     "parameter": s.parameter,
                     "specification": s.specification,
                     "special_char": s.special_char,
-                    "method_of_inspection": normalize_part_master_moi(
-                        s.parameter, s.specification, s.special_char, s.method_of_inspection
-                    ),
+                    "method_of_inspection": preserve_user_part_master_moi(s.method_of_inspection),
                 }
                 for s in db.execute(
                     select(PartComplaintV2).where(PartComplaintV2.part_id == part.id).order_by(PartComplaintV2.id)
@@ -2013,9 +1983,7 @@ def fir_preview(
                     "parameter": s.parameter,
                     "specification": _norm_coating_spec_row(s.parameter, s.specification),
                     "special_char": s.special_char,
-                    "method_of_inspection": normalize_part_master_moi(
-                        s.parameter, s.specification, s.special_char, s.method_of_inspection
-                    ),
+                    "method_of_inspection": preserve_user_part_master_moi(s.method_of_inspection),
                 }
                 for s in db.execute(
                     select(PartCoatingV2).where(PartCoatingV2.part_id == part.id).order_by(PartCoatingV2.id)
