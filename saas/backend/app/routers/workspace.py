@@ -2052,6 +2052,14 @@ def fir_preview(
             "quali_font_format": quali_font_format,
             "api_static_base": api_static_base,
             "preview_query": preview_query,
+            "fir_boot": {
+                "settings": fir_ctx_settings,
+                "spec_data": spec_data,
+                "ccp_data": ccp_data,
+                "material_data": material_data,
+                "coating_data": coating_data,
+                "query": preview_query,
+            },
         },
         headers={"Cache-Control": "private, no-store, max-age=0"},
     )
