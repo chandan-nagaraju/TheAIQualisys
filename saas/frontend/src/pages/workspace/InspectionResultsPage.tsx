@@ -342,6 +342,13 @@ export default function InspectionResultsPage() {
     };
     window.addEventListener("message", onMsg);
 
+    const onIframeLoad = () => {
+      tryPoll();
+    };
+    iframeRefs.current.forEach((f) => {
+      if (f) f.addEventListener("load", onIframeLoad);
+    });
+
     let attempts = 0;
     const maxAttempts = 200;
     const id = window.setInterval(() => {
@@ -351,11 +358,15 @@ export default function InspectionResultsPage() {
         window.clearInterval(id);
       } else if (attempts >= maxAttempts) {
         setEmbedWaitTimedOut(true);
+        setEmbedsReady(true);
         window.clearInterval(id);
       }
     }, 200);
     return () => {
       window.removeEventListener("message", onMsg);
+      iframeRefs.current.forEach((f) => {
+        if (f) f.removeEventListener("load", onIframeLoad);
+      });
       window.clearInterval(id);
     };
   }, [data, previewUrls.length]);
@@ -720,12 +731,14 @@ export default function InspectionResultsPage() {
             </div>
           )}
           {!embedsReady && !embedWaitTimedOut && (
-            <p className="mt-4 text-xs text-amber-800">Loading FIR previews below…</p>
+            <p className="mt-4 text-xs text-amber-800">
+              Loading FIR previews below… wait until the report appears, then click Auto-fill.
+            </p>
           )}
-          {embedWaitTimedOut && !embedsReady && (
-            <p className="mt-4 text-xs leading-relaxed text-red-700">
-              Some previews did not become ready (invalid part data or network). You can still use <strong>Preview FIR</strong>{" "}
-              per row.
+          {embedWaitTimedOut && (
+            <p className="mt-4 text-xs leading-relaxed text-amber-800">
+              Preview took longer than usual. You can still click <strong>Auto-fill</strong>. If the box below is empty,
+              use <strong>Preview FIR (new tab)</strong> and Auto-fill there.
             </p>
           )}
           {embedsReady && !autofillApplied && (
@@ -833,7 +846,15 @@ export default function InspectionResultsPage() {
                   title={`FIR preview ${partNo || i + 1}`}
                   src={previewUrls[i]}
                   loading="eager"
-                  className="block h-[min(85vh,920px)] w-full max-w-[1200px] rounded border border-slate-300 bg-white shadow-inner"
+                  className="block h-[min(85vh,920px)] min-h-[480px] w-full max-w-[1200px] rounded border border-slate-300 bg-white shadow-inner"
+                  onLoad={() => {
+                    try {
+                      const api = iframeRefs.current[i]?.contentWindow?.FIR_PREVIEW_API as FirPreviewApi | undefined;
+                      if (api?.ready) setEmbedsReady(true);
+                    } catch {
+                      setEmbedsReady(true);
+                    }
+                  }}
                   ref={(el) => {
                     iframeRefs.current[i] = el;
                   }}
