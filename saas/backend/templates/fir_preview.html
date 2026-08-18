@@ -506,7 +506,8 @@
   function firIsDimensionalMeasuringMethod(raw) {
     var u = String(raw || "").trim().toUpperCase();
     if (!u) return false;
-    if (/^DVC$|^DHG$|^DHI$|^DMM$|^MM$|^CMM$|^BP$|^B\.P\.?$|^VHG$|^HG$|^V\.?H\.?G\.?$/.test(u)) return true;
+    if (/^DVC$|^DHG$|^DHI$|^DMM$|^MM$|^CMM$|^BP$|^B\.P\.?$|^RG$|^R\.G\.?$|^VHG$|^HG$|^V\.?H\.?G\.?$/.test(u)) return true;
+    if (/RADIUS\s*(GAU|GAGE)/.test(u)) return true;
     if (/VERNIER|CALIPER|CALLIPER|VENIRE/.test(u)) return true;
     if (/HEIGHT\s*GAU|HIEGHT\s*GAU|HEIGHT\s*GAGE|HIEGHT/.test(u)) return true;
     if (/DIAL\s*GAU|D\.?\s*GAU|DIAL\s*INDICATOR/.test(u)) return true;
@@ -525,7 +526,7 @@
     if (firIsDimensionalMeasuringMethod(raw)) return false;
     var u = String(raw || "").trim().toUpperCase();
     if (!u) return false;
-    if (/^RG$|^R\.G\.?$|^FG$|RADIUS\s*GAU|PARALLEL\s*GAU|PERPEND(?:ICULAR|IVULAR)?\s*GAU|SLIP\s*GAU|FEELER|WELD\s*FILLET|SNAP\s*GAU|RING\s*GAU|PLUG\s*GAU|GO\s*NO\s*GO|GO\/NO\s*GO/.test(u)) {
+    if (/^FG$|PARALLEL\s*GAU|PERPEND(?:ICULAR|IVULAR)?\s*GAU|SLIP\s*GAU|FEELER|WELD\s*FILLET|SNAP\s*GAU|RING\s*GAU|PLUG\s*GAU|GO\s*NO\s*GO|GO\/NO\s*GO/.test(u)) {
       return true;
     }
     return /\bGAUG(E)?\b/.test(u) || u.indexOf("GAUGE") !== -1 || u.indexOf("GAUG") !== -1;
@@ -1076,7 +1077,7 @@
       }
     }
 
-    const rBand = s.match(/R\s*([0-9]+(?:\.[0-9]+)?)\s*±\s*R?\s*([0-9]+(?:\.[0-9]+)?)/i);
+    const rBand = s.match(/R\s*([0-9]+(?:\.[0-9]+)?)\s*(?:±|\+\/-|\+/-)\s*R?\s*([0-9]+(?:\.[0-9]+)?)/i);
     if (rBand) {
       const nominalR = parseFloat(rBand[1]);
       const tolR = parseFloat(rBand[2]);
