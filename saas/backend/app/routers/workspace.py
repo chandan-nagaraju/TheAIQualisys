@@ -2035,6 +2035,7 @@ def fir_preview(
         "sampleSize",
         "noOfParams",
         "previewFrameIndex",
+        "embedded",
     )
     preview_query = {k: str(request.query_params.get(k) or "") for k in preview_query_keys}
 

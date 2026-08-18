@@ -380,10 +380,9 @@ export async function fetchFirPreviewHtml(params: Record<string, string>): Promi
 }
 
 /**
- * srcdoc documents have no query string (and inherit the parent page).
- * - Strip parser-blocking html2pdf so the report can paint (old API HTML still has this tag).
- * - Inject FIR_QUERY + URLSearchParams shim so part/invoice fields exist without location.search.
- * - <base> so /api/app logos/fonts still load from the API host.
+ * Prepare FIR HTML to run inside a same-origin iframe (document.write / srcdoc).
+ * The SPA origin is not the API origin, so relative /api/app assets must be absolutized.
+ * Parser-blocking html2pdf is stripped so the report table can paint.
  */
 export function wrapFirPreviewHtmlForEmbed(
   html: string,
@@ -397,9 +396,12 @@ export function wrapFirPreviewHtmlForEmbed(
     safeQuery[k] = String(v ?? "");
   }
   const queryJson = JSON.stringify(safeQuery).replace(/</g, "\\u003c");
-  const stripped = html.replace(/<script\b[^>]*\bsrc=["'][^"']*html2pdf[^"']*["'][^>]*>\s*<\/script>/gi, "");
+  let out = html.replace(/<script\b[^>]*\bsrc=["'][^"']*html2pdf[^"']*["'][^>]*>\s*<\/script>/gi, "");
+  if (origin) {
+    out = out.replace(/(["'])\/api\/app\//g, `$1${origin}/api/app/`);
+    out = out.replace(/(url\(["']?)\/api\/app\//gi, `$1${origin}/api/app/`);
+  }
   const inject =
-    (origin ? `<base href="${origin}/">` : "") +
     `<style>html.fir-embedded .download-btn,html.fir-embedded .autofill-btn{display:none!important}</style>` +
     `<script>` +
     `document.documentElement.classList.add("fir-embedded");` +
@@ -417,6 +419,6 @@ export function wrapFirPreviewHtmlForEmbed(
     `};` +
     `})();` +
     `</script>`;
-  const replaced = stripped.replace(/<head[^>]*>/i, (open) => `${open}${inject}`);
-  return replaced !== stripped ? replaced : `${inject}${stripped}`;
+  const replaced = out.replace(/<head[^>]*>/i, (open) => `${open}${inject}`);
+  return replaced !== out ? replaced : `${inject}${out}`;
 }

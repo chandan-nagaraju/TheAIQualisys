@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{% if preview_query is defined and preview_query.embedded %} class="fir-embedded"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -311,6 +311,8 @@
   function firQueryParam(name) {
     var baked = FIR_QUERY[name];
     if (baked != null && String(baked).length) return String(baked);
+    var fromWin = window.FIR_QUERY && window.FIR_QUERY[name];
+    if (fromWin != null && String(fromWin).length) return String(fromWin);
     var fromUrl = urlParams.get(name);
     return fromUrl == null ? "" : fromUrl;
   }
