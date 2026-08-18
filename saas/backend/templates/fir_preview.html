@@ -293,7 +293,7 @@
   <!-- fir-preview-ui: special char read-only from part master; no global legend -->
   <button class="download-btn" id="downloadPDF">⬇ Download PDF</button>
   <button class="autofill-btn" id="autofillMeasuredBtn" type="button">Auto-fill measured values</button>
-  <div id="reportRoot"></div>
+  <div id="reportRoot"><p id="firPaintHint" style="text-align:center;color:#444;padding:32px;font-family:Calibri,Arial,sans-serif;">Loading inspection report…</p></div>
 
   <script>
   if (window.self !== window.top) {
@@ -839,6 +839,7 @@
           </tr>
         </table>`;
     html += `</div>`;
+    root.innerHTML = "";
     root.insertAdjacentHTML('beforeend', html);
     /* Remove legacy "Special characteristic symbols (reference)" legend (any nesting; old/cached builds). */
     try {

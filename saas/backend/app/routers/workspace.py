@@ -2053,11 +2053,7 @@ def fir_preview(
             "api_static_base": api_static_base,
             "preview_query": preview_query,
         },
-        headers={
-            "Cache-Control": "private, no-store, max-age=0",
-            # Allow embedding from the hosted UI (often a different origin than this API).
-            "Content-Security-Policy": "frame-ancestors *",
-        },
+        headers={"Cache-Control": "private, no-store, max-age=0"},
     )
 
 
