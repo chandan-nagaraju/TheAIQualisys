@@ -203,6 +203,16 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
   });
 }
 
+function writeHtmlIntoIframe(frame: HTMLIFrameElement | null, html: string): boolean {
+  if (!frame || !html) return false;
+  const doc = frame.contentDocument;
+  if (!doc) return false;
+  doc.open();
+  doc.write(html);
+  doc.close();
+  return true;
+}
+
 function firIframeTargetOrigin(iframe: HTMLIFrameElement | null): string {
   if (!iframe) return "*";
   const srcdoc = iframe.getAttribute("srcdoc");
@@ -356,6 +366,24 @@ export default function InspectionResultsPage() {
       cancelled = true;
     };
   }, [data]);
+
+  useEffect(() => {
+    if (!previewDocs.length) return;
+    const raf = window.requestAnimationFrame(() => {
+      previewDocs.forEach((html, i) => {
+        if (!html) return;
+        const f = iframeRefs.current[i];
+        if (writeHtmlIntoIframe(f, html)) return;
+        if (!f || !data?.rows[i]) return;
+        f.src = firPreviewUrl({
+          ...previewParamsForRow(data.rows[i], data.customer, data.current_date),
+          previewFrameIndex: String(i),
+          embedded: "1",
+        });
+      });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [previewDocs, data]);
 
   useEffect(() => {
     if (!data?.rows.length || previewDocs.length !== data.rows.length) return;
@@ -920,8 +948,7 @@ export default function InspectionResultsPage() {
                 ) : previewDocs[i] ? (
                   <iframe
                     title={`FIR preview ${partNo || i + 1}`}
-                    srcDoc={previewDocs[i]}
-                    className="block h-[min(85vh,920px)] min-h-[480px] w-full max-w-[1200px] rounded border border-slate-300 bg-white shadow-inner"
+                    className="block h-[min(85vh,920px)] min-h-[560px] w-full max-w-[1200px] rounded border border-slate-300 bg-white shadow-inner"
                     onLoad={() => {
                       try {
                         const api = previewApiFromFrame(iframeRefs.current[i]);
