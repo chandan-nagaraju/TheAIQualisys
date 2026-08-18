@@ -2022,6 +2022,22 @@ def fir_preview(
 
     api_static_base = f"{app_path_prefix}/static/"
 
+    preview_query_keys = (
+        "partName",
+        "description",
+        "drawRev",
+        "vendorCode",
+        "customer",
+        "reportNo",
+        "invoiceNo",
+        "reportDate",
+        "quantity",
+        "sampleSize",
+        "noOfParams",
+        "previewFrameIndex",
+    )
+    preview_query = {k: str(request.query_params.get(k) or "") for k in preview_query_keys}
+
     return templates.TemplateResponse(
         request=request,
         name="fir_preview.html",
@@ -2034,6 +2050,7 @@ def fir_preview(
             "quali_font_data_uri": quali_font_data_uri,
             "quali_font_format": quali_font_format,
             "api_static_base": api_static_base,
+            "preview_query": preview_query,
         },
         headers={
             "Cache-Control": "private, no-store, max-age=0",
