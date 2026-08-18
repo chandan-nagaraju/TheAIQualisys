@@ -330,14 +330,15 @@ export default function InspectionResultsPage() {
       const results = await Promise.all(
         data.rows.map(async (r, i) => {
           try {
-            const raw = await fetchFirPreviewHtml({
+            const params = {
               ...previewParamsForRow(r, data.customer, data.current_date),
               previewFrameIndex: String(i),
-            });
-            if (!/dimension-table|report-container/i.test(raw)) {
+            };
+            const raw = await fetchFirPreviewHtml(params);
+            if (!/reportRoot|report-container|dimension-table/i.test(raw)) {
               throw new Error("FIR preview did not return a report.");
             }
-            return { html: wrapFirPreviewHtmlForEmbed(raw, i), error: null as string | null };
+            return { html: wrapFirPreviewHtmlForEmbed(raw, i, params), error: null as string | null };
           } catch (e) {
             return {
               html: "",
