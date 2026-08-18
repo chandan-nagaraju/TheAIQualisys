@@ -604,7 +604,6 @@
     if (range.isAngle || /^BP$|^B\.P\.?$/i.test(method)) {
       range = Object.assign({}, range, { isAngle: true });
     }
-
     return Object.assign({ mode: "numeric", range: range }, ctx);
   }
 
@@ -1642,10 +1641,14 @@
     generatePdfBlob: firGeneratePdfBlob
   };
 
-  /* Parent page (Amplify) is cross-origin from this document (Railway): use postMessage for batch tools. */
+  /* Parent page (Amplify) is cross-origin from this document (Railway): use postMessage for batch tools.
+     Live previews on inspection results use srcdoc and set FIR_PREVIEW_FRAME_INDEX (no query string). */
   (function setupParentBridge() {
-    var frameIndexMatch = /[?&]previewFrameIndex=(\d+)/.exec(window.location.search);
-    var frameIndex = frameIndexMatch ? parseInt(frameIndexMatch[1], 10) : -1;
+    var frameIndex = typeof window.FIR_PREVIEW_FRAME_INDEX === "number" ? window.FIR_PREVIEW_FRAME_INDEX : -1;
+    if (frameIndex < 0) {
+      var frameIndexMatch = /[?&]previewFrameIndex=(\d+)/.exec(window.location.search);
+      frameIndex = frameIndexMatch ? parseInt(frameIndexMatch[1], 10) : -1;
+    }
     if (frameIndex < 0 || window.parent === window) return;
 
     var readySent = false;

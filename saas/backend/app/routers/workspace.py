@@ -2035,7 +2035,11 @@ def fir_preview(
             "quali_font_format": quali_font_format,
             "api_static_base": api_static_base,
         },
-        headers={"Cache-Control": "private, no-store, max-age=0"},
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            # Allow embedding from the hosted UI (often a different origin than this API).
+            "Content-Security-Policy": "frame-ancestors *",
+        },
     )
 
 

@@ -331,3 +331,63 @@ export function firPreviewUrl(params: Record<string, string>): string {
   const path = `/api/app/fir-preview?${q.toString()}`;
   return apiUrl(path);
 }
+
+/** Origin of the API host (Amplify UI is often a different origin than Railway). */
+export function apiOrigin(): string {
+  const raw = API_BASE.trim();
+  if (!raw) {
+    return typeof window !== "undefined" ? window.location.origin : "";
+  }
+  try {
+    return new URL(raw, typeof window !== "undefined" ? window.location.href : "http://localhost").origin;
+  } catch {
+    return typeof window !== "undefined" ? window.location.origin : "";
+  }
+}
+
+/**
+ * Fetch FIR HTML with Authorization (no JSON Content-Type on GET).
+ * Used to render live previews via srcdoc so the report is not blocked as a cross-origin iframe.
+ */
+export async function fetchFirPreviewHtml(params: Record<string, string>): Promise<string> {
+  const t = localStorage.getItem("fir_token");
+  const cid = getWorkspaceCustomerId();
+  const headers: Record<string, string> = {};
+  if (t) headers.Authorization = `Bearer ${t}`;
+  if (cid != null) headers["X-Customer-Id"] = String(cid);
+  const q = new URLSearchParams(params);
+  const path = `/api/app/fir-preview?${q.toString()}`;
+  const url = apiUrl(path);
+  let res: Response;
+  try {
+    res = await fetch(url, { headers });
+  } catch (e) {
+    throw asNetworkError(path, e);
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    try {
+      const j = JSON.parse(text) as { detail?: unknown };
+      if (j?.detail != null) {
+        throw new Error(formatApiErrorDetail(j.detail));
+      }
+    } catch (e) {
+      if (e instanceof Error && !(e instanceof SyntaxError)) throw e;
+    }
+    throw new Error(text.slice(0, 240).trim() || `FIR preview failed (${res.status})`);
+  }
+  return text;
+}
+
+/**
+ * srcdoc documents resolve relative /api/app asset URLs against the parent (Amplify), not Railway.
+ * Inject <base> plus a frame index (srcdoc has no query string for previewFrameIndex).
+ */
+export function wrapFirPreviewHtmlForEmbed(html: string, frameIndex: number): string {
+  const origin = apiOrigin().replace(/["'<>]/g, "");
+  const idx = Number.isFinite(frameIndex) ? Math.max(0, Math.floor(frameIndex)) : 0;
+  const inject =
+    `<base href="${origin}/">` + `<script>window.FIR_PREVIEW_FRAME_INDEX=${idx};</script>`;
+  const replaced = html.replace(/<head[^>]*>/i, (open) => `${open}${inject}`);
+  return replaced !== html ? replaced : `${inject}${html}`;
+}

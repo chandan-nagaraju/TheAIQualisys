@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import JSZip from "jszip";
-import { firPreviewUrl, workspaceFetch } from "../../api";
+import { fetchFirPreviewHtml, firPreviewUrl, workspaceFetch, wrapFirPreviewHtmlForEmbed } from "../../api";
 import { reportDateForFIR } from "../../utils/invoiceDate";
 import {
   clearInspectionSession,
@@ -75,7 +75,17 @@ type FirPreviewApi = {
     byteSize?: number;
     sizeWarning?: string;
   }>;
+  autoFillMeasuredValues?: () => void;
 };
+
+function previewApiFromFrame(f: HTMLIFrameElement | null): FirPreviewApi | null {
+  try {
+    const w = f?.contentWindow as (Window & { FIR_PREVIEW_API?: FirPreviewApi }) | null;
+    return w?.FIR_PREVIEW_API ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /** Cross-origin PDF waits (html2pdf); large pages can be slow */
 const FIR_PDF_POSTMESSAGE_TIMEOUT_MS = 240000;
@@ -194,7 +204,11 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 }
 
 function firIframeTargetOrigin(iframe: HTMLIFrameElement | null): string {
-  if (!iframe?.src) return "*";
+  if (!iframe) return "*";
+  const srcdoc = iframe.getAttribute("srcdoc");
+  if (srcdoc || iframe.src === "about:srcdoc" || !iframe.src) {
+    return window.location.origin;
+  }
   try {
     return new URL(iframe.src, window.location.href).origin;
   } catch {
@@ -251,6 +265,8 @@ export default function InspectionResultsPage() {
 
   const [embedsReady, setEmbedsReady] = useState(false);
   const [embedWaitTimedOut, setEmbedWaitTimedOut] = useState(false);
+  const [previewDocs, setPreviewDocs] = useState<string[]>([]);
+  const [previewLoadErrors, setPreviewLoadErrors] = useState<(string | null)[]>([]);
   const [autofillApplied, setAutofillApplied] = useState(false);
   const [zipping, setZipping] = useState(false);
   const [batchMsg, setBatchMsg] = useState<string | null>(null);
@@ -293,18 +309,13 @@ export default function InspectionResultsPage() {
     };
   }, [data?.rows, st?.filename]);
 
-  const previewUrls = useMemo(() => {
-    if (!data?.rows.length) return [];
-    return data.rows.map((r, i) =>
-      firPreviewUrl({
-        ...previewParamsForRow(r, data.customer, data.current_date),
-        previewFrameIndex: String(i),
-      }),
-    );
-  }, [data]);
-
   useEffect(() => {
-    if (!data?.rows.length || previewUrls.length === 0) return;
+    if (!data?.rows.length) {
+      setPreviewDocs([]);
+      setPreviewLoadErrors([]);
+      return;
+    }
+    let cancelled = false;
     setEmbedsReady(false);
     setEmbedWaitTimedOut(false);
     setAutofillApplied(false);
@@ -312,15 +323,57 @@ export default function InspectionResultsPage() {
     setBatchErr(null);
     setZipSaveHint(false);
     lastZipOfferRef.current = null;
+    setPreviewDocs([]);
+    setPreviewLoadErrors(data.rows.map(() => null));
+
+    void (async () => {
+      const results = await Promise.all(
+        data.rows.map(async (r, i) => {
+          try {
+            const raw = await fetchFirPreviewHtml({
+              ...previewParamsForRow(r, data.customer, data.current_date),
+              previewFrameIndex: String(i),
+            });
+            if (!/dimension-table|report-container/i.test(raw)) {
+              throw new Error("FIR preview did not return a report.");
+            }
+            return { html: wrapFirPreviewHtmlForEmbed(raw, i), error: null as string | null };
+          } catch (e) {
+            return {
+              html: "",
+              error: e instanceof Error ? e.message : "Failed to load FIR preview",
+            };
+          }
+        }),
+      );
+      if (cancelled) return;
+      setPreviewDocs(results.map((x) => x.html));
+      setPreviewLoadErrors(results.map((x) => x.error));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
+
+  useEffect(() => {
+    if (!data?.rows.length || previewDocs.length !== data.rows.length) return;
     const n = data.rows.length;
     const ready: boolean[] = new Array(n).fill(false);
+    previewLoadErrors.forEach((err, i) => {
+      if (err || !previewDocs[i]) ready[i] = true;
+    });
+    if (ready.every(Boolean)) {
+      setEmbedsReady(true);
+      setEmbedWaitTimedOut(previewLoadErrors.some(Boolean));
+      return;
+    }
 
     const tryPoll = () => {
       for (let i = 0; i < n; i++) {
         if (ready[i]) continue;
         try {
-          const f = iframeRefs.current[i];
-          const api = f?.contentWindow?.FIR_PREVIEW_API as FirPreviewApi | undefined;
+          const api = previewApiFromFrame(iframeRefs.current[i]);
           if (api?.ready) ready[i] = true;
         } catch {
           /* cross-origin: rely on postMessage from fir_preview */
@@ -350,7 +403,7 @@ export default function InspectionResultsPage() {
     });
 
     let attempts = 0;
-    const maxAttempts = 200;
+    const maxAttempts = 150;
     const id = window.setInterval(() => {
       attempts++;
       const allReady = tryPoll();
@@ -369,7 +422,7 @@ export default function InspectionResultsPage() {
       });
       window.clearInterval(id);
     };
-  }, [data, previewUrls.length]);
+  }, [data, previewDocs, previewLoadErrors]);
 
   const runAutofillAll = useCallback(() => {
     if (!data?.rows.length) return;
@@ -377,6 +430,7 @@ export default function InspectionResultsPage() {
     setBatchMsg(null);
     const n = data.rows.length;
     const failures: string[] = [];
+    let filled = 0;
     for (let i = 0; i < n; i++) {
       const f = iframeRefs.current[i];
       if (!f?.contentWindow) {
@@ -384,18 +438,31 @@ export default function InspectionResultsPage() {
         continue;
       }
       try {
-        const w = f.contentWindow as (Window & { FIR_PREVIEW_API?: { autoFillMeasuredValues?: () => void } }) | null;
-        if (w?.FIR_PREVIEW_API?.autoFillMeasuredValues) {
-          w.FIR_PREVIEW_API.autoFillMeasuredValues();
+        const api = previewApiFromFrame(f);
+        if (api?.autoFillMeasuredValues) {
+          api.autoFillMeasuredValues();
+          filled += 1;
           continue;
         }
       } catch {
         /* cross-origin (e.g. Amplify UI + Railway iframe): use postMessage */
       }
+      if (f.getAttribute("srcdoc")) {
+        failures.push(`#${i + 1}: preview is empty`);
+        continue;
+      }
       f.contentWindow.postMessage(
         { source: "fir-saas-fir-preview-parent", type: "autoFill" },
         firIframeTargetOrigin(f),
       );
+      filled += 1;
+    }
+    if (filled === 0) {
+      setAutofillApplied(false);
+      setBatchErr(
+        "The live preview is empty, so measured values were not filled. Use Preview FIR (new tab).",
+      );
+      return;
     }
     if (failures.length) {
       setBatchErr(`Some rows skipped: ${failures.join(" · ")}`);
@@ -481,12 +548,7 @@ export default function InspectionResultsPage() {
         const viewportTopPx = computeCaptureTopPx(previewsSectionRef.current, iframeH);
         const restoreCaptureLayout = await prepareIframeForPdfCapture(f, viewportTopPx);
         try {
-          let api: FirPreviewApi | null = null;
-          try {
-            api = (f.contentWindow as Window & { FIR_PREVIEW_API?: FirPreviewApi }).FIR_PREVIEW_API ?? null;
-          } catch {
-            api = null;
-          }
+          let api: FirPreviewApi | null = previewApiFromFrame(f);
 
           const runDirect = async () => {
             const gen = api!.generatePdfBlob!;
@@ -737,8 +799,9 @@ export default function InspectionResultsPage() {
           )}
           {embedWaitTimedOut && (
             <p className="mt-4 text-xs leading-relaxed text-amber-800">
-              Preview took longer than usual. You can still click <strong>Auto-fill</strong>. If the box below is empty,
-              use <strong>Preview FIR (new tab)</strong> and Auto-fill there.
+              Preview took longer than usual or failed to load in this page. You can still click{" "}
+              <strong>Auto-fill</strong> if the report is visible below. Otherwise use{" "}
+              <strong>Preview FIR (new tab)</strong>.
             </p>
           )}
           {embedsReady && !autofillApplied && (
@@ -832,7 +895,7 @@ export default function InspectionResultsPage() {
             const partNo = String(r["Part Number"] ?? "").trim();
             const inv = String(r["Invoice Number"] ?? "").trim();
             return (
-              <div key={`${i}-${previewUrls[i]?.slice(0, 40)}`} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 shadow-sm">
+              <div key={`${i}-${partNo}-${inv}`} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 shadow-sm">
                 <p className="mb-2 text-sm font-medium text-slate-800">
                   Part <span className="font-mono">{partNo || "—"}</span>
                   {inv ? (
@@ -842,23 +905,39 @@ export default function InspectionResultsPage() {
                     </>
                   ) : null}
                 </p>
-                <iframe
-                  title={`FIR preview ${partNo || i + 1}`}
-                  src={previewUrls[i]}
-                  loading="eager"
-                  className="block h-[min(85vh,920px)] min-h-[480px] w-full max-w-[1200px] rounded border border-slate-300 bg-white shadow-inner"
-                  onLoad={() => {
-                    try {
-                      const api = iframeRefs.current[i]?.contentWindow?.FIR_PREVIEW_API as FirPreviewApi | undefined;
-                      if (api?.ready) setEmbedsReady(true);
-                    } catch {
-                      setEmbedsReady(true);
-                    }
-                  }}
-                  ref={(el) => {
-                    iframeRefs.current[i] = el;
-                  }}
-                />
+                {previewLoadErrors[i] ? (
+                  <div className="rounded border border-red-200 bg-white px-3 py-4 text-sm text-red-700">
+                    <p>Could not show this FIR on the page: {previewLoadErrors[i]}</p>
+                    <button
+                      type="button"
+                      className="mt-2 font-medium text-blue-700 underline"
+                      onClick={() => openPreview(r)}
+                    >
+                      Open Preview FIR (new tab)
+                    </button>
+                  </div>
+                ) : previewDocs[i] ? (
+                  <iframe
+                    title={`FIR preview ${partNo || i + 1}`}
+                    srcDoc={previewDocs[i]}
+                    className="block h-[min(85vh,920px)] min-h-[480px] w-full max-w-[1200px] rounded border border-slate-300 bg-white shadow-inner"
+                    onLoad={() => {
+                      try {
+                        const api = previewApiFromFrame(iframeRefs.current[i]);
+                        if (api?.ready) setEmbedsReady(true);
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                    ref={(el) => {
+                      iframeRefs.current[i] = el;
+                    }}
+                  />
+                ) : (
+                  <p className="rounded border border-slate-200 bg-white px-3 py-8 text-center text-sm text-slate-600">
+                    Loading FIR preview…
+                  </p>
+                )}
               </div>
             );
           })}
