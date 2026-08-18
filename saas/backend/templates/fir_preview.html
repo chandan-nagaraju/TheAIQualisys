@@ -293,7 +293,6 @@
   <!-- fir-preview-ui: special char read-only from part master; no global legend -->
   <button class="download-btn" id="downloadPDF">⬇ Download PDF</button>
   <button class="autofill-btn" id="autofillMeasuredBtn" type="button">Auto-fill measured values</button>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <div id="reportRoot"></div>
 
   <script>
@@ -305,8 +304,16 @@
   const FIR_CCP_DATA = {{ ccp_data | tojson | safe }} || [];
   const FIR_MATERIAL_DATA = {{ material_data | tojson | safe }} || [];
   const FIR_COATING_DATA = {{ coating_data | tojson | safe }} || [];
-
+  /* Baked by the server so live previews (srcdoc) still have part/invoice fields.
+     window.location.search is empty inside srcdoc and is truncated if drawRev is "#". */
+  const FIR_QUERY = {{ preview_query | default({}) | tojson | safe }} || {};
   const urlParams = new URLSearchParams(window.location.search);
+  function firQueryParam(name) {
+    var baked = FIR_QUERY[name];
+    if (baked != null && String(baked).length) return String(baked);
+    var fromUrl = urlParams.get(name);
+    return fromUrl == null ? "" : fromUrl;
+  }
   /** html2pdf raster tuning — same for single download and inspection-page batch ZIP (full quality). */
   var FIR_PDF_JPEG_QUALITY = 0.72;
   var FIR_PDF_CANVAS_SCALE = 1.12;
@@ -314,13 +321,13 @@
   /** No downscale for logo/signature grayscale prep (full pixel count for sharp PDFs). */
   var FIR_PDF_IMG_MAX_EDGE = 100000;
 
-  const partName = urlParams.get('partName');
-  const description = urlParams.get('description');
-  const drawRev = urlParams.get('drawRev') || "";
-  const vendorCode = urlParams.get('vendorCode') || "";
-  const customer = urlParams.get('customer') || "";
-  const reportNo = urlParams.get('reportNo') || "";
-  const invoiceNo = urlParams.get('invoiceNo') || "";
+  const partName = firQueryParam('partName');
+  const description = firQueryParam('description');
+  const drawRev = firQueryParam('drawRev');
+  const vendorCode = firQueryParam('vendorCode');
+  const customer = firQueryParam('customer');
+  const reportNo = firQueryParam('reportNo');
+  const invoiceNo = firQueryParam('invoiceNo');
   function firNormalizeReportDate(raw) {
     var s = String(raw || "").trim();
     if (!s) return "";
@@ -344,10 +351,10 @@
     if (/^\d{1,5}$/.test(s)) return "";
     return "";
   }
-  const reportDate = firNormalizeReportDate(urlParams.get('reportDate') || "");
-  const lotQty = urlParams.get('quantity') || "";
-  const sampleSize = urlParams.get('sampleSize') || "";
-  const noOfParamsParam = parseInt(urlParams.get('noOfParams'));
+  const reportDate = firNormalizeReportDate(firQueryParam('reportDate'));
+  const lotQty = firQueryParam('quantity');
+  const sampleSize = firQueryParam('sampleSize');
+  const noOfParamsParam = parseInt(firQueryParam('noOfParams'), 10);
   const totalRows = FIR_SPEC_DATA.length > 0 ? FIR_SPEC_DATA.length : (noOfParamsParam || 18);
 
   /**
@@ -604,7 +611,6 @@
     if (range.isAngle || /^BP$|^B\.P\.?$/i.test(method)) {
       range = Object.assign({}, range, { isAngle: true });
     }
-
     return Object.assign({ mode: "numeric", range: range }, ctx);
   }
 
@@ -700,8 +706,10 @@
   }
 
   if (!partName || !description) {
-    document.body.innerHTML = `<h2 style='text-align:center;color:red;'>Missing part data. Please go back and fill the form.</h2>
-    <div style='text-align:center;'><button onclick='history.back()'>Go Back</button></div>`;
+    var rootMissing = document.getElementById('reportRoot');
+    if (rootMissing) {
+      rootMissing.innerHTML = "<p style='text-align:center;color:#b91c1c;padding:24px;'>Missing part data for this FIR preview.</p>";
+    }
   } else {
     let html = ``;
     let slno = 1;
@@ -1492,6 +1500,25 @@
   }
 
   // --- PDF Download ---
+  var FIR_HTML2PDF_SRC = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+  var firHtml2pdfLoading = null;
+  function firEnsureHtml2pdf() {
+    if (typeof html2pdf !== "undefined") return Promise.resolve();
+    if (firHtml2pdfLoading) return firHtml2pdfLoading;
+    firHtml2pdfLoading = new Promise(function(resolve, reject) {
+      var s = document.createElement("script");
+      s.src = FIR_HTML2PDF_SRC;
+      s.async = true;
+      s.onload = function() { resolve(); };
+      s.onerror = function() {
+        firHtml2pdfLoading = null;
+        reject(new Error("Could not load PDF library"));
+      };
+      document.head.appendChild(s);
+    });
+    return firHtml2pdfLoading;
+  }
+
   var downloadBtn = document.getElementById("downloadPDF");
   if (downloadBtn) {
     downloadBtn.addEventListener("click", function() {
@@ -1514,6 +1541,8 @@
     }
 
     firWaitForAssets(el).then(function() {
+      return firEnsureHtml2pdf();
+    }).then(function() {
       return firPrepareImagesForPdf(el);
     }).then(function() {
       return html2pdf().set({
@@ -1539,11 +1568,8 @@
 
   /** Batch tools on parent page (e.g. SaaS inspection results): same-origin iframes only */
   function firGeneratePdfBlob() {
+    return firEnsureHtml2pdf().then(function() {
     return new Promise(function(resolve, reject) {
-      if (typeof html2pdf === 'undefined') {
-        reject(new Error('html2pdf not loaded'));
-        return;
-      }
       var btn = document.getElementById("downloadPDF");
       var autofillBtnEl = document.getElementById("autofillMeasuredBtn");
       if (btn) btn.style.display = "none";
@@ -1622,6 +1648,7 @@
         reject(err);
       });
     });
+    });
   }
 
   window.FIR_PREVIEW_API = {
@@ -1642,10 +1669,18 @@
     generatePdfBlob: firGeneratePdfBlob
   };
 
-  /* Parent page (Amplify) is cross-origin from this document (Railway): use postMessage for batch tools. */
+  /* Parent page (Amplify) is cross-origin from this document (Railway): use postMessage for batch tools.
+     Live previews on inspection results use srcdoc and set FIR_PREVIEW_FRAME_INDEX (no query string). */
   (function setupParentBridge() {
-    var frameIndexMatch = /[?&]previewFrameIndex=(\d+)/.exec(window.location.search);
-    var frameIndex = frameIndexMatch ? parseInt(frameIndexMatch[1], 10) : -1;
+    var frameIndex = typeof window.FIR_PREVIEW_FRAME_INDEX === "number" ? window.FIR_PREVIEW_FRAME_INDEX : -1;
+    if (frameIndex < 0) {
+      var bakedIdx = parseInt(String((FIR_QUERY && FIR_QUERY.previewFrameIndex) || ""), 10);
+      if (!isNaN(bakedIdx) && bakedIdx >= 0) frameIndex = bakedIdx;
+    }
+    if (frameIndex < 0) {
+      var frameIndexMatch = /[?&]previewFrameIndex=(\d+)/.exec(window.location.search);
+      frameIndex = frameIndexMatch ? parseInt(frameIndexMatch[1], 10) : -1;
+    }
     if (frameIndex < 0 || window.parent === window) return;
 
     var readySent = false;
