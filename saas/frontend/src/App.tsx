@@ -21,6 +21,12 @@ import ModulesDashboardPage from "./pages/ModulesDashboardPage";
 import PricingPage from "./pages/PricingPage";
 import SignupPage from "./pages/SignupPage";
 import SignupCompletePage from "./pages/SignupCompletePage";
+import {
+  SoftwareCatalogPage,
+  SoftwareOrderDetailPage,
+  SoftwareOrdersPage,
+  SoftwareProductPage,
+} from "./pages/SoftwarePages";
 import UpgradePage from "./pages/UpgradePage";
 import UpgradePayPage from "./pages/UpgradePayPage";
 import CustomersPage from "./pages/workspace/CustomersPage";
@@ -119,6 +125,38 @@ export default function App() {
         />
         <Route path="/upgrade" element={<UpgradePage />} />
         <Route path="/upgrade/pay" element={<UpgradePayPage />} />
+        <Route
+          path="/software"
+          element={
+            <ProtectedRoute>
+              <SoftwareCatalogPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/software/orders"
+          element={
+            <ProtectedRoute>
+              <SoftwareOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/software/orders/:orderId"
+          element={
+            <ProtectedRoute>
+              <SoftwareOrderDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/software/:productCode"
+          element={
+            <ProtectedRoute>
+              <SoftwareProductPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/admin/login" element={<Navigate to="/login" replace />} />
         <Route
           path="/admin"

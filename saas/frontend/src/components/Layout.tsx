@@ -258,6 +258,9 @@ export default function Layout() {
                 <NavLink className={navItemCls} to="/upgrade">
                   Upgrade
                 </NavLink>
+                <NavLink className={navItemCls} to="/software">
+                  Software
+                </NavLink>
                 <NavLink className={navItemCls} to="/profile">
                   Profile
                 </NavLink>

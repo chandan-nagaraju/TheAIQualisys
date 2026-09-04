@@ -19,8 +19,8 @@ Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
 |-------|--------|--------|
 | 0 | Audit / gap | **Done** — production repo had no licensing tables/APIs |
 | 1 | Foundation (schema, flag, service, admin/customer/machine routers, key crypto) | **Merged** (PR #31) |
-| 2 | Admin catalog / pricing | **In review** |
-| 3 | Customer orders | Not started |
+| 2 | Admin catalog / pricing | **Merged** (PR #32) |
+| 3 | Customer orders | **In review** |
 | 4 | UPI payment approval + mint | Not started |
 | 5 | Email + My Licenses | Not started |
 | 6 | Protected installers / downloads | Not started |
@@ -139,3 +139,25 @@ Addressed before Phase 2:
 Orders, UPI, minting/emails, My Licenses, downloads, machine API, trials.
 
 **Stop after Phase 2 for review** before Phase 3 customer orders.
+
+## Phase 3 — Customer orders
+
+### Migration
+- `034_desktop_order_numbers.sql` — `order_number` (TAQ-YYYY-######), catalog snapshots, sequence counter table
+
+### Customer APIs (`ENABLE_DESKTOP_LICENSING=true`)
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/desktop/checkout-context` | company + email for confirm |
+| POST | `/api/desktop/orders` | create pending_payment order; no licenses |
+| GET | `/api/desktop/orders` | own orders only |
+| GET | `/api/desktop/orders/{id}` | own order only |
+
+### Admin (read-only prep)
+| GET | `/api/admin/desktop/orders` | list; no approve/reject |
+
+### UI
+- `/software` catalog, `/software/:productCode` plan+seats+confirm, `/software/orders`, `/software/orders/:orderId`
+
+### Out of scope
+UPI/UTR/screenshot, payment approval, license mint, email, downloads, machine API, trials, desktop apps.
