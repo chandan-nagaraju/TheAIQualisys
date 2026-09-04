@@ -18,7 +18,7 @@ BEGIN
       '033_desktop_licensing_one_active_device: table desktop_activations missing — apply 032 first';
   END IF;
 
-  SELECT COUNT(*)::INTEGER, COALESCE_agg(license_id::TEXT ORDER BY license_id)
+  SELECT COUNT(*)::INTEGER, COALESCE(string_agg(license_id::TEXT, ',' ORDER BY license_id), '')
   INTO conflict_count, conflict_ids
   FROM (
     SELECT license_id
