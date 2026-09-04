@@ -12,6 +12,9 @@ from app.licensing.feature_flag import require_desktop_licensing_enabled
 from app.licensing.models import DesktopProduct
 from app.licensing.orders import list_all_orders_admin, serialize_order
 from app.licensing.schemas import (
+    DesktopLicenseEmailDeliveryOut,
+    DesktopLicenseOut,
+    DesktopLicenseRevealOut,
     DesktopOrderOut,
     DesktopPaymentApproveOut,
     DesktopPaymentOut,
@@ -75,7 +78,7 @@ def admin_desktop_licensing_health(
 ):
     del admin
     out = foundation_health(db, enabled=bool(settings.enable_desktop_licensing))
-    out["phase"] = "4-payment-mint"
+    out["phase"] = "5-email-licenses"
     return out
 
 
@@ -225,6 +228,10 @@ def admin_approve_payment(
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
 ):
+    from app.licensing.customer_licenses import (
+        attempt_send_license_email_for_order,
+        serialize_email_delivery,
+    )
     from app.licensing.orders import serialize_order
     from app.licensing.payments import approve_payment_and_mint_licenses, serialize_payment
 
@@ -236,6 +243,26 @@ def admin_approve_payment(
     except Exception:
         db.rollback()
         raise
+
+    # Email is separate from mint: failure must not roll back licenses.
+    email_out = None
+    try:
+        delivery = attempt_send_license_email_for_order(
+            db,
+            settings,
+            order_id=order.id,
+            actor_type="admin",
+            actor_id=admin.id,
+            is_resend=False,
+            enforce_rate_limit=False,
+        )
+        db.commit()
+        email_out = serialize_email_delivery(delivery)
+    except Exception:
+        db.rollback()
+        # Soft-fail email; licenses already committed
+        email_out = None
+
     return {
         "payment": serialize_payment(payment),
         "order": serialize_order(order),
@@ -253,6 +280,7 @@ def admin_approve_payment(
             }
             for lic in licenses
         ],
+        "email_delivery": email_out,
     }
 
 
@@ -274,3 +302,74 @@ def admin_reject_payment(
         db.rollback()
         raise
     return serialize_payment(payment)
+
+
+@router.get("/licenses", response_model=list[DesktopLicenseOut])
+def admin_list_licenses(
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+    user_id: int | None = None,
+    limit: int = 200,
+):
+    del admin
+    from app.licensing.customer_licenses import list_licenses_admin, serialize_license_public
+
+    return [
+        serialize_license_public(lic, order=lic.order)
+        for lic in list_licenses_admin(db, limit=limit, user_id=user_id)
+    ]
+
+
+@router.post("/licenses/{license_id}/reveal", response_model=DesktopLicenseRevealOut)
+def admin_reveal_license(
+    license_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    """Explicit authorized admin reveal — audited; not used by default list UI."""
+    from app.licensing.customer_licenses import masked_key_from_parts, reveal_license_key_for_admin
+    from app.licensing.models import DesktopLicense
+
+    try:
+        plaintext = reveal_license_key_for_admin(db, settings, admin=admin, license_id=license_id)
+        lic = db.get(DesktopLicense, int(license_id))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    assert lic is not None
+    return {
+        "license_id": lic.id,
+        "seat_index": lic.seat_index,
+        "license_key": plaintext,
+        "key_masked": masked_key_from_parts(lic.key_prefix, lic.key_last4),
+    }
+
+
+@router.post(
+    "/orders/{order_id}/resend-license-email",
+    response_model=DesktopLicenseEmailDeliveryOut,
+)
+def admin_resend_license_email(
+    order_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    from app.licensing.customer_licenses import (
+        resend_license_email_for_admin,
+        serialize_email_delivery,
+    )
+
+    try:
+        delivery = resend_license_email_for_admin(db, settings, admin=admin, order_id=order_id)
+        db.commit()
+        db.refresh(delivery)
+    except Exception:
+        db.rollback()
+        raise
+    return serialize_email_delivery(delivery)

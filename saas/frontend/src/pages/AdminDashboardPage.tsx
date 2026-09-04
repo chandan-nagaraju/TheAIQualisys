@@ -114,6 +114,12 @@ export default function AdminDashboardPage() {
           >
             Desktop payments
           </Link>
+          <Link
+            to="/admin/desktop-licenses"
+            className="inline-flex w-fit rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
+          >
+            Desktop licenses
+          </Link>
         </div>
         <button
           type="button"

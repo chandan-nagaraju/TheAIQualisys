@@ -57,3 +57,13 @@ TRIAL_REMINDER_DAY = 6
 LICENSE_API_RATE_LIMIT_PER_MINUTE = 30
 
 PHASE_FOUNDATION = "1-foundation"
+PHASE_EMAIL_LICENSES = "5-email-licenses"
+
+# License email delivery statuses (per order; never remints on retry)
+LICENSE_EMAIL_PENDING = "pending"
+LICENSE_EMAIL_SENT = "sent"
+LICENSE_EMAIL_FAILED = "failed"
+
+# Resend rate protection (seconds between attempts for same order)
+LICENSE_EMAIL_RESEND_MIN_SECONDS = 60
+LICENSE_EMAIL_RESEND_MAX_ATTEMPTS_PER_HOUR = 10

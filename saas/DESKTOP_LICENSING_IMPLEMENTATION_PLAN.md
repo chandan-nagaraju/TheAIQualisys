@@ -22,7 +22,7 @@ Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
 | 2 | Admin catalog / pricing | **Merged** (PR #32) |
 | 3 | Customer orders | **Merged** (PR #33) |
 | 4 | UPI payment approval + mint | **Merged** (PR #34) |
-| 5 | Email + My Licenses | Not started |
+| 5 | Email + My Licenses | **In review** |
 | 6 | Protected installers / downloads | Not started |
 | 7 | Machine License API (Ed25519) | Not started (stubs return 501) |
 | 7A | 7-day trial system | Not started |
@@ -198,3 +198,23 @@ Recorded from the Phase 4 security review approval. Do **not** treat as Phase 5 
 5. Add deeper Postgres integration tests for locks / unique constraints.
 6. Add explicit test that approve responses never expose `key_encrypted` / plaintext.
 7. Add test that company JWT cannot access admin approval endpoints.
+
+## Phase 5 — My Licenses + reveal + license email
+
+### Migration
+- `036_desktop_license_email.sql` — `desktop_license_email_deliveries` (one row per order: pending/sent/failed, attempt tracking)
+
+### Customer
+- `/software/licenses` — My Licenses (masked keys, reveal/copy, resend email)
+- APIs: `GET /licenses`, `GET /licenses/{id}`, `POST /licenses/{id}/reveal`, `POST /orders/{id}/resend-license-email`
+
+### Admin
+- `/admin/desktop-licenses` — masked metadata + resend
+- Explicit audited `POST /licenses/{id}/reveal` (not used by default UI)
+
+### Email
+- After approve mint commits, send license email separately (failure does not roll back licenses)
+- Resend never remints; rate-limited
+
+### Out of scope
+Downloads, machine activation, trials, QR/ASN desktop, payment gateway, production secrets.
