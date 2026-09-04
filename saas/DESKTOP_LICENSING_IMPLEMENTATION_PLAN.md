@@ -22,7 +22,7 @@ Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
 | 2 | Admin catalog / pricing | **Merged** (PR #32) |
 | 3 | Customer orders | **Merged** (PR #33) |
 | 4 | UPI payment approval + mint | **Merged** (PR #34) |
-| 5 | Email + My Licenses | **In review** |
+| 5 | Email + My Licenses | **Merged** (PR #35) |
 | 6 | Protected installers / downloads | Not started |
 | 7 | Machine License API (Ed25519) | Not started (stubs return 501) |
 | 7A | 7-day trial system | Not started |
