@@ -20,8 +20,8 @@ Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
 | 0 | Audit / gap | **Done** — production repo had no licensing tables/APIs |
 | 1 | Foundation (schema, flag, service, admin/customer/machine routers, key crypto) | **Merged** (PR #31) |
 | 2 | Admin catalog / pricing | **Merged** (PR #32) |
-| 3 | Customer orders | **In review** |
-| 4 | UPI payment approval + mint | Not started |
+| 3 | Customer orders | **Merged** (PR #33) |
+| 4 | UPI payment approval + mint | **Merged** (PR #34) |
 | 5 | Email + My Licenses | Not started |
 | 6 | Protected installers / downloads | Not started |
 | 7 | Machine License API (Ed25519) | Not started (stubs return 501) |
@@ -161,3 +161,40 @@ Orders, UPI, minting/emails, My Licenses, downloads, machine API, trials.
 
 ### Out of scope
 UPI/UTR/screenshot, payment approval, license mint, email, downloads, machine API, trials, desktop apps.
+
+## Phase 4 — Payment + admin approval + license minting
+
+### Migration
+- `035_desktop_payment_and_mint.sql` — `desktop_upi_settings`, unique `(order_id, seat_index)` on licenses, one `pending_review` payment per order
+
+### Payment state transitions
+- Order: `pending_payment` → (UTR submit) → `payment_submitted` → (approve) → `approved` | (reject) → `pending_payment`
+- Payment: `pending_review` → `approved` | `rejected`
+- UTR submit never auto-approves
+
+### License state on approve
+- Mint exactly `order.seats` independent keys (`issued`, device unbound, paid entitlement, expiry from `duration_days`)
+- Idempotent: re-approve → 409; existing licenses for order → 409
+
+### APIs
+Customer: `GET /upi-settings`, `GET|POST .../orders/{id}/payments`
+Admin: `GET|PUT /upi-settings`, `GET /payment-requests`, `POST .../approve`, `POST .../reject`
+
+### UI
+- Order detail payment instructions + UTR form
+- `/admin/desktop-payments`
+
+### Out of scope
+Email, My Licenses reveal UI, downloads, machine API, trials, desktop apps, production secrets.
+
+### Post–Phase 4 security hardening backlog (accepted, non-blocking)
+
+Recorded from the Phase 4 security review approval. Do **not** treat as Phase 5 scope unless scheduled; implement as follow-up hardening:
+
+1. Map duplicate pending-payment `IntegrityError` to HTTP 409.
+2. Document recovery procedure for licenses existing without an approved payment.
+3. Add screenshot magic-byte validation.
+4. Add authenticated admin screenshot retrieval if screenshot review is required.
+5. Add deeper Postgres integration tests for locks / unique constraints.
+6. Add explicit test that approve responses never expose `key_encrypted` / plaintext.
+7. Add test that company JWT cannot access admin approval endpoints.

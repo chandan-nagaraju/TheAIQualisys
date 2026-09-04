@@ -76,7 +76,7 @@ class LicensingHealthOut(BaseModel):
     enabled: bool
     products_seeded: int
     plans_seeded: int
-    phase: str = "3-customer-orders"
+    phase: str = "4-payment-mint"
     message: str
 
 
@@ -113,6 +113,64 @@ class DesktopCheckoutContextOut(BaseModel):
     email: str
     company_id: int
     company_name: str
+
+
+class DesktopUpiSettingsOut(BaseModel):
+    upi_id: str
+    payee_name: str
+    instructions: Optional[str] = None
+    has_qr_image: bool = False
+
+
+class DesktopUpiSettingsAdminOut(DesktopUpiSettingsOut):
+    qr_image_path: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class DesktopUpiSettingsPatch(BaseModel):
+    upi_id: str = Field(min_length=3, max_length=255)
+    payee_name: str = Field(min_length=1, max_length=255)
+    instructions: Optional[str] = None
+    clear_qr: bool = False
+
+
+class DesktopPaymentOut(BaseModel):
+    id: int
+    order_id: int
+    upi_id: Optional[str] = None
+    amount_inr: int
+    reference_note: Optional[str] = None
+    has_screenshot: bool = False
+    screenshot_mime: Optional[str] = None
+    status: str
+    reviewed_by_admin_id: Optional[int] = None
+    reviewed_at: Optional[str] = None
+    review_note: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class DesktopPaymentRejectBody(BaseModel):
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class DesktopLicenseMintSummaryOut(BaseModel):
+    """Phase 4: no plaintext keys — seat summaries only (email/reveal in Phase 5)."""
+
+    id: int
+    seat_index: Optional[int] = None
+    product_id: int
+    status: str
+    key_prefix: str
+    key_last4: str
+    bound_device_id: Optional[int] = None
+    expires_at: Optional[str] = None
+
+
+class DesktopPaymentApproveOut(BaseModel):
+    payment: DesktopPaymentOut
+    order: DesktopOrderOut
+    licenses_minted: int
+    licenses: List[DesktopLicenseMintSummaryOut]
 
 
 class LicenseKeyMaterialOut(BaseModel):

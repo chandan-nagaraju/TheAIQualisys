@@ -9,6 +9,7 @@ import AdminCompanyFirIntelligencePage from "./pages/AdminCompanyFirIntelligence
 import AdminCompanyPage from "./pages/AdminCompanyPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import AdminDesktopLicensingPage from "./pages/AdminDesktopLicensingPage";
+import AdminDesktopPaymentsPage from "./pages/AdminDesktopPaymentsPage";
 import AdminPricingPage from "./pages/AdminPricingPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import CompanyDashboardPage from "./pages/CompanyDashboardPage";
@@ -187,6 +188,14 @@ export default function App() {
           element={
             <AdminRoute>
               <AdminDesktopLicensingPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/desktop-payments"
+          element={
+            <AdminRoute>
+              <AdminDesktopPaymentsPage />
             </AdminRoute>
           }
         />
