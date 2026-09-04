@@ -106,6 +106,9 @@ export function SoftwareCatalogPage() {
           <Link to="/software/licenses" className="text-brand-500 hover:underline">
             My licenses
           </Link>
+          <Link to="/software/downloads" className="text-brand-500 hover:underline">
+            Downloads
+          </Link>
           <Link to="/software/orders" className="text-brand-500 hover:underline">
             My orders
           </Link>
@@ -842,6 +845,163 @@ export function SoftwareLicensesPage() {
       {!disabled && !err && rows.length === 0 && (
         <p className="text-sm text-slate-400">No licenses yet. Purchase from Software after payment approval.</p>
       )}
+    </div>
+  );
+}
+
+type DownloadProduct = {
+  product_id: number;
+  product_code: string;
+  product_name: string;
+  current: DownloadVersion | null;
+  recommended: DownloadVersion | null;
+  versions: DownloadVersion[];
+};
+
+type DownloadVersion = {
+  id: number;
+  version: string;
+  release_channel: string;
+  is_current: boolean;
+  is_recommended: boolean;
+  is_mandatory: boolean;
+  file_name: string | null;
+  file_sha256: string | null;
+  file_size_bytes: number | null;
+  release_date: string | null;
+  release_notes: string | null;
+};
+
+/** Entitled software downloads — short-lived token redeem. */
+export function SoftwareDownloadsPage() {
+  const nav = useNavigate();
+  const [rows, setRows] = useState<DownloadProduct[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [disabled, setDisabled] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!localStorage.getItem("fir_token")) {
+      nav("/login");
+      return;
+    }
+    (async () => {
+      try {
+        setDisabled(false);
+        const data = await apiFetch<DownloadProduct[]>("/api/desktop/downloads");
+        setRows(data);
+      } catch (e) {
+        const m = e instanceof Error ? e.message : "Failed";
+        if (/404|Not found/i.test(m)) setDisabled(true);
+        else setErr(m);
+      }
+    })();
+  }, [nav]);
+
+  const download = async (installerId: number) => {
+    setBusyId(installerId);
+    setErr(null);
+    setMsg(null);
+    try {
+      const minted = await apiFetch<{ token: string }>(
+        `/api/desktop/downloads/installers/${installerId}/token`,
+        { method: "POST", body: "{}" },
+      );
+      const redeemed = await apiFetch<{
+        download_url: string;
+        file_name: string | null;
+      }>(`/api/desktop/downloads/redeem/${encodeURIComponent(minted.token)}`);
+      if (redeemed.download_url.startsWith("memory://")) {
+        setMsg("Download authorized (test storage). Installer would download in production S3.");
+      } else {
+        window.location.href = redeemed.download_url;
+        setMsg("Download started.");
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 px-4 py-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-white">Software downloads</h1>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link to="/software/licenses" className="text-brand-500 hover:underline">
+            My licenses
+          </Link>
+          <Link to="/software" className="text-brand-500 hover:underline">
+            ← Software
+          </Link>
+        </div>
+      </div>
+      <p className="text-sm text-slate-400">
+        Downloads require an eligible paid license. Installers are delivered via short-lived private links — never share
+        permanent URLs.
+      </p>
+      {disabled && (
+        <p className="rounded-lg border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          Desktop licensing is not enabled on this environment yet.
+        </p>
+      )}
+      {err && <p className="text-sm text-red-400">{err}</p>}
+      {msg && <p className="text-sm text-emerald-400">{msg}</p>}
+      {!disabled && !err && rows.length === 0 && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 text-sm text-slate-300 space-y-2">
+          <p>No eligible licenses for downloads yet.</p>
+          <Link to="/software" className="text-brand-400 hover:underline">
+            Browse software / purchase
+          </Link>
+        </div>
+      )}
+      <div className="space-y-6">
+        {rows.map((p) => (
+          <div key={p.product_id} className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
+            <h2 className="text-lg font-semibold text-white">{p.product_name}</h2>
+            {p.current && (
+              <p className="text-xs text-emerald-400">Current: v{p.current.version}</p>
+            )}
+            {p.recommended && (
+              <p className="text-xs text-brand-400">Recommended: v{p.recommended.version}</p>
+            )}
+            {p.versions.length === 0 && (
+              <p className="text-sm text-slate-500">No published installers yet for this product.</p>
+            )}
+            <div className="space-y-3">
+              {p.versions.map((v) => (
+                <div key={v.id} className="rounded-lg border border-slate-800 px-3 py-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-white">
+                      v{v.version}
+                      {v.is_current ? " · current" : ""}
+                      {v.is_recommended ? " · recommended" : ""}
+                      {v.is_mandatory ? " · mandatory" : ""}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busyId === v.id}
+                      onClick={() => void download(v.id)}
+                      className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs text-white disabled:opacity-40"
+                    >
+                      Download
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {v.file_size_bytes != null ? `${v.file_size_bytes.toLocaleString()} bytes` : "—"} · SHA-256{" "}
+                    <code className="text-slate-400">{v.file_sha256 || "—"}</code>
+                  </p>
+                  {v.release_notes && (
+                    <p className="mt-2 text-xs text-slate-400 whitespace-pre-wrap">{v.release_notes}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

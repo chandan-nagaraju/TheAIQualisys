@@ -58,6 +58,7 @@ LICENSE_API_RATE_LIMIT_PER_MINUTE = 30
 
 PHASE_FOUNDATION = "1-foundation"
 PHASE_EMAIL_LICENSES = "5-email-licenses"
+PHASE_DOWNLOADS = "6-protected-downloads"
 
 # License email delivery statuses (per order; never remints on retry)
 LICENSE_EMAIL_PENDING = "pending"
@@ -67,3 +68,19 @@ LICENSE_EMAIL_FAILED = "failed"
 # Resend rate protection (seconds between attempts for same order)
 LICENSE_EMAIL_RESEND_MIN_SECONDS = 60
 LICENSE_EMAIL_RESEND_MAX_ATTEMPTS_PER_HOUR = 10
+
+# Installer upload security (Phase 6)
+INSTALLER_ALLOWED_EXTENSIONS = frozenset({".exe", ".msi", ".zip", ".msix"})
+INSTALLER_ALLOWED_CONTENT_TYPES = frozenset(
+    {
+        "application/octet-stream",
+        "application/x-msdownload",
+        "application/vnd.microsoft.portable-executable",
+        "application/x-msi",
+        "application/zip",
+        "application/x-zip-compressed",
+        "application/msix",
+        "application/msixbundle",
+    }
+)
+DOWNLOAD_TOKEN_BYTES = 32

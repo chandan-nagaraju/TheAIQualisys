@@ -76,7 +76,7 @@ class LicensingHealthOut(BaseModel):
     enabled: bool
     products_seeded: int
     plans_seeded: int
-    phase: str = "5-email-licenses"
+    phase: str = "6-protected-downloads"
     message: str
 
 
@@ -224,6 +224,87 @@ class DesktopLicenseEmailDeliveryOut(BaseModel):
     sent_at: Optional[str] = None
     last_error: Optional[str] = None
     to_email: str
+
+
+class DesktopInstallerCreate(BaseModel):
+    version: str = Field(min_length=1, max_length=64)
+    release_notes: Optional[str] = None
+    release_date: Optional[str] = None  # ISO date
+    min_windows_version: Optional[str] = None
+    min_supported_version: Optional[str] = None
+
+
+class DesktopInstallerPatch(BaseModel):
+    release_notes: Optional[str] = None
+    release_date: Optional[str] = None
+    min_windows_version: Optional[str] = None
+    min_supported_version: Optional[str] = None
+    clear_notes: bool = False
+
+
+class DesktopInstallerChannelBody(BaseModel):
+    channel: str = Field(min_length=3, max_length=32)
+
+
+class DesktopInstallerAdminOut(BaseModel):
+    id: int
+    product_id: int
+    version: str
+    release_channel: str
+    listing_active: bool
+    min_supported_version: Optional[str] = None
+    min_windows_version: Optional[str] = None
+    file_name: Optional[str] = None
+    file_sha256: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    release_date: Optional[str] = None
+    release_notes: Optional[str] = None
+    has_file: bool = False
+    storage_key: Optional[str] = None
+    created_at: Optional[str] = None
+    product_code: Optional[str] = None
+    product_name: Optional[str] = None
+
+
+class DesktopInstallerCustomerOut(BaseModel):
+    id: int
+    product_id: int
+    product_code: str
+    product_name: str
+    version: str
+    release_channel: str
+    is_current: bool = False
+    is_recommended: bool = False
+    is_mandatory: bool = False
+    min_windows_version: Optional[str] = None
+    file_name: Optional[str] = None
+    file_sha256: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    release_date: Optional[str] = None
+    release_notes: Optional[str] = None
+
+
+class DesktopDownloadProductOut(BaseModel):
+    product_id: int
+    product_code: str
+    product_name: str
+    current: Optional[DesktopInstallerCustomerOut] = None
+    recommended: Optional[DesktopInstallerCustomerOut] = None
+    versions: List[DesktopInstallerCustomerOut] = Field(default_factory=list)
+
+
+class DesktopDownloadTokenOut(BaseModel):
+    token: str
+    expires_in_seconds: int
+    installer_id: int
+
+
+class DesktopDownloadRedeemOut(BaseModel):
+    download_url: str
+    expires_in_seconds: int
+    file_name: Optional[str] = None
+    file_sha256: Optional[str] = None
+    file_size_bytes: Optional[int] = None
 
 
 class LicenseKeyMaterialOut(BaseModel):

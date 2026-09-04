@@ -158,6 +158,47 @@ class Settings(BaseSettings):
     s3_bucket_name: str | None = Field(default=None, validation_alias=AliasChoices("S3_BUCKET_NAME"))
     public_s3_base_url: str | None = Field(default=None, validation_alias=AliasChoices("PUBLIC_S3_BASE_URL"))
 
+    # Phase 6: private installer object storage (does NOT use PUBLIC_S3_BASE_URL).
+    # Production: set AWS_* + S3_BUCKET_NAME (same bucket OK) with private objects under INSTALLER_S3_PREFIX.
+    # Tests may set INSTALLER_STORAGE_BACKEND=memory.
+    installer_storage_backend: str = Field(
+        default="s3",
+        validation_alias=AliasChoices("INSTALLER_STORAGE_BACKEND", "installer_storage_backend"),
+    )
+    installer_s3_prefix: str = Field(
+        default="desktop-installers",
+        validation_alias=AliasChoices("INSTALLER_S3_PREFIX", "installer_s3_prefix"),
+    )
+    installer_s3_bucket: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("INSTALLER_S3_BUCKET", "installer_s3_bucket"),
+    )
+    installer_max_upload_bytes: int = Field(
+        default=512 * 1024 * 1024,
+        validation_alias=AliasChoices("INSTALLER_MAX_UPLOAD_BYTES", "installer_max_upload_bytes"),
+    )
+    installer_download_token_ttl_seconds: int = Field(
+        default=120,
+        validation_alias=AliasChoices(
+            "INSTALLER_DOWNLOAD_TOKEN_TTL_SECONDS",
+            "installer_download_token_ttl_seconds",
+        ),
+    )
+    installer_presign_get_ttl_seconds: int = Field(
+        default=60,
+        validation_alias=AliasChoices(
+            "INSTALLER_PRESIGN_GET_TTL_SECONDS",
+            "installer_presign_get_ttl_seconds",
+        ),
+    )
+    installer_presign_put_ttl_seconds: int = Field(
+        default=900,
+        validation_alias=AliasChoices(
+            "INSTALLER_PRESIGN_PUT_TTL_SECONDS",
+            "installer_presign_put_ttl_seconds",
+        ),
+    )
+
     # FIR Intelligence admin: only events with invoice_date >= this day contribute quantities to Expected QTY
     # (median). Rows before this often have placeholder quantity 0 from legacy migrations. ISO YYYY-MM-DD.
     fir_intelligence_qty_reliable_since: date | None = Field(
