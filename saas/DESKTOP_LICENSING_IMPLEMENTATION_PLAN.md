@@ -103,6 +103,17 @@ pytest tests/test_desktop_licensing_foundation.py -q
 
 With DB + flag on (local): apply migrations via normal API startup, then call admin/customer health/products with JWTs.
 
-## Stop
+## Phase 1 corrective patch (post review)
 
-**Stop at Phase 1 for review.** Do not start Phase 2 until approved.
+Addressed before Phase 2:
+
+1. **Migration `033_desktop_licensing_one_active_device.sql`**
+   - Partial unique index `uq_desktop_activations_one_active_per_license` on `(license_id) WHERE status = 'active'`
+   - Fails closed if duplicate active rows exist (lists `license_id`s; **does not delete**)
+2. **Fernet-only `LICENSE_KEY_ENCRYPTION_SECRET`**
+   - Passphrase→SHA-256 derivation removed; mint fails without a valid Fernet key
+3. **`app/licensing/binding.py`**
+   - Service enforcement: wrong user / wrong product / other device → `LicenseBindingError`
+   - Admin device reset helper (clears bind; does not reassign user/product)
+
+**Production prerequisite for 033:** if any license already has >1 `status='active'` activation (unlikely on fresh 032), deactivate extras manually before applying 033.

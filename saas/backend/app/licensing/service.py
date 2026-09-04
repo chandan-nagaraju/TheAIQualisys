@@ -29,6 +29,7 @@ from app.licensing.keys import (
     hash_license_key,
     mask_license_key,
     normalize_license_key,
+    require_valid_encryption_secret,
 )
 from app.licensing.models import (
     DesktopLicense,
@@ -58,13 +59,19 @@ def mint_license_key_material(
     *,
     prefix: str = "AQ",
 ) -> LicenseKeyMaterial:
-    """Generate a new key and durable storage fields (hash + optional ciphertext)."""
+    """Generate a new key with hash + Fernet ciphertext (required for reveal/email).
+
+    Fail-closed: LICENSE_KEY_ENCRYPTION_SECRET must be a valid Fernet key.
+    Hash-only minting is not allowed — plaintext cannot be recovered later.
+    """
+    secret = require_valid_encryption_secret(
+        getattr(settings, "license_key_encryption_secret", None)
+    )
     plaintext = generate_license_key(prefix=prefix)
     normalized = normalize_license_key(plaintext)
     parts = normalized.split("-")
     key_prefix = parts[0] if parts else prefix
     key_last4 = parts[-1][-4:] if parts else normalized[-4:]
-    secret = getattr(settings, "license_key_encryption_secret", None)
     encrypted = encrypt_license_key(plaintext, secret)
     return LicenseKeyMaterial(
         plaintext=plaintext,

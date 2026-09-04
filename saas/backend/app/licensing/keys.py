@@ -2,13 +2,12 @@
 
 Rules:
 - License keys are generated server-side only.
-- Plaintext keys are returned to the customer at mint time (email / reveal) and
-  must not be stored as the sole durable representation.
-- Durable storage uses SHA-256 hex of the plaintext key (lookup) plus an
-  optional Fernet ciphertext when LICENSE_KEY_ENCRYPTION_SECRET is configured.
-- Production Ed25519 signing private keys must NEVER live in this module's
-  source, desktop apps, or git. They are loaded from environment / secret store
-  in later phases (Phase 7).
+- Plaintext is returned once at mint time (email / reveal) and must not be the
+  sole durable representation.
+- Durable storage: SHA-256 hex for lookup + Fernet ciphertext for authorized reveal.
+- LICENSE_KEY_ENCRYPTION_SECRET must be a valid Fernet key (url-safe base64, 32 raw bytes).
+  Passphrase→SHA-256 derivation is intentionally NOT supported (too weak).
+- Production Ed25519 signing private keys must NEVER live here or in desktop apps.
 """
 
 from __future__ import annotations
@@ -24,6 +23,10 @@ from cryptography.fernet import Fernet, InvalidToken
 _KEY_ALPHABET = string.ascii_uppercase + string.digits
 # Exclude ambiguous characters for human transcription.
 _KEY_ALPHABET = "".join(c for c in _KEY_ALPHABET if c not in "01OI")
+
+
+class LicenseKeyEncryptionError(ValueError):
+    """Raised when LICENSE_KEY_ENCRYPTION_SECRET is missing or not a valid Fernet key."""
 
 
 def generate_license_key(*, prefix: str = "AQ", groups: int = 4, group_len: int = 4) -> str:
@@ -45,38 +48,48 @@ def hash_license_key(plaintext: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def _fernet_from_secret(secret: str) -> Fernet:
-    """Derive a Fernet key from an arbitrary secret string.
-
-    Accepts either a valid Fernet url-safe-base64 key, or any passphrase which
-    is stretched via SHA-256 to 32 bytes then urlsafe-b64-encoded.
+def fernet_from_secret(secret: Optional[str]) -> Fernet:
     """
-    secret = (secret or "").strip()
-    if not secret:
-        raise ValueError("encryption secret is empty")
+    Build a Fernet instance from LICENSE_KEY_ENCRYPTION_SECRET.
+
+    The secret MUST already be a valid Fernet key (output of Fernet.generate_key()).
+    Weak passphrase stretching is rejected fail-closed.
+    """
+    if secret is None or not str(secret).strip():
+        raise LicenseKeyEncryptionError(
+            "LICENSE_KEY_ENCRYPTION_SECRET is required and must be a valid Fernet key "
+            "(url-safe base64-encoded 32-byte key). Generate with: "
+            "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\" "
+            "— do this in a secure environment; never commit the production value."
+        )
+    raw = str(secret).strip().encode("utf-8")
     try:
-        return Fernet(secret.encode("utf-8") if isinstance(secret, str) else secret)
-    except Exception:
-        digest = hashlib.sha256(secret.encode("utf-8")).digest()
-        import base64
+        return Fernet(raw)
+    except Exception as exc:
+        raise LicenseKeyEncryptionError(
+            "LICENSE_KEY_ENCRYPTION_SECRET is not a valid Fernet key. "
+            "Do not use a passphrase; use Fernet.generate_key() output only."
+        ) from exc
 
-        return Fernet(base64.urlsafe_b64encode(digest))
+
+def require_valid_encryption_secret(secret: Optional[str]) -> str:
+    """Validate and return the stripped Fernet key string; raise LicenseKeyEncryptionError otherwise."""
+    fernet_from_secret(secret)
+    return str(secret).strip()
 
 
-def encrypt_license_key(plaintext: str, secret: Optional[str]) -> Optional[str]:
-    """Encrypt plaintext for reversible admin/customer reveal. Returns None if no secret."""
-    if not secret:
-        return None
-    f = _fernet_from_secret(secret)
+def encrypt_license_key(plaintext: str, secret: Optional[str]) -> str:
+    """Encrypt plaintext for reversible admin/customer reveal. Fail-closed if secret invalid."""
+    f = fernet_from_secret(secret)
     return f.encrypt(normalize_license_key(plaintext).encode("utf-8")).decode("utf-8")
 
 
 def decrypt_license_key(ciphertext: str, secret: Optional[str]) -> Optional[str]:
-    """Decrypt a stored ciphertext. Returns None if secret missing or token invalid."""
-    if not secret or not ciphertext:
+    """Decrypt a stored ciphertext. Returns None if token invalid; raises if secret invalid/missing."""
+    if not ciphertext:
         return None
+    f = fernet_from_secret(secret)
     try:
-        f = _fernet_from_secret(secret)
         return f.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
     except (InvalidToken, ValueError, TypeError):
         return None

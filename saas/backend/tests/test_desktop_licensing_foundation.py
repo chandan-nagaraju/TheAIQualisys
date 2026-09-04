@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
 from app.config import Settings
@@ -43,14 +44,15 @@ def test_normalize_strips_noise():
     assert normalize_license_key("  aq-abcd-efgh-ijkl-mnop  ") == "AQ-ABCD-EFGH-IJKL-MNOP"
 
 
-def test_encrypt_decrypt_with_passphrase():
+def test_encrypt_decrypt_with_valid_fernet_key():
     key = generate_license_key()
-    secret = "dev-only-passphrase-not-for-production"
+    secret = Fernet.generate_key().decode()
     ct = encrypt_license_key(key, secret)
     assert ct is not None
     assert decrypt_license_key(ct, secret) == normalize_license_key(key)
-    assert decrypt_license_key(ct, "wrong-secret") is None
-    assert encrypt_license_key(key, None) is None
+    assert decrypt_license_key(ct, Fernet.generate_key().decode()) is None
+    with pytest.raises(Exception):
+        encrypt_license_key(key, None)
 
 
 def test_mask_license_key():
@@ -61,8 +63,11 @@ def test_mask_license_key():
     assert "ABCD" not in masked
 
 
-def test_mint_material_includes_hash_and_optional_cipher():
-    settings = Settings(license_key_encryption_secret="phase1-test-secret")
+def test_mint_material_requires_fernet_and_stores_cipher():
+    from cryptography.fernet import Fernet
+
+    secret = Fernet.generate_key().decode()
+    settings = Settings(license_key_encryption_secret=secret)
     material = mint_license_key_material(settings)
     assert verify_license_key(material.plaintext, material.key_hash)
     assert material.key_encrypted is not None
@@ -70,11 +75,12 @@ def test_mint_material_includes_hash_and_optional_cipher():
     assert "****" in material.key_masked
 
 
-def test_mint_material_without_encryption_secret():
+def test_mint_material_without_encryption_secret_fails():
+    from app.licensing.keys import LicenseKeyEncryptionError
+
     settings = Settings(license_key_encryption_secret=None)
-    material = mint_license_key_material(settings)
-    assert material.key_encrypted is None
-    assert len(material.key_hash) == 64
+    with pytest.raises(LicenseKeyEncryptionError):
+        mint_license_key_material(settings)
 
 
 def test_product_codes():

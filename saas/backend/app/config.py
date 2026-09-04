@@ -51,8 +51,8 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("ENABLE_DESKTOP_LICENSING", "enable_desktop_licensing"),
     )
-    # Fernet key or passphrase for reversible license-key ciphertext (authorized reveal).
-    # Separate from JWT secrets. Never commit production values. Optional for hash-only mint.
+    # Must be a valid Fernet key (Fernet.generate_key()) for license-key ciphertext / reveal.
+    # Passphrases are rejected. Required whenever minting licenses (fail-closed). Never commit prod values.
     license_key_encryption_secret: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
