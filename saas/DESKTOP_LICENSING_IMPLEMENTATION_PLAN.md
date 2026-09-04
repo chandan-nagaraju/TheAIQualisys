@@ -19,7 +19,7 @@ Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
 |-------|--------|--------|
 | 0 | Audit / gap | **Done** — production repo had no licensing tables/APIs |
 | 1 | Foundation (schema, flag, service, admin/customer/machine routers, key crypto) | **In review** |
-| 2 | Admin catalog / pricing | Not started |
+| 2 | Admin catalog / pricing | **In progress** |
 | 3 | Customer orders | Not started |
 | 4 | UPI payment approval + mint | Not started |
 | 5 | Email + My Licenses | Not started |

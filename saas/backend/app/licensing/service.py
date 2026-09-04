@@ -15,6 +15,7 @@ from typing import Any, Optional, Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
+from fastapi import HTTPException
 
 from app.config import Settings
 from app.licensing.constants import (
@@ -83,20 +84,155 @@ def mint_license_key_material(
 
 
 def list_active_products_with_plans(db: Session) -> list[DesktopProduct]:
-    """Catalog foundation: active products with active plans, sorted."""
+    """Customer catalog: active products with active plans only."""
+    return _list_products_with_plans(db, include_inactive=False)
+
+
+def list_all_products_with_plans(db: Session) -> list[DesktopProduct]:
+    """Admin catalog: all products and plans (including inactive)."""
+    return _list_products_with_plans(db, include_inactive=True)
+
+
+def _list_products_with_plans(db: Session, *, include_inactive: bool) -> list[DesktopProduct]:
     q = (
         select(DesktopProduct)
-        .where(DesktopProduct.listing_active == 1)
         .options(selectinload(DesktopProduct.plans))
         .order_by(DesktopProduct.sort_order.asc(), DesktopProduct.id.asc())
     )
+    if not include_inactive:
+        q = q.where(DesktopProduct.listing_active == 1)
     products = list(db.execute(q).scalars().all())
     for p in products:
-        p.plans = sorted(
-            [pl for pl in (p.plans or []) if pl.listing_active == 1],
-            key=lambda pl: (pl.sort_order, pl.id),
-        )
+        plans = list(p.plans or [])
+        if not include_inactive:
+            plans = [pl for pl in plans if pl.listing_active == 1]
+        p.plans = sorted(plans, key=lambda pl: (pl.sort_order, pl.id))
     return products
+
+
+def get_product_or_404(db: Session, product_id: int) -> DesktopProduct:
+    product = db.get(DesktopProduct, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Desktop product not found")
+    return product
+
+
+def get_plan_or_404(db: Session, plan_id: int) -> DesktopPlan:
+    plan = db.get(DesktopPlan, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Desktop plan not found")
+    return plan
+
+
+def patch_desktop_product(
+    db: Session,
+    product: DesktopProduct,
+    patch: dict,
+) -> DesktopProduct:
+    """Admin partial update for a desktop product (catalog/pricing Phase 2)."""
+    if "name" in patch:
+        name = (patch["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="name cannot be empty")
+        product.name = name
+    if "description" in patch:
+        desc = patch["description"]
+        product.description = (desc.strip() or None) if isinstance(desc, str) else desc
+    if "listing_active" in patch and patch["listing_active"] is not None:
+        product.listing_active = 1 if patch["listing_active"] else 0
+    if "sort_order" in patch and patch["sort_order"] is not None:
+        product.sort_order = int(patch["sort_order"])
+    if "buy_url_path" in patch:
+        buy = patch["buy_url_path"]
+        product.buy_url_path = (buy.strip() or None) if isinstance(buy, str) else buy
+    db.add(product)
+    db.flush()
+    return product
+
+
+def create_desktop_plan(
+    db: Session,
+    *,
+    product_id: int,
+    code: str,
+    name: str,
+    description: str | None,
+    price_inr: int,
+    duration_days: int = 365,
+    listing_active: bool = True,
+    sort_order: int = 10,
+) -> DesktopPlan:
+    """Create a per-seat plan. seats is always 1 (no shared / max_devices plans)."""
+    get_product_or_404(db, product_id)
+    code = (code or "").strip().upper()
+    name = (name or "").strip()
+    if not code or not name:
+        raise HTTPException(status_code=400, detail="code and name are required")
+    if price_inr < 0:
+        raise HTTPException(status_code=400, detail="price_inr must be >= 0")
+    if duration_days < 1:
+        raise HTTPException(status_code=400, detail="duration_days must be >= 1")
+    existing = db.execute(
+        select(DesktopPlan).where(DesktopPlan.product_id == product_id, DesktopPlan.code == code)
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Plan code '{code}' already exists for this product")
+    plan = DesktopPlan(
+        product_id=product_id,
+        code=code,
+        name=name,
+        description=(description or "").strip() or None,
+        price_inr=int(price_inr),
+        duration_days=int(duration_days),
+        seats=1,
+        listing_active=1 if listing_active else 0,
+        sort_order=int(sort_order),
+    )
+    db.add(plan)
+    db.flush()
+    return plan
+
+
+def patch_desktop_plan(db: Session, plan: DesktopPlan, patch: dict) -> DesktopPlan:
+    """Admin partial update. seats remain 1 — shared-seat / max_devices not allowed."""
+    if "code" in patch and patch["code"] is not None:
+        new_code = str(patch["code"]).strip().upper()
+        if not new_code:
+            raise HTTPException(status_code=400, detail="code cannot be empty")
+        clash = db.execute(
+            select(DesktopPlan).where(
+                DesktopPlan.product_id == plan.product_id,
+                DesktopPlan.code == new_code,
+                DesktopPlan.id != plan.id,
+            )
+        ).scalar_one_or_none()
+        if clash:
+            raise HTTPException(status_code=409, detail=f"Plan code '{new_code}' already exists for this product")
+        plan.code = new_code
+    if "name" in patch and patch["name"] is not None:
+        name = str(patch["name"]).strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="name cannot be empty")
+        plan.name = name
+    if "description" in patch:
+        desc = patch["description"]
+        plan.description = (desc.strip() or None) if isinstance(desc, str) else desc
+    if "price_inr" in patch and patch["price_inr"] is not None:
+        if int(patch["price_inr"]) < 0:
+            raise HTTPException(status_code=400, detail="price_inr must be >= 0")
+        plan.price_inr = int(patch["price_inr"])
+    if "duration_days" in patch and patch["duration_days"] is not None:
+        if int(patch["duration_days"]) < 1:
+            raise HTTPException(status_code=400, detail="duration_days must be >= 1")
+        plan.duration_days = int(patch["duration_days"])
+    if "listing_active" in patch and patch["listing_active"] is not None:
+        plan.listing_active = 1 if patch["listing_active"] else 0
+    if "sort_order" in patch and patch["sort_order"] is not None:
+        plan.sort_order = int(patch["sort_order"])
+    plan.seats = 1
+    db.add(plan)
+    db.flush()
+    return plan
 
 
 def count_seeded_catalog(db: Session) -> tuple[int, int]:

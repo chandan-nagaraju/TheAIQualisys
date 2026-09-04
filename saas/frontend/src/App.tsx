@@ -8,6 +8,7 @@ import WorkspaceLayout from "./layouts/WorkspaceLayout";
 import AdminCompanyFirIntelligencePage from "./pages/AdminCompanyFirIntelligencePage";
 import AdminCompanyPage from "./pages/AdminCompanyPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import AdminDesktopLicensingPage from "./pages/AdminDesktopLicensingPage";
 import AdminPricingPage from "./pages/AdminPricingPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import CompanyDashboardPage from "./pages/CompanyDashboardPage";
@@ -140,6 +141,14 @@ export default function App() {
           element={
             <AdminRoute>
               <AdminPricingPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/desktop-licensing"
+          element={
+            <AdminRoute>
+              <AdminDesktopLicensingPage />
             </AdminRoute>
           }
         />
