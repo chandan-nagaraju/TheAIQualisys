@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { apiFetch, setWorkspaceCustomerId } from "../api";
 import { exitTenantImpersonation, isTenantImpersonation } from "../impersonation";
 import { showCompanyShellBannerPath } from "../layout/companyShellBannerPaths";
+import AdminDesktopAppsNav from "./AdminDesktopAppsNav";
 import BrandLogo from "./BrandLogo";
 import HeaderBackButton from "./HeaderBackButton";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -237,6 +238,7 @@ export default function Layout() {
                 <NavLink className={navItemCls} to="/admin/pricing">
                   Pricing management
                 </NavLink>
+                <AdminDesktopAppsNav />
                 <button type="button" className={logoutBtn} onClick={logoutAdmin}>
                   Log out
                 </button>
@@ -254,6 +256,15 @@ export default function Layout() {
                 </NavLink>
                 <NavLink className={navItemCls} to="/upgrade">
                   Upgrade
+                </NavLink>
+                <NavLink className={navItemCls} to="/software">
+                  Software
+                </NavLink>
+                <NavLink className={navItemCls} to="/software/licenses">
+                  My licenses
+                </NavLink>
+                <NavLink className={navItemCls} to="/software/downloads">
+                  Downloads
                 </NavLink>
                 <NavLink className={navItemCls} to="/profile">
                   Profile

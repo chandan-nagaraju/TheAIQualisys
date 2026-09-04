@@ -1,13 +1,32 @@
 from datetime import date, datetime
+from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+from app.part_field_validation import sanitize_part_master_alnum_upper
 
 
-class SignupRequest(BaseModel):
+class RequestSignupVerificationBody(BaseModel):
     company_name: str = Field(min_length=1, max_length=255)
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
     vendor_code: str = Field(min_length=2, max_length=64)
+
+
+class VerifySignupSuccessResponse(BaseModel):
+    ok: bool = True
+    company_name: str
+    email: str
+    vendor_code: str
+
+
+class CompleteSignupBody(BaseModel):
+    token: str = Field(min_length=1, max_length=512)
+    password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
+
+
+class SignupVerificationSentResponse(BaseModel):
+    message: str
 
 
 class LoginRequest(BaseModel):
@@ -60,6 +79,8 @@ class MeResponse(BaseModel):
     invoice_limit: int | None
     can_create_invoice: bool
     can_record_fir_report: bool
+    trial_active: bool
+    subscription_active: bool
     can_access_fir_workspace: bool
     subscription_message: str | None = None
 
@@ -113,6 +134,26 @@ class PartCreateV2(BaseModel):
     drawing_rev: str | None = None
     description: str | None = None
 
+    @field_validator("part_no", mode="before")
+    @classmethod
+    def _part_no_alnum_upper(cls, v: object) -> str:
+        return sanitize_part_master_alnum_upper(v if isinstance(v, str) else (str(v) if v is not None else None))
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _description_alnum_upper(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        s = sanitize_part_master_alnum_upper(v if isinstance(v, str) else str(v))
+        return s if s else None
+
+    @field_validator("part_no")
+    @classmethod
+    def _part_no_required(cls, v: str) -> str:
+        if not v:
+            raise ValueError("part_no must contain at least one letter or digit (A–Z, 0–9)")
+        return v
+
 
 class PartOutV2(BaseModel):
     id: int
@@ -149,6 +190,7 @@ class AdminCompanySummary(BaseModel):
     monthly_usage: int
     monthly_fir_reports: int
     monthly_usage_combined: int
+    tenant_user_count: int = 0
 
 
 class AdminDashboardResponse(BaseModel):
@@ -209,6 +251,33 @@ class AdminCompanyPatch(BaseModel):
     extend_days: int | None = None
 
 
+ThankYouCategory = Literal["running", "regular", "occasional", "stranger", "new", "all"]
+
+
+class AdminSubscriptionReminderSendBody(BaseModel):
+    reminder_type: Literal["ending_soon", "already_ended", "thank_you"]
+    thank_you_category: ThankYouCategory | None = None
+
+    @model_validator(mode="after")
+    def _thank_you_needs_category(self):
+        if self.reminder_type == "thank_you":
+            if self.thank_you_category is None:
+                raise ValueError("thank_you_category is required when reminder_type is thank_you")
+        elif self.thank_you_category is not None:
+            raise ValueError("thank_you_category is only allowed when reminder_type is thank_you")
+        return self
+
+
+class AdminSubscriptionReminderSendResponse(BaseModel):
+    ok: bool = True
+    email_status: str
+    total_report_count: int
+    current_month_report_count: int
+    current_month_name: str
+    recipients_attempted: int
+    emails_sent: int
+
+
 class QmsModuleOverviewItem(BaseModel):
     slug: str
     module_name: str
@@ -251,6 +320,7 @@ class ModulePricingPublicOut(BaseModel):
     invoice_max: int | None = None
     highlight: str | None = None
     sort_order: int
+    listing_active: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -265,6 +335,7 @@ class ModulePricingPatch(BaseModel):
     invoice_max: int | None = None
     highlight: str | None = Field(default=None, max_length=255)
     sort_order: int | None = Field(default=None, ge=0)
+    listing_active: bool | None = None
 
 
 class BillingModuleRow(BaseModel):
@@ -284,6 +355,7 @@ class BillingOverviewResponse(BaseModel):
     company_name: str
     vendor_code: str
     plan_name: str
+    enable_subscription: bool = True
     company_status: str
     trial_end_date: date | None = None
     subscription_start: date | None = None

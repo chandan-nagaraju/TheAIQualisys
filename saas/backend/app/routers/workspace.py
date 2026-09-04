@@ -11,24 +11,51 @@ import shutil
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from sqlalchemy import delete, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
-from app.config import get_settings
+from app.config import Settings, get_settings
+from app.s3_assets import (
+    build_s3_public_url,
+    delete_s3_object,
+    fetch_s3_object_bytes,
+    is_company_scoped_storage_key,
+    is_stored_s3_key,
+    normalize_storage_key,
+    presign_settings_asset_put,
+    put_settings_asset_object,
+    s3_assets_configured,
+)
+from app.dates import billing_today
 from app.deps import (
     get_company_for_user,
     get_company_user_from_token_str,
     get_db_session,
+    impersonated_by_admin_from_request,
 )
 from app.fir_excel import enrich_rows_with_parts, parse_invoice_excel
-from app.fir_part_excel import build_part_master_template_xlsx, parse_parts_excel_to_bundle_dict
+from app.fir_intelligence_ingest import (
+    ingest_fir_intelligence_rows,
+    parse_row_for_intelligence,
+    preview_fir_intelligence_batch,
+)
+from app.fir_part_excel import (
+    assign_continuous_sl_numbers,
+    build_part_master_template_xlsx,
+    parse_parts_excel_to_bundle_dict,
+)
+from app.part_field_validation import sanitize_part_master_alnum_upper
+from app.part_master_coating_spec import normalize_plating_thickness_specification
+from app.part_master_moi import normalize_part_master_moi, preserve_user_part_master_moi
 from app.subscription_logic import (
     FIR_WORKSPACE_FORBIDDEN_CODE,
     FIR_WORKSPACE_FORBIDDEN_MESSAGE,
@@ -44,7 +71,6 @@ from app.models import (
     CompanySettings,
     CompanyUser,
     Customer,
-    FirReportEvent,
     PartCoatingV2,
     PartComplaintV2,
     PartMaterialV2,
@@ -67,14 +93,44 @@ class WsContext:
     customer: Customer | None
 
 
+def _parse_optional_int_header(raw: str | None, *, label: str) -> int | None:
+    """Headers are always strings; empty / whitespace must mean “unset”, not a validation error."""
+    if raw is None:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    try:
+        return int(s)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{label} must be a valid integer",
+        ) from e
+
+
+def optional_customer_id_from_request(request: Request) -> int | None:
+    """Parse optional customer_id query without FastAPI Query() coercions (avoids Pydantic int errors)."""
+    raw_vals = request.query_params.getlist("customer_id")
+    if not raw_vals:
+        return None
+    return _parse_optional_int_header(raw_vals[0], label="customer_id")
+
+
 def get_ws(
     user: CompanyUser = Depends(get_company_user_from_token_str),
     db: Session = Depends(get_db_session),
-    x_customer_id: Annotated[int | None, Header(alias="X-Customer-Id")] = None,
+    x_customer_id_header: Annotated[str | None, Header(alias="X-Customer-Id")] = None,
+    admin_impersonation: bool = Depends(impersonated_by_admin_from_request),
 ) -> WsContext:
     settings = get_settings()
     company = get_company_for_user(user, db)
-    if not can_access_fir_workspace(company, enable_subscription=settings.enable_subscription):
+    if not can_access_fir_workspace(
+        company,
+        enable_subscription=settings.enable_subscription,
+        today=billing_today(),
+        impersonated_by_admin=admin_impersonation,
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -82,6 +138,7 @@ def get_ws(
                 "message": FIR_WORKSPACE_FORBIDDEN_MESSAGE,
             },
         )
+    x_customer_id = _parse_optional_int_header(x_customer_id_header, label="X-Customer-Id")
     cust = None
     if x_customer_id is not None:
         cust = db.execute(
@@ -214,13 +271,43 @@ def _read_quali_font_upload(file: UploadFile | None) -> tuple[str, str, bytes] |
     return name, "font/ttf", raw
 
 
-def _quali_font_data_uri_from_settings(st: CompanySettings | None) -> tuple[str | None, str]:
-    """Return (data_uri, css_format) for company-uploaded Quali replacement, or (None, truetype)."""
-    if not st or not st.quali_font_blob:
+def _company_settings_select(company_id: int, *, load_asset_blobs: bool):
+    """
+    When S3 is configured, omit BYTEA columns so Postgres never transfers logo/signatures/font bytes
+    (saves Supabase/Railway DB egress on read paths).
+    """
+    q = select(CompanySettings).where(CompanySettings.company_id == company_id)
+    if not load_asset_blobs:
+        q = q.options(
+            defer(CompanySettings.logo_blob),
+            defer(CompanySettings.inspector_signature_blob),
+            defer(CompanySettings.quality_signature_blob),
+            defer(CompanySettings.char_critical_blob),
+            defer(CompanySettings.char_safety_blob),
+            defer(CompanySettings.char_important_blob),
+            defer(CompanySettings.quali_font_blob),
+        )
+    return q
+
+
+def _quali_font_src_from_settings(
+    app_settings: Settings, st: CompanySettings | None
+) -> tuple[str | None, str]:
+    """Return (font src URL or data: URI, css_format) for custom Quali replacement."""
+    if not st:
         return None, "truetype"
-    mime = (st.quali_font_mime or "font/ttf").split(";")[0].strip() or "font/ttf"
-    b64 = base64.b64encode(st.quali_font_blob).decode("ascii")
-    return f"data:{mime};base64,{b64}", "truetype"
+    s3_on = s3_assets_configured(app_settings)
+    qpath = (st.quali_font_path or "").strip()
+    if qpath:
+        if qpath.startswith("http://") or qpath.startswith("https://"):
+            return qpath, "truetype"
+        if s3_on and is_company_scoped_storage_key(st.company_id, qpath):
+            return build_s3_public_url(app_settings, qpath), "truetype"
+    if not s3_on and st.quali_font_blob:
+        mime = (st.quali_font_mime or "font/ttf").split(";")[0].strip() or "font/ttf"
+        b64 = base64.b64encode(st.quali_font_blob).decode("ascii")
+        return f"data:{mime};base64,{b64}", "truetype"
+    return None, "truetype"
 
 
 def _default_static_quali_font() -> tuple[str | None, str]:
@@ -244,14 +331,30 @@ def _default_static_quali_font() -> tuple[str | None, str]:
     return quali_font_data_uri, quali_font_format
 
 
-def _settings_blob_data_uri(st: CompanySettings, field_name: str) -> str | None:
-    blob = getattr(st, f"{field_name}_blob", None)
-    if blob is not None:
-        mime = getattr(st, f"{field_name}_mime", None) or "application/octet-stream"
-        b64 = base64.b64encode(blob).decode("ascii")
+def _resolve_settings_image_url(app_settings: Settings, st: CompanySettings, field_prefix: str) -> str | None:
+    """data: URI, https URL, or None for logo / inspector_signature / quality_signature."""
+    s3_on = s3_assets_configured(app_settings)
+    if not s3_on:
+        blob = getattr(st, f"{field_prefix}_blob", None)
+        if blob is not None:
+            mime = getattr(st, f"{field_prefix}_mime", None) or "application/octet-stream"
+            b64 = base64.b64encode(blob).decode("ascii")
+            return f"data:{mime};base64,{b64}"
+    path_val = getattr(st, f"{field_prefix}_path", None)
+    if not path_val:
+        return None
+    path_s = path_val.strip()
+    if path_s.startswith("http://") or path_s.startswith("https://"):
+        return path_s
+    local = _upload_root() / path_s
+    if local.is_file():
+        mime, _ = mimetypes.guess_type(str(local))
+        mime = mime or "application/octet-stream"
+        b64 = base64.b64encode(local.read_bytes()).decode("ascii")
         return f"data:{mime};base64,{b64}"
-    # Backward compatibility: older rows may only have path-based assets.
-    return _file_to_data_uri(getattr(st, f"{field_name}_path", None))
+    if s3_on and is_company_scoped_storage_key(st.company_id, path_s):
+        return build_s3_public_url(app_settings, path_s)
+    return None
 
 
 def _file_to_data_uri(rel: str | None) -> str | None:
@@ -267,13 +370,19 @@ def _file_to_data_uri(rel: str | None) -> str | None:
 
 
 def _settings_dict_for_fir(db: Session, company_id: int) -> dict[str, Any]:
-    st = db.execute(select(CompanySettings).where(CompanySettings.company_id == company_id)).scalar_one_or_none()
+    app_settings = get_settings()
+    st = db.execute(
+        _company_settings_select(company_id, load_asset_blobs=not s3_assets_configured(app_settings))
+    ).scalar_one_or_none()
     if not st:
         return {
             "company_name": "",
             "logo_path": None,
             "inspector_signature_path": None,
             "quality_signature_path": None,
+            "char_critical_path": None,
+            "char_safety_path": None,
+            "char_important_path": None,
             "format_no": "",
             "issue_date": "",
             "doc_rev_no": "",
@@ -281,10 +390,13 @@ def _settings_dict_for_fir(db: Session, company_id: int) -> dict[str, Any]:
         }
     return {
         "company_name": st.company_name or "",
-        # Use DB-backed blobs first so logo/signatures are shared across machines/instances.
-        "logo_path": _settings_blob_data_uri(st, "logo"),
-        "inspector_signature_path": _settings_blob_data_uri(st, "inspector_signature"),
-        "quality_signature_path": _settings_blob_data_uri(st, "quality_signature"),
+        # With S3: paths/URLs only (blobs not loaded). Without S3: blobs or disk paths.
+        "logo_path": _resolve_settings_image_url(app_settings, st, "logo"),
+        "inspector_signature_path": _resolve_settings_image_url(app_settings, st, "inspector_signature"),
+        "quality_signature_path": _resolve_settings_image_url(app_settings, st, "quality_signature"),
+        "char_critical_path": _resolve_settings_image_url(app_settings, st, "char_critical"),
+        "char_safety_path": _resolve_settings_image_url(app_settings, st, "char_safety"),
+        "char_important_path": _resolve_settings_image_url(app_settings, st, "char_important"),
         "format_no": st.format_no or "",
         "issue_date": st.issue_date or "",
         "doc_rev_no": st.doc_rev_no or "",
@@ -297,6 +409,36 @@ def _get_part(ws: WsContext, part_id: int) -> PartV2:
     if not p or p.company_id != ws.company.id:
         raise HTTPException(status_code=404, detail="Part not found")
     return p
+
+
+def _resolve_default_customer_id(ws: WsContext) -> int:
+    rows = (
+        ws.db.execute(select(Customer).where(Customer.company_id == ws.company.id).order_by(Customer.id))
+        .scalars()
+        .all()
+    )
+    if not rows:
+        raise HTTPException(status_code=400, detail="Add at least one customer before managing parts.")
+    if len(rows) == 1:
+        return rows[0].id
+    if ws.customer is not None:
+        return ws.customer.id
+    raise HTTPException(status_code=400, detail="select_customer_required")
+
+
+def _get_customer_for_part_upsert(ws: WsContext, customer_id: int | None) -> Customer:
+    if customer_id is None:
+        cid = _resolve_default_customer_id(ws)
+        c = ws.db.get(Customer, cid)
+        if not c:
+            raise HTTPException(status_code=400, detail="Customer not found")
+        return c
+    c = ws.db.execute(
+        select(Customer).where(Customer.id == customer_id, Customer.company_id == ws.company.id)
+    ).scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=400, detail="Invalid customer for this workspace")
+    return c
 
 
 # --- Customers ---
@@ -336,9 +478,50 @@ def create_customer(body: CustomerCreate, ws: WsContext = Depends(get_ws)):
 
 
 # --- Settings ---
+class SettingsAssetPresignBody(BaseModel):
+    kind: Literal[
+        "logo",
+        "inspector_signature",
+        "quality_signature",
+        "char_critical",
+        "char_safety",
+        "char_important",
+        "quali_font",
+    ]
+    content_type: str = ""
+
+
+@router.post("/settings/asset-upload-url")
+def settings_asset_upload_presign(body: SettingsAssetPresignBody, ws: WsContext = Depends(get_ws)):
+    """Return a presigned PUT URL so the browser can upload directly to S3."""
+    app_settings = get_settings()
+    if not s3_assets_configured(app_settings):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="S3 asset uploads are not configured on the server",
+        )
+    ct = (body.content_type or "").strip()
+    if body.kind == "quali_font" and not ct:
+        ct = "application/octet-stream"
+    if body.kind != "quali_font" and not ct:
+        ct = "image/png"
+    try:
+        return presign_settings_asset_put(
+            app_settings,
+            company_id=ws.company.id,
+            kind=body.kind,
+            content_type=ct,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/settings")
 def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
-    st = ws.db.execute(select(CompanySettings).where(CompanySettings.company_id == ws.company.id)).scalar_one_or_none()
+    app_settings = get_settings()
+    st = ws.db.execute(
+        _company_settings_select(ws.company.id, load_asset_blobs=not s3_assets_configured(app_settings))
+    ).scalar_one_or_none()
     if not st:
         return {
             "company_name": "",
@@ -349,7 +532,11 @@ def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
             "logo_url": None,
             "inspector_signature_url": None,
             "quality_signature_url": None,
+            "char_critical_url": None,
+            "char_safety_url": None,
+            "char_important_url": None,
             "quali_font_configured": False,
+            "s3_assets_enabled": s3_assets_configured(app_settings),
         }
     return {
         "company_name": st.company_name or "",
@@ -357,10 +544,18 @@ def get_settings_api(request: Request, ws: WsContext = Depends(get_ws)):
         "issue_date": st.issue_date or "",
         "doc_rev_no": st.doc_rev_no or "",
         "rev_date": st.rev_date or "",
-        "logo_url": _settings_blob_data_uri(st, "logo"),
-        "inspector_signature_url": _settings_blob_data_uri(st, "inspector_signature"),
-        "quality_signature_url": _settings_blob_data_uri(st, "quality_signature"),
-        "quali_font_configured": bool(st.quali_font_blob),
+        "logo_url": _resolve_settings_image_url(app_settings, st, "logo"),
+        "inspector_signature_url": _resolve_settings_image_url(app_settings, st, "inspector_signature"),
+        "quality_signature_url": _resolve_settings_image_url(app_settings, st, "quality_signature"),
+        "char_critical_url": _resolve_settings_image_url(app_settings, st, "char_critical"),
+        "char_safety_url": _resolve_settings_image_url(app_settings, st, "char_safety"),
+        "char_important_url": _resolve_settings_image_url(app_settings, st, "char_important"),
+        "quali_font_configured": (
+            bool((st.quali_font_path or "").strip())
+            if s3_assets_configured(app_settings)
+            else bool(st.quali_font_blob or (st.quali_font_path or "").strip())
+        ),
+        "s3_assets_enabled": s3_assets_configured(app_settings),
     }
 
 
@@ -376,10 +571,24 @@ async def save_settings(
     logo: UploadFile | None = File(None),
     inspector_signature: UploadFile | None = File(None),
     quality_signature: UploadFile | None = File(None),
+    char_critical: UploadFile | None = File(None),
+    char_safety: UploadFile | None = File(None),
+    char_important: UploadFile | None = File(None),
     quali_font: UploadFile | None = File(None),
     clear_quali_font: str = Form(""),
+    logo_storage_key: str = Form(""),
+    inspector_signature_storage_key: str = Form(""),
+    quality_signature_storage_key: str = Form(""),
+    char_critical_storage_key: str = Form(""),
+    char_safety_storage_key: str = Form(""),
+    char_important_storage_key: str = Form(""),
+    quali_font_storage_key: str = Form(""),
 ):
-    st = ws.db.execute(select(CompanySettings).where(CompanySettings.company_id == ws.company.id)).scalar_one_or_none()
+    app_settings = get_settings()
+    s3_on = s3_assets_configured(app_settings)
+    st = ws.db.execute(
+        _company_settings_select(ws.company.id, load_asset_blobs=not s3_on)
+    ).scalar_one_or_none()
     if not st:
         st = CompanySettings(company_id=ws.company.id)
         ws.db.add(st)
@@ -391,33 +600,220 @@ async def save_settings(
     st.doc_rev_no = doc_rev_no.strip() or None
     st.rev_date = rev_date.strip() or None
 
-    logo_payload = _read_upload_file(logo)
-    if logo_payload:
-        _name, mime, raw = logo_payload
-        st.logo_blob = raw
-        st.logo_mime = mime
-        st.logo_path = None
-    inspector_payload = _read_upload_file(inspector_signature)
-    if inspector_payload:
-        _name, mime, raw = inspector_payload
-        st.inspector_signature_blob = raw
-        st.inspector_signature_mime = mime
-        st.inspector_signature_path = None
-    quality_payload = _read_upload_file(quality_signature)
-    if quality_payload:
-        _name, mime, raw = quality_payload
-        st.quality_signature_blob = raw
-        st.quality_signature_mime = mime
-        st.quality_signature_path = None
+    def _delete_replaced_s3_key(old_path: str | None, new_key: str) -> None:
+        if not old_path or old_path == new_key:
+            return
+        if is_stored_s3_key(app_settings, ws.company.id, old_path):
+            delete_s3_object(app_settings, old_path)
 
-    quali_payload = _read_quali_font_upload(quali_font)
-    if quali_payload:
-        _name, mime, raw = quali_payload
-        st.quali_font_blob = raw
-        st.quali_font_mime = mime
-    elif (clear_quali_font or "").strip().lower() in ("1", "true", "on", "yes"):
+    if s3_on and (k := (logo_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid logo storage key")
+        _delete_replaced_s3_key(st.logo_path, key)
+        st.logo_path = key
+        st.logo_blob = None
+        st.logo_mime = None
+    else:
+        logo_payload = _read_upload_file(logo)
+        if logo_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.logo_path):
+                delete_s3_object(app_settings, st.logo_path)
+            _name, mime, raw = logo_payload
+            st.logo_blob = raw
+            st.logo_mime = mime
+            st.logo_path = None
+
+    if s3_on and (k := (inspector_signature_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid inspector signature storage key")
+        _delete_replaced_s3_key(st.inspector_signature_path, key)
+        st.inspector_signature_path = key
+        st.inspector_signature_blob = None
+        st.inspector_signature_mime = None
+    else:
+        inspector_payload = _read_upload_file(inspector_signature)
+        if inspector_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.inspector_signature_path):
+                delete_s3_object(app_settings, st.inspector_signature_path)
+            _name, mime, raw = inspector_payload
+            st.inspector_signature_blob = raw
+            st.inspector_signature_mime = mime
+            st.inspector_signature_path = None
+
+    if s3_on and (k := (quality_signature_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid quality signature storage key")
+        _delete_replaced_s3_key(st.quality_signature_path, key)
+        st.quality_signature_path = key
+        st.quality_signature_blob = None
+        st.quality_signature_mime = None
+    else:
+        quality_payload = _read_upload_file(quality_signature)
+        if quality_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.quality_signature_path):
+                delete_s3_object(app_settings, st.quality_signature_path)
+            _name, mime, raw = quality_payload
+            st.quality_signature_blob = raw
+            st.quality_signature_mime = mime
+            st.quality_signature_path = None
+
+    if s3_on and (k := (char_critical_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid critical characteristic image storage key")
+        _delete_replaced_s3_key(st.char_critical_path, key)
+        st.char_critical_path = key
+        st.char_critical_blob = None
+        st.char_critical_mime = None
+    elif s3_on:
+        char_critical_payload = _read_upload_file(char_critical)
+        if char_critical_payload:
+            _name, mime, raw = char_critical_payload
+            try:
+                key = put_settings_asset_object(
+                    app_settings,
+                    company_id=ws.company.id,
+                    kind="char_critical",
+                    body=raw,
+                    content_type=mime or "image/png",
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except RuntimeError:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to store critical characteristic image in S3",
+                )
+            _delete_replaced_s3_key(st.char_critical_path, key)
+            st.char_critical_path = key
+            st.char_critical_blob = None
+            st.char_critical_mime = None
+    else:
+        char_critical_payload = _read_upload_file(char_critical)
+        if char_critical_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.char_critical_path):
+                delete_s3_object(app_settings, st.char_critical_path)
+            _name, mime, raw = char_critical_payload
+            st.char_critical_blob = raw
+            st.char_critical_mime = mime
+            st.char_critical_path = None
+
+    if s3_on and (k := (char_safety_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid safety characteristic image storage key")
+        _delete_replaced_s3_key(st.char_safety_path, key)
+        st.char_safety_path = key
+        st.char_safety_blob = None
+        st.char_safety_mime = None
+    elif s3_on:
+        char_safety_payload = _read_upload_file(char_safety)
+        if char_safety_payload:
+            _name, mime, raw = char_safety_payload
+            try:
+                key = put_settings_asset_object(
+                    app_settings,
+                    company_id=ws.company.id,
+                    kind="char_safety",
+                    body=raw,
+                    content_type=mime or "image/png",
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except RuntimeError:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to store safety characteristic image in S3",
+                )
+            _delete_replaced_s3_key(st.char_safety_path, key)
+            st.char_safety_path = key
+            st.char_safety_blob = None
+            st.char_safety_mime = None
+    else:
+        char_safety_payload = _read_upload_file(char_safety)
+        if char_safety_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.char_safety_path):
+                delete_s3_object(app_settings, st.char_safety_path)
+            _name, mime, raw = char_safety_payload
+            st.char_safety_blob = raw
+            st.char_safety_mime = mime
+            st.char_safety_path = None
+
+    if s3_on and (k := (char_important_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, k)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid important characteristic image storage key")
+        _delete_replaced_s3_key(st.char_important_path, key)
+        st.char_important_path = key
+        st.char_important_blob = None
+        st.char_important_mime = None
+    elif s3_on:
+        char_important_payload = _read_upload_file(char_important)
+        if char_important_payload:
+            _name, mime, raw = char_important_payload
+            try:
+                key = put_settings_asset_object(
+                    app_settings,
+                    company_id=ws.company.id,
+                    kind="char_important",
+                    body=raw,
+                    content_type=mime or "image/png",
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except RuntimeError:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to store important characteristic image in S3",
+                )
+            _delete_replaced_s3_key(st.char_important_path, key)
+            st.char_important_path = key
+            st.char_important_blob = None
+            st.char_important_mime = None
+    else:
+        char_important_payload = _read_upload_file(char_important)
+        if char_important_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.char_important_path):
+                delete_s3_object(app_settings, st.char_important_path)
+            _name, mime, raw = char_important_payload
+            st.char_important_blob = raw
+            st.char_important_mime = mime
+            st.char_important_path = None
+
+    clear_q = (clear_quali_font or "").strip().lower() in ("1", "true", "on", "yes")
+    if clear_q:
+        if is_stored_s3_key(app_settings, ws.company.id, st.quali_font_path):
+            delete_s3_object(app_settings, st.quali_font_path)
         st.quali_font_blob = None
         st.quali_font_mime = None
+        st.quali_font_path = None
+    elif s3_on and (qk := (quali_font_storage_key or "").strip()):
+        try:
+            key = normalize_storage_key(ws.company.id, qk)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid font storage key")
+        _delete_replaced_s3_key(st.quali_font_path, key)
+        st.quali_font_path = key
+        st.quali_font_blob = None
+        st.quali_font_mime = None
+    else:
+        quali_payload = _read_quali_font_upload(quali_font)
+        if quali_payload:
+            if is_stored_s3_key(app_settings, ws.company.id, st.quali_font_path):
+                delete_s3_object(app_settings, st.quali_font_path)
+            _name, mime, raw = quali_payload
+            st.quali_font_blob = raw
+            st.quali_font_mime = mime
+            st.quali_font_path = None
 
     ws.db.commit()
     return get_settings_api(request, ws)
@@ -425,18 +821,23 @@ async def save_settings(
 
 # --- Parts ---
 @router.get("/parts")
-def list_parts(ws: WsContext = Depends(get_ws)):
-    rows = (
-        ws.db.execute(
-            select(PartV2).where(PartV2.company_id == ws.company.id).order_by(PartV2.part_no)
-        )
-        .scalars()
-        .all()
-    )
+def list_parts(
+    customer_id: int | None = Depends(optional_customer_id_from_request),
+    ws: WsContext = Depends(get_ws),
+):
+    q = select(PartV2).where(PartV2.company_id == ws.company.id)
+    if customer_id is not None:
+        q = q.where(PartV2.customer_id == customer_id)
+    rows = ws.db.execute(q.order_by(PartV2.part_no)).scalars().all()
+    cust_rows = ws.db.execute(select(Customer).where(Customer.company_id == ws.company.id)).scalars().all()
+    cust_by_id = {c.id: c for c in cust_rows}
     return [
         {
             "part_id": r.id,
             "part_no": r.part_no,
+            "customer_id": r.customer_id,
+            "customer_vendor_code": cust_by_id[r.customer_id].vendor_code if r.customer_id in cust_by_id else "",
+            "customer_name": cust_by_id[r.customer_id].name if r.customer_id in cust_by_id else "",
             "drawing_rev": r.drawing_rev,
             "description": r.description,
             "has_drawing": _drawing_file_exists(ws.company.id, r),
@@ -451,19 +852,26 @@ class PartUpsert(BaseModel):
     drawing_rev: str | None = None
     part_id: int | None = None
     revision_change_reason: str | None = None
+    customer_id: int | None = None
 
 
 @router.post("/parts")
 def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
-    part_no = body.part_no.strip()
+    part_no = sanitize_part_master_alnum_upper(body.part_no)
     if not part_no:
-        raise HTTPException(status_code=400, detail="part_no required")
+        raise HTTPException(status_code=400, detail="part_no must contain only A–Z and 0–9, at least one character")
+    description = sanitize_part_master_alnum_upper(body.description) if body.description is not None else None
+    description = description if description else None
+
+    cust = _get_customer_for_part_upsert(ws, body.customer_id)
+    cust_id = cust.id
 
     if body.part_id is not None:
         p = _get_part(ws, body.part_id)
         old_rev = p.drawing_rev
         p.part_no = part_no
-        p.description = body.description
+        p.customer_id = cust_id
+        p.description = description
         p.drawing_rev = body.drawing_rev
         _record_revision_if_changed(ws, p, old_rev, p.drawing_rev, body.revision_change_reason)
         ws.db.commit()
@@ -471,11 +879,15 @@ def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
         return {"part_id": p.id, "part_no": p.part_no, "drawing_rev": p.drawing_rev, "description": p.description}
 
     existing = ws.db.execute(
-        select(PartV2).where(PartV2.company_id == ws.company.id, PartV2.part_no == part_no)
+        select(PartV2).where(
+            PartV2.company_id == ws.company.id,
+            PartV2.customer_id == cust_id,
+            PartV2.part_no == part_no,
+        )
     ).scalar_one_or_none()
     if existing:
         old_rev = existing.drawing_rev
-        existing.description = body.description
+        existing.description = description
         existing.drawing_rev = body.drawing_rev
         _record_revision_if_changed(ws, existing, old_rev, existing.drawing_rev, body.revision_change_reason)
         ws.db.commit()
@@ -489,8 +901,9 @@ def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
 
     p = PartV2(
         company_id=ws.company.id,
+        customer_id=cust_id,
         part_no=part_no,
-        description=body.description,
+        description=description,
         drawing_rev=body.drawing_rev,
     )
     ws.db.add(p)
@@ -509,6 +922,43 @@ def delete_part(part_id: int, ws: WsContext = Depends(get_ws)):
     ws.db.delete(p)
     ws.db.commit()
     return {"ok": True, "part_id": part_id}
+
+
+def _persist_normalized_moi_for_part(ws: WsContext, p: PartV2) -> None:
+    """Only persist safe canonicalizations: user MOI stays raw except DHG aliases; Section D spec may normalize."""
+    changed = False
+    for model in (PartSpecV2, PartComplaintV2, PartCoatingV2):
+        rows = ws.db.execute(select(model).where(model.part_id == p.id)).scalars().all()
+        for row in rows:
+            preserved_moi = preserve_user_part_master_moi(row.method_of_inspection)
+            current_moi = (row.method_of_inspection or "").strip() or None
+            if preserved_moi != current_moi:
+                row.method_of_inspection = preserved_moi
+                changed = True
+            if model is PartCoatingV2:
+                normalized_spec = _norm_coating_spec_row(row.parameter, row.specification)
+                current_spec = (row.specification or "").strip() or None
+                if normalized_spec != current_spec:
+                    row.specification = normalized_spec
+                    changed = True
+    if changed:
+        ws.db.commit()
+
+
+def _part_master_rows_with_continuous_sl_no(
+    spec_rows: list[dict[str, Any]],
+    ccp_rows: list[dict[str, Any]],
+    material_rows: list[dict[str, Any]],
+    coating_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    payload = {
+        "spec_rows": spec_rows,
+        "ccp_rows": ccp_rows,
+        "material_rows": material_rows,
+        "coating_rows": coating_rows,
+    }
+    assign_continuous_sl_numbers(payload)
+    return payload["spec_rows"], payload["ccp_rows"], payload["material_rows"], payload["coating_rows"]
 
 
 def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
@@ -532,6 +982,38 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
         .scalars()
         .all()
     )
+    spec_rows = [
+        {
+            "id": s.id,
+            "parameter": s.parameter,
+            "specification": s.specification,
+            "special_char": s.special_char,
+            "method_of_inspection": preserve_user_part_master_moi(s.method_of_inspection),
+        }
+        for s in specs
+    ]
+    ccp_rows = [
+        {
+            "parameter": c.parameter,
+            "specification": c.specification,
+            "special_char": c.special_char,
+            "method_of_inspection": preserve_user_part_master_moi(c.method_of_inspection),
+        }
+        for c in cps
+    ]
+    material_rows = [{"material_grade": m.material_grade} for m in mats]
+    coating_rows = [
+        {
+            "parameter": c.parameter,
+            "specification": _norm_coating_spec_row(c.parameter, c.specification),
+            "special_char": c.special_char,
+            "method_of_inspection": preserve_user_part_master_moi(c.method_of_inspection),
+        }
+        for c in coats
+    ]
+    spec_rows, ccp_rows, material_rows, coating_rows = _part_master_rows_with_continuous_sl_no(
+        spec_rows, ccp_rows, material_rows, coating_rows
+    )
     revs = (
         ws.db.execute(
             select(PartRevisionHistory)
@@ -541,9 +1023,13 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
         .scalars()
         .all()
     )
+    cust = ws.db.get(Customer, p.customer_id)
     return {
         "part_id": p.id,
         "part_no": p.part_no,
+        "customer_id": p.customer_id,
+        "customer_vendor_code": cust.vendor_code if cust else "",
+        "customer_name": cust.name if cust else "",
         "drawing_rev": p.drawing_rev,
         "description": p.description,
         "drawing_pdf_filename": p.drawing_pdf_filename,
@@ -561,42 +1047,111 @@ def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
             }
             for r in revs
         ],
-        "spec_rows": [
-            {
-                "id": s.id,
-                "parameter": s.parameter,
-                "specification": s.specification,
-                "special_char": s.special_char,
-                "method_of_inspection": s.method_of_inspection,
-            }
-            for s in specs
-        ],
-        "ccp_rows": [
-            {
-                "parameter": c.parameter,
-                "specification": c.specification,
-                "special_char": c.special_char,
-                "method_of_inspection": c.method_of_inspection,
-            }
-            for c in cps
-        ],
-        "material_rows": [{"material_grade": m.material_grade} for m in mats],
-        "coating_rows": [
-            {
-                "parameter": c.parameter,
-                "specification": c.specification,
-                "special_char": c.special_char,
-                "method_of_inspection": c.method_of_inspection,
-            }
-            for c in coats
-        ],
+        "spec_rows": spec_rows,
+        "ccp_rows": ccp_rows,
+        "material_rows": material_rows,
+        "coating_rows": coating_rows,
     }
+
+
+@router.get("/parts/export-all")
+def export_all_parts_master(
+    customer_id: int | None = Depends(optional_customer_id_from_request),
+    ws: WsContext = Depends(get_ws),
+):
+    q = select(PartV2).where(PartV2.company_id == ws.company.id)
+    if customer_id is not None:
+        q = q.where(PartV2.customer_id == customer_id)
+    rows = ws.db.execute(q.order_by(PartV2.part_no)).scalars().all()
+    parts_out: list[dict[str, Any]] = []
+    for p in rows:
+        inner = _serialize_part_detail(ws, p)
+
+        # Be defensive with legacy-imported data: some old rows may have
+        # non-string values in text fields. Normalize everything to strings
+        # so JSON export never fails with validation/type parse errors.
+        def _safe_text(v: Any) -> str:
+            return "" if v is None else str(v)
+
+        spec_rows = [
+            {
+                "parameter": _safe_text(r.get("parameter")),
+                "specification": _safe_text(r.get("specification")),
+                "special_char": _safe_text(r.get("special_char")),
+                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
+            }
+            for r in inner["spec_rows"]
+        ]
+        ccp_rows = [
+            {
+                "parameter": _safe_text(r.get("parameter")),
+                "specification": _safe_text(r.get("specification")),
+                "special_char": _safe_text(r.get("special_char")),
+                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
+            }
+            for r in inner["ccp_rows"]
+        ]
+        material_rows = [{"material_grade": _safe_text(m.get("material_grade"))} for m in inner["material_rows"]]
+        coating_rows = [
+            {
+                "parameter": _safe_text(r.get("parameter")),
+                "specification": _safe_text(r.get("specification")),
+                "special_char": _safe_text(r.get("special_char")),
+                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
+            }
+            for r in inner["coating_rows"]
+        ]
+        parts_out.append(
+            {
+                "part": {
+                    "part_no": _safe_text(inner["part_no"]),
+                    "drawing_rev": _safe_text(inner.get("drawing_rev")),
+                    "description": _safe_text(inner.get("description")),
+                    "customer_id": inner.get("customer_id"),
+                    "customer_vendor_code": _safe_text(inner.get("customer_vendor_code")),
+                    "customer_name": _safe_text(inner.get("customer_name")),
+                },
+                "spec_rows": spec_rows,
+                "ccp_rows": ccp_rows,
+                "material_rows": material_rows,
+                "coating_rows": coating_rows,
+            }
+        )
+    payload = {
+        "format": "fir_part_master_bundle_v1",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "exported_from": "saas",
+        "parts": parts_out,
+    }
+    filename = "fir_all_parts_master.json"
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/parts/excel-template")
+def download_part_master_excel_template():
+    """Blank workbook: Parts, Section_A–D with header rows matching import parser."""
+    body = build_part_master_template_xlsx()
+    return Response(
+        content=body,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="fir_part_master_template.xlsx"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/parts/{part_id}")
 def get_part_detail(part_id: int, ws: WsContext = Depends(get_ws)):
     p = _get_part(ws, part_id)
     _reconcile_stale_drawing_metadata(ws, p)
+    _persist_normalized_moi_for_part(ws, p)
     return _serialize_part_detail(ws, p)
 
 
@@ -720,7 +1275,12 @@ def replace_specs(part_id: int, body: SpecBulkBody, ws: WsContext = Depends(get_
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=row.method_of_inspection,
+                method_of_inspection=_norm_part_master_moi_row(
+                    row.parameter.strip(),
+                    row.specification,
+                    row.special_char,
+                    row.method_of_inspection,
+                ),
             )
         )
     ws.db.commit()
@@ -740,7 +1300,12 @@ def replace_complaints(part_id: int, body: SpecBulkBody, ws: WsContext = Depends
                 parameter=row.parameter.strip(),
                 specification=row.specification,
                 special_char=row.special_char,
-                method_of_inspection=row.method_of_inspection,
+                method_of_inspection=_norm_part_master_moi_row(
+                    row.parameter.strip(),
+                    row.specification,
+                    row.special_char,
+                    row.method_of_inspection,
+                ),
             )
         )
     ws.db.commit()
@@ -773,9 +1338,14 @@ def replace_coatings(part_id: int, body: SpecBulkBody, ws: WsContext = Depends(g
             PartCoatingV2(
                 part_id=p.id,
                 parameter=row.parameter.strip(),
-                specification=row.specification,
+                specification=_norm_coating_spec_row(row.parameter.strip(), row.specification),
                 special_char=row.special_char,
-                method_of_inspection=row.method_of_inspection,
+                method_of_inspection=_norm_part_master_moi_row(
+                    row.parameter.strip(),
+                    row.specification,
+                    row.special_char,
+                    row.method_of_inspection,
+                ),
             )
         )
     ws.db.commit()
@@ -789,19 +1359,48 @@ def _norm_opt_str(s: str | None) -> str | None:
     return t if t else None
 
 
+def _norm_part_master_moi_row(
+    parameter: str,
+    specification: str | None,
+    special_char: str | None,
+    method_of_inspection: str | None,
+) -> str | None:
+    _ = parameter, specification, special_char
+    return preserve_user_part_master_moi(method_of_inspection)
+
+
+def _norm_coating_spec_row(parameter: str, specification: str | None) -> str | None:
+    normalized = normalize_plating_thickness_specification(parameter, specification)
+    if normalized:
+        return normalized
+    return _norm_opt_str(specification)
+
+
 class PartMasterPartBlock(BaseModel):
     model_config = ConfigDict(extra="ignore")
     part_no: str
     drawing_rev: str | None = None
     description: str | None = None
 
+    @field_validator("part_no", mode="before")
+    @classmethod
+    def _part_no_sanitize(cls, v: object) -> str:
+        return sanitize_part_master_alnum_upper(v if isinstance(v, str) else (str(v) if v is not None else None))
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _description_sanitize(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        s = sanitize_part_master_alnum_upper(v if isinstance(v, str) else str(v))
+        return s if s else None
+
     @field_validator("part_no")
     @classmethod
     def _part_no_nonempty(cls, v: str) -> str:
-        s = (v or "").strip()
-        if not s:
-            raise ValueError("part.part_no is required")
-        return s
+        if not v:
+            raise ValueError("part.part_no is required (A–Z and 0–9 only)")
+        return v
 
 
 class PartMasterRowAD(BaseModel):
@@ -838,19 +1437,29 @@ class PartMasterBundleBody(BaseModel):
     parts: list[PartMasterSlice]
 
 
-def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice) -> PartV2:
+def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice, *, customer_id: int) -> PartV2:
     pn = body.part.part_no
     drawing_rev = _norm_opt_str(body.part.drawing_rev)
     description = _norm_opt_str(body.part.description)
 
     p = ws.db.execute(
-        select(PartV2).where(PartV2.company_id == ws.company.id, PartV2.part_no == pn)
+        select(PartV2).where(
+            PartV2.company_id == ws.company.id,
+            PartV2.customer_id == customer_id,
+            PartV2.part_no == pn,
+        )
     ).scalar_one_or_none()
     if p:
         p.drawing_rev = drawing_rev
         p.description = description
     else:
-        p = PartV2(company_id=ws.company.id, part_no=pn, drawing_rev=drawing_rev, description=description)
+        p = PartV2(
+            company_id=ws.company.id,
+            customer_id=customer_id,
+            part_no=pn,
+            drawing_rev=drawing_rev,
+            description=description,
+        )
         ws.db.add(p)
         ws.db.flush()
 
@@ -864,7 +1473,12 @@ def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice) -> PartV2:
                 parameter=row.parameter.strip(),
                 specification=_norm_opt_str(row.specification),
                 special_char=_norm_opt_str(row.special_char),
-                method_of_inspection=_norm_opt_str(row.method_of_inspection),
+                method_of_inspection=_norm_part_master_moi_row(
+                    row.parameter.strip(),
+                    _norm_opt_str(row.specification),
+                    _norm_opt_str(row.special_char),
+                    _norm_opt_str(row.method_of_inspection),
+                ),
             )
         )
 
@@ -878,7 +1492,12 @@ def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice) -> PartV2:
                 parameter=row.parameter.strip(),
                 specification=_norm_opt_str(row.specification),
                 special_char=_norm_opt_str(row.special_char),
-                method_of_inspection=_norm_opt_str(row.method_of_inspection),
+                method_of_inspection=_norm_part_master_moi_row(
+                    row.parameter.strip(),
+                    _norm_opt_str(row.specification),
+                    _norm_opt_str(row.special_char),
+                    _norm_opt_str(row.method_of_inspection),
+                ),
             )
         )
 
@@ -896,9 +1515,17 @@ def _apply_part_master_slice(ws: WsContext, body: PartMasterSlice) -> PartV2:
             PartCoatingV2(
                 part_id=p.id,
                 parameter=row.parameter.strip(),
-                specification=_norm_opt_str(row.specification),
+                specification=_norm_coating_spec_row(
+                    row.parameter.strip(),
+                    _norm_opt_str(row.specification),
+                ),
                 special_char=_norm_opt_str(row.special_char),
-                method_of_inspection=_norm_opt_str(row.method_of_inspection),
+                method_of_inspection=_norm_part_master_moi_row(
+                    row.parameter.strip(),
+                    _norm_opt_str(row.specification),
+                    _norm_opt_str(row.special_char),
+                    _norm_opt_str(row.method_of_inspection),
+                ),
             )
         )
     return p
@@ -918,7 +1545,22 @@ def import_part_master(body: PartMasterImportBody, ws: WsContext = Depends(get_w
         material_rows=body.material_rows,
         coating_rows=body.coating_rows,
     )
-    p = _apply_part_master_slice(ws, slice_body)
+    pn = slice_body.part.part_no
+    cust = _get_customer_for_part_upsert(ws, None)
+    existing = ws.db.scalars(
+        select(PartV2.part_no).where(
+            PartV2.company_id == ws.company.id,
+            PartV2.customer_id == cust.id,
+        )
+    ).all()
+    existing_sanitized = {sanitize_part_master_alnum_upper(r) for r in existing}
+    existing_sanitized.discard("")
+    if pn in existing_sanitized:
+        raise HTTPException(
+            status_code=400,
+            detail=f'Part number "{pn}" is already in Parts master for this customer — delete it first or use a different part number.',
+        )
+    p = _apply_part_master_slice(ws, slice_body, customer_id=cust.id)
     ws.db.commit()
     ws.db.refresh(p)
     return {"ok": True, "part_id": p.id, "part_no": p.part_no}
@@ -933,27 +1575,37 @@ def import_part_bundle(body: PartMasterBundleBody, ws: WsContext = Depends(get_w
         )
     if not body.parts:
         raise HTTPException(status_code=400, detail="parts array is empty")
+    cust = _get_customer_for_part_upsert(ws, None)
+    existing_rows = ws.db.scalars(
+        select(PartV2.part_no).where(
+            PartV2.company_id == ws.company.id,
+            PartV2.customer_id == cust.id,
+        )
+    ).all()
+    existing_sanitized = {sanitize_part_master_alnum_upper(r) for r in existing_rows}
+    existing_sanitized.discard("")
+    conflicts: list[str] = []
+    for sl in body.parts:
+        pn = sl.part.part_no
+        if pn in existing_sanitized:
+            conflicts.append(pn)
+    if conflicts:
+        shown = conflicts[:12]
+        more = len(conflicts) - len(shown)
+        tail = f"; and {more} more" if more > 0 else ""
+        raise HTTPException(
+            status_code=400,
+            detail="Part number(s) already in Parts master for this customer — remove duplicates from the import or delete the existing part(s) first: "
+            + ", ".join(shown)
+            + tail,
+        )
     last: PartV2 | None = None
     for sl in body.parts:
-        last = _apply_part_master_slice(ws, sl)
+        last = _apply_part_master_slice(ws, sl, customer_id=cust.id)
     ws.db.commit()
     if last:
         ws.db.refresh(last)
     return {"ok": True, "imported": len(body.parts)}
-
-
-@router.get("/parts/excel-template")
-def download_part_master_excel_template():
-    """Blank workbook: Parts, Section_A–D with header rows matching import parser."""
-    body = build_part_master_template_xlsx()
-    return Response(
-        content=body,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": 'attachment; filename="fir_part_master_template.xlsx"',
-            "Cache-Control": "no-store",
-        },
-    )
 
 
 @router.post("/parts/preview-excel-master")
@@ -999,87 +1651,14 @@ async def import_part_master_excel(
         body = PartMasterBundleBody(**bundle_dict)
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=f"Structure error: {e}") from e
+    cust = _get_customer_for_part_upsert(ws, None)
     last: PartV2 | None = None
     for sl in body.parts:
-        last = _apply_part_master_slice(ws, sl)
+        last = _apply_part_master_slice(ws, sl, customer_id=cust.id)
     ws.db.commit()
     if last:
         ws.db.refresh(last)
     return {"ok": True, "imported": len(body.parts), "format": body.format}
-
-
-@router.get("/parts/export-all")
-def export_all_parts_master(ws: WsContext = Depends(get_ws)):
-    rows = (
-        ws.db.execute(select(PartV2).where(PartV2.company_id == ws.company.id).order_by(PartV2.part_no))
-        .scalars()
-        .all()
-    )
-    parts_out: list[dict[str, Any]] = []
-    for p in rows:
-        inner = _serialize_part_detail(ws, p)
-
-        # Be defensive with legacy-imported data: some old rows may have
-        # non-string values in text fields. Normalize everything to strings
-        # so JSON export never fails with validation/type parse errors.
-        def _safe_text(v: Any) -> str:
-            return "" if v is None else str(v)
-
-        spec_rows = [
-            {
-                "parameter": _safe_text(r.get("parameter")),
-                "specification": _safe_text(r.get("specification")),
-                "special_char": _safe_text(r.get("special_char")),
-                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
-            }
-            for r in inner["spec_rows"]
-        ]
-        ccp_rows = [
-            {
-                "parameter": _safe_text(r.get("parameter")),
-                "specification": _safe_text(r.get("specification")),
-                "special_char": _safe_text(r.get("special_char")),
-                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
-            }
-            for r in inner["ccp_rows"]
-        ]
-        material_rows = [{"material_grade": _safe_text(m.get("material_grade"))} for m in inner["material_rows"]]
-        coating_rows = [
-            {
-                "parameter": _safe_text(r.get("parameter")),
-                "specification": _safe_text(r.get("specification")),
-                "special_char": _safe_text(r.get("special_char")),
-                "method_of_inspection": _safe_text(r.get("method_of_inspection")),
-            }
-            for r in inner["coating_rows"]
-        ]
-        parts_out.append(
-            {
-                "part": {
-                    "part_no": _safe_text(inner["part_no"]),
-                    "drawing_rev": _safe_text(inner.get("drawing_rev")),
-                    "description": _safe_text(inner.get("description")),
-                },
-                "spec_rows": spec_rows,
-                "ccp_rows": ccp_rows,
-                "material_rows": material_rows,
-                "coating_rows": coating_rows,
-            }
-        )
-    payload = {
-        "format": "fir_part_master_bundle_v1",
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "exported_from": "saas",
-        "parts": parts_out,
-    }
-    filename = "fir_all_parts_master.json"
-    return JSONResponse(
-        content=payload,
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "no-store",
-        },
-    )
 
 
 @router.delete("/parts/{part_id}/specs/{spec_row_id}")
@@ -1107,7 +1686,7 @@ async def upload_invoice(ws: WsContext = Depends(get_ws), invoice_file: UploadFi
         raise HTTPException(status_code=400, detail="Only .xlsx or .xls supported")
     raw = invoice_file.file.read()
     try:
-        rows, columns = parse_invoice_excel(raw)
+        rows, columns = parse_invoice_excel(raw, filename=invoice_file.filename)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read Excel: {e}") from e
 
@@ -1116,24 +1695,30 @@ async def upload_invoice(ws: WsContext = Depends(get_ws), invoice_file: UploadFi
 
 class EnrichBody(BaseModel):
     rows: list[dict[str, Any]]
+    source_file: str | None = None
 
 
 @router.post("/inspection/enrich")
 def inspection_enrich(body: EnrichBody, ws: WsContext = Depends(get_ws)):
+    cust_id = _resolve_default_customer_id(ws)
     parts = ws.db.execute(
-        select(PartV2.id, PartV2.part_no, PartV2.drawing_rev).where(PartV2.company_id == ws.company.id)
-    ).all()
-    parts_by_no: dict[str, tuple[str | None, int | None]] = {}
-    for row in parts:
-        pid, pno, dr = row[0], row[1], row[2]
-        parts_by_no[str(pno).strip()] = (dr, pid)
+        select(PartV2.id, PartV2.part_no, PartV2.drawing_rev, PartV2.customer_id, PartV2.description).where(
+            PartV2.company_id == ws.company.id
+        )
+    ).fetchall()
+    part_rows = [(str(pno).strip(), dr, pid, cid, desc) for pid, pno, dr, cid, desc in parts]
     counts = {
         r[0]: r[1]
         for r in ws.db.execute(
             select(PartSpecV2.part_id, func.count(PartSpecV2.id)).group_by(PartSpecV2.part_id)
-        ).all()
+        ).fetchall()
     }
-    enriched = enrich_rows_with_parts(body.rows, parts_by_no=parts_by_no, param_count_by_part_id=counts)
+    enriched = enrich_rows_with_parts(
+        body.rows,
+        part_rows=part_rows,
+        workspace_customer_id=cust_id,
+        param_count_by_part_id=counts,
+    )
     customer = None
     if ws.customer:
         customer = {
@@ -1148,6 +1733,20 @@ def inspection_enrich(body: EnrichBody, ws: WsContext = Depends(get_ws)):
     }
 
 
+@router.post("/inspection/preview-fir-intelligence")
+def inspection_preview_fir_intelligence(body: EnrichBody, ws: WsContext = Depends(get_ws)):
+    """Predict new vs duplicate intelligence rows (same logic as record-reports) for quota UI."""
+    rows_in = body.rows or []
+    parsed = [parse_row_for_intelligence(r, company_id=ws.company.id) for r in rows_in]
+    prev = preview_fir_intelligence_batch(ws.db, company_id=ws.company.id, parsed=parsed)
+    return {
+        "rows_total": prev.rows_total,
+        "rows_invalid": prev.rows_invalid,
+        "prospective_new_intelligence_records": prev.prospective_new,
+        "prospective_duplicate_intelligence_records": prev.prospective_duplicates,
+    }
+
+
 @router.get("/inspection/fir-quota")
 def inspection_fir_quota(
     n: int = 0,
@@ -1155,7 +1754,7 @@ def inspection_fir_quota(
 ):
     """Headroom for batch ZIP: invoices + FIR reports share the same monthly cap when billing is on."""
     settings = get_settings()
-    today = date.today()
+    today = billing_today()
     company = ws.company
     inv = count_invoices_this_month(ws.db, company.id, today)
     fir = count_fir_reports_this_month(ws.db, company.id, today)
@@ -1181,48 +1780,136 @@ def inspection_fir_quota(
 
 @router.post("/inspection/record-reports")
 def inspection_record_reports(body: EnrichBody, ws: WsContext = Depends(get_ws)):
-    """Persist one ledger row per FIR included in a batch (e.g. after ZIP). Counts toward monthly usage."""
+    """Persist deduplicated FIR intelligence events after a batch download. FIR PDFs always succeed independently."""
     settings = get_settings()
-    today = date.today()
+    today = billing_today()
     rows_in = body.rows or []
-    normalized: list[tuple[str, str | None]] = []
-    for row in rows_in:
-        pn = str(row.get("Part Number") or row.get("part_number") or "").strip()
-        inv_raw = row.get("Invoice Number")
-        if inv_raw is None:
-            inv_raw = row.get("invoice_number")
-        inv = str(inv_raw).strip() if inv_raw is not None and str(inv_raw).strip() else None
-        if not pn:
-            raise HTTPException(status_code=400, detail="Each row must include Part Number")
-        normalized.append((pn, inv))
+    parsed = [parse_row_for_intelligence(r, company_id=ws.company.id) for r in rows_in]
+    prev = preview_fir_intelligence_batch(ws.db, company_id=ws.company.id, parsed=parsed)
+    prospective_new = prev.prospective_new
 
-    n = len(normalized)
     ok, msg = can_record_fir_reports(
-        ws.db, ws.company, n=n, enable_subscription=settings.enable_subscription, today=today
+        ws.db, ws.company, n=prospective_new, enable_subscription=settings.enable_subscription, today=today
     )
     if not ok:
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=msg or "Usage limit exceeded")
 
     cust_id = ws.customer.id if ws.customer else None
-    for pn, inv in normalized:
-        ws.db.add(
-            FirReportEvent(
-                company_id=ws.company.id,
-                customer_id=cust_id,
-                part_no=pn,
-                invoice_no=inv,
-            )
-        )
+    summary = ingest_fir_intelligence_rows(
+        ws.db,
+        company_id=ws.company.id,
+        customer_id=cust_id,
+        rows=rows_in,
+        source_file=body.source_file,
+    )
     ws.db.commit()
 
     combined = count_combined_usage_this_month(ws.db, ws.company.id, today)
     return {
-        "recorded": n,
+        "rows_processed": summary.rows_total,
+        "rows_invalid": summary.rows_invalid,
+        "new_intelligence_records": summary.new_records,
+        "duplicate_intelligence_records": summary.duplicate_records,
+        "fir_reports_generated": summary.reports_generated,
         "invoices_this_month": count_invoices_this_month(ws.db, ws.company.id, today),
         "fir_reports_this_month": count_fir_reports_this_month(ws.db, ws.company.id, today),
         "usage_this_month": combined,
         "usage_limit": plan_invoice_limit(ws.db, ws.company.plan_type),
+        "recorded": summary.new_records,
     }
+
+
+FirAssetWhich = Literal[
+    "logo",
+    "inspector_signature",
+    "quality_signature",
+    "char_critical",
+    "char_safety",
+    "char_important",
+]
+
+# Browsers reuse GETs across many FIR iframes (same URL per asset); cuts repeat S3 GetObject per page load.
+_FIR_ASSET_CACHE_CONTROL = {"Cache-Control": "private, max-age=120"}
+
+
+@router.get("/fir-asset")
+def fir_workspace_asset(
+    which: FirAssetWhich = Query(..., description="Which company settings image to stream"),
+    user: CompanyUser = Depends(get_company_user_from_token_str),
+    db: Session = Depends(get_db_session),
+    admin_impersonation: bool = Depends(impersonated_by_admin_from_request),
+):
+    """Same-origin image bytes for FIR HTML (logos/signatures) so html2canvas/PDF capture works with S3."""
+    app_settings = get_settings()
+    company = get_company_for_user(user, db)
+    if not can_access_fir_workspace(
+        company,
+        enable_subscription=app_settings.enable_subscription,
+        today=billing_today(),
+        impersonated_by_admin=admin_impersonation,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": FIR_WORKSPACE_FORBIDDEN_CODE,
+                "message": FIR_WORKSPACE_FORBIDDEN_MESSAGE,
+            },
+        )
+    st = db.get(CompanySettings, company.id)
+    if not st:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No company settings")
+
+    blob_attr, mime_attr, path_attr = {
+        "logo": ("logo_blob", "logo_mime", "logo_path"),
+        "inspector_signature": ("inspector_signature_blob", "inspector_signature_mime", "inspector_signature_path"),
+        "quality_signature": ("quality_signature_blob", "quality_signature_mime", "quality_signature_path"),
+        "char_critical": ("char_critical_blob", "char_critical_mime", "char_critical_path"),
+        "char_safety": ("char_safety_blob", "char_safety_mime", "char_safety_path"),
+        "char_important": ("char_important_blob", "char_important_mime", "char_important_path"),
+    }[which]
+    blob_v = getattr(st, blob_attr)
+    mime_v = getattr(st, mime_attr)
+    path_v = getattr(st, path_attr)
+    media_default = "image/png"
+    media = ((mime_v or media_default).split(";")[0].strip() or media_default) if mime_v else media_default
+
+    if blob_v:
+        return Response(content=bytes(blob_v), media_type=media, headers=_FIR_ASSET_CACHE_CONTROL)
+
+    path_s = (path_v or "").strip()
+    if not path_s:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not configured")
+
+    if path_s.startswith("http://") or path_s.startswith("https://"):
+        try:
+            req = Request(path_s, headers={"User-Agent": "TheAIQualisys-FIR/1.0"})
+            with urlopen(req, timeout=45) as resp:
+                data = resp.read()
+            ct = (resp.headers.get("Content-Type") or media_default).split(";")[0].strip()
+            return Response(content=data, media_type=ct or media_default, headers=_FIR_ASSET_CACHE_CONTROL)
+        except (HTTPError, URLError, TimeoutError, OSError):
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to fetch asset URL")
+
+    if s3_assets_configured(app_settings) and is_company_scoped_storage_key(company.id, path_s):
+        try:
+            data, ct = fetch_s3_object_bytes(app_settings, path_s)
+            return Response(content=data, media_type=(ct.split(";")[0].strip() if ct else media) or media, headers=_FIR_ASSET_CACHE_CONTROL)
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to load asset from storage")
+
+    upload_root = _upload_root().resolve()
+    prefix = str(company.id) + "/"
+    if path_s.startswith(prefix):
+        local = (upload_root / path_s).resolve()
+        try:
+            local.relative_to(upload_root)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset file not found")
+        if local.is_file():
+            mt, _ = mimetypes.guess_type(str(local))
+            return FileResponse(local, media_type=mt or media or "application/octet-stream", headers=_FIR_ASSET_CACHE_CONTROL)
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset file not found")
 
 
 # --- FIR preview (HTML) — Bearer or ?token= for new tab ---
@@ -1231,11 +1918,17 @@ def fir_preview(
     request: Request,
     user: CompanyUser = Depends(get_company_user_from_token_str),
     db: Session = Depends(get_db_session),
+    admin_impersonation: bool = Depends(impersonated_by_admin_from_request),
     partName: str = "",
 ):
     company = get_company_for_user(user, db)
     settings = get_settings()
-    if not can_access_fir_workspace(company, enable_subscription=settings.enable_subscription):
+    if not can_access_fir_workspace(
+        company,
+        enable_subscription=settings.enable_subscription,
+        today=billing_today(),
+        impersonated_by_admin=admin_impersonation,
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -1258,7 +1951,7 @@ def fir_preview(
                     "parameter": s.parameter,
                     "specification": s.specification,
                     "special_char": s.special_char,
-                    "method_of_inspection": s.method_of_inspection,
+                    "method_of_inspection": preserve_user_part_master_moi(s.method_of_inspection),
                 }
                 for s in db.execute(select(PartSpecV2).where(PartSpecV2.part_id == part.id).order_by(PartSpecV2.id))
                 .scalars()
@@ -1269,7 +1962,7 @@ def fir_preview(
                     "parameter": s.parameter,
                     "specification": s.specification,
                     "special_char": s.special_char,
-                    "method_of_inspection": s.method_of_inspection,
+                    "method_of_inspection": preserve_user_part_master_moi(s.method_of_inspection),
                 }
                 for s in db.execute(
                     select(PartComplaintV2).where(PartComplaintV2.part_id == part.id).order_by(PartComplaintV2.id)
@@ -1288,9 +1981,9 @@ def fir_preview(
             coating_data = [
                 {
                     "parameter": s.parameter,
-                    "specification": s.specification,
+                    "specification": _norm_coating_spec_row(s.parameter, s.specification),
                     "special_char": s.special_char,
-                    "method_of_inspection": s.method_of_inspection,
+                    "method_of_inspection": preserve_user_part_master_moi(s.method_of_inspection),
                 }
                 for s in db.execute(
                     select(PartCoatingV2).where(PartCoatingV2.part_id == part.id).order_by(PartCoatingV2.id)
@@ -1298,20 +1991,59 @@ def fir_preview(
                 .scalars()
                 .all()
             ]
+            spec_data, ccp_data, material_data, coating_data = _part_master_rows_with_continuous_sl_no(
+                spec_data, ccp_data, material_data, coating_data
+            )
 
-    st = db.execute(select(CompanySettings).where(CompanySettings.company_id == company.id)).scalar_one_or_none()
-    quali_font_data_uri, quali_font_format = _quali_font_data_uri_from_settings(st)
+    st = db.execute(
+        _company_settings_select(company.id, load_asset_blobs=not s3_assets_configured(settings))
+    ).scalar_one_or_none()
+    quali_font_data_uri, quali_font_format = _quali_font_src_from_settings(settings, st)
     if not quali_font_data_uri:
         quali_font_data_uri, quali_font_format = _default_static_quali_font()
 
-    settings = _settings_dict_for_fir(db, company.id)
-    api_static_base = str(request.base_url).rstrip("/") + "/api/app/static/"
+    fir_ctx_settings = _settings_dict_for_fir(db, company.id)
+    token = request.query_params.get("token") or ""
+    # Same-origin relative URLs so <img src> works in the browser even when
+    # request.base_url behind a proxy would point at an internal host (breaks icons).
+    app_path_prefix = "/api/app"
+    for which_key, settings_key in (
+        ("logo", "logo_path"),
+        ("inspector_signature", "inspector_signature_path"),
+        ("quality_signature", "quality_signature_path"),
+        ("char_critical", "char_critical_path"),
+        ("char_safety", "char_safety_path"),
+        ("char_important", "char_important_path"),
+    ):
+        v = fir_ctx_settings.get(settings_key)
+        if v and token:
+            q = f"which={which_key}&token={quote(token, safe='')}"
+            fir_ctx_settings[settings_key] = f"{app_path_prefix}/fir-asset?{q}"
+
+    api_static_base = f"{app_path_prefix}/static/"
+
+    preview_query_keys = (
+        "partName",
+        "description",
+        "drawRev",
+        "vendorCode",
+        "customer",
+        "reportNo",
+        "invoiceNo",
+        "reportDate",
+        "quantity",
+        "sampleSize",
+        "noOfParams",
+        "previewFrameIndex",
+        "embedded",
+    )
+    preview_query = {k: str(request.query_params.get(k) or "") for k in preview_query_keys}
 
     return templates.TemplateResponse(
         request=request,
         name="fir_preview.html",
         context={
-            "settings": settings,
+            "settings": fir_ctx_settings,
             "spec_data": spec_data,
             "ccp_data": ccp_data,
             "material_data": material_data,
@@ -1319,7 +2051,17 @@ def fir_preview(
             "quali_font_data_uri": quali_font_data_uri,
             "quali_font_format": quali_font_format,
             "api_static_base": api_static_base,
+            "preview_query": preview_query,
+            "fir_boot": {
+                "settings": fir_ctx_settings,
+                "spec_data": spec_data,
+                "ccp_data": ccp_data,
+                "material_data": material_data,
+                "coating_data": coating_data,
+                "query": preview_query,
+            },
         },
+        headers={"Cache-Control": "private, no-store, max-age=0"},
     )
 
 

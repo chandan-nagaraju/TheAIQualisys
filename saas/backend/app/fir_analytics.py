@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from statistics import median
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import case, extract, func, select
 from sqlalchemy.orm import Session
 
+from app.fir_intelligence_ingest import INVOICE_DATE_MAX_YEAR, INVOICE_DATE_MIN_YEAR, is_plausible_invoice_date
 from app.models import Customer, FirReportEvent, PartV2
 
 
@@ -18,6 +21,140 @@ def _utc_date(dt: datetime) -> date:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).date()
+
+
+def _last_day_of_calendar_month(year: int, month: int) -> date:
+    if month == 12:
+        return date(year, 12, 31)
+    return date(year, month + 1, 1) - timedelta(days=1)
+
+
+def _fir_event_invoice_day(ev: FirReportEvent) -> date:
+    if ev.invoice_date is not None and is_plausible_invoice_date(ev.invoice_date):
+        return ev.invoice_date
+    return _utc_date(ev.created_at)
+
+
+def _effective_invoice_date_sql():
+    """SQL expression: plausible invoice_date, else logged-at date (UTC)."""
+    lo = date(INVOICE_DATE_MIN_YEAR, 1, 1)
+    hi = date(INVOICE_DATE_MAX_YEAR, 12, 31)
+    return case(
+        (FirReportEvent.invoice_date.between(lo, hi), FirReportEvent.invoice_date),
+        else_=func.date(FirReportEvent.created_at),
+    )
+
+
+def _event_day_for_fy_series(ev: Any, *, use_invoice_date: bool) -> date:
+    """FY chart bucketing: either invoice business date or logged-at date."""
+    if use_invoice_date:
+        inv = getattr(ev, "invoice_date", None)
+        if inv is not None:
+            d = inv if isinstance(inv, date) else date.fromisoformat(str(inv))
+            if is_plausible_invoice_date(d):
+                return d
+    ca = getattr(ev, "created_at", None)
+    if ca is None:
+        raise ValueError("event missing created_at")
+    return _utc_date(ca if isinstance(ca, datetime) else datetime.fromisoformat(str(ca)))
+
+
+def _parse_quantity_numeric(qty: str | None) -> float | None:
+    """Parse stored fir_events.quantity (normalized string) to float for median; mirrors ingest normalization loosely."""
+    if qty is None:
+        return None
+    s = str(qty).strip().replace(",", "")
+    if not s:
+        return None
+    s = s.replace("\u2009", "").replace("\u00a0", "")
+    try:
+        d = Decimal(s)
+    except InvalidOperation:
+        m = re.match(r"^([-+]?\d+(?:\.\d+)?)", s)
+        if not m:
+            return None
+        try:
+            d = Decimal(m.group(1))
+        except InvalidOperation:
+            return None
+    return float(d)
+
+
+def _median_quantity_from_event_qty_strings(qty_strings: list[str]) -> float | None:
+    """Median order qty for admin \"Expected QTY\".
+
+    Historical migrations and merge-010 stored placeholder ``0`` when quantity was unknown, so an
+    all-zero series is treated as *no data* (None → UI em dash).
+
+    When there is a mix of zeros and positive quantities (typical: legacy placeholders + newer
+    ingests with real qty), median is taken over **positive** values only so placeholders do not
+    drown out real orders. Genuine zero-qty lines are rare in this domain; if you need strict
+    median including zeros, revisit this heuristic.
+    """
+    nums: list[float] = []
+    for s in qty_strings:
+        n = _parse_quantity_numeric(s)
+        if n is not None:
+            nums.append(n)
+    if not nums:
+        return None
+    if all(n == 0.0 for n in nums):
+        return None
+    positive = [n for n in nums if n > 0]
+    if positive:
+        return float(median(positive))
+    return float(median(nums))
+
+
+def fy_april_start_year_for_date(d: date) -> int:
+    """Indian financial year begins in April: return the calendar year of that April 1."""
+    return d.year if d.month >= 4 else d.year - 1
+
+
+def build_fy_monthly_report_series(
+    events: Iterable[Any],
+    fy_start_year: int,
+    *,
+    use_invoice_date: bool = False,
+) -> list[dict[str, Any]]:
+    """Count FIR rows by calendar month for Apr (Y) through Mar (Y+1)."""
+    start = date(fy_start_year, 4, 1)
+    end_excl = date(fy_start_year + 1, 4, 1)
+    counts = [0] * 12
+    for ev in events:
+        d = _event_day_for_fy_series(ev, use_invoice_date=use_invoice_date)
+        if d < start or d >= end_excl:
+            continue
+        idx = (d.month - 4) % 12
+        counts[idx] += 1
+
+    month_nums = [
+        (4, fy_start_year),
+        (5, fy_start_year),
+        (6, fy_start_year),
+        (7, fy_start_year),
+        (8, fy_start_year),
+        (9, fy_start_year),
+        (10, fy_start_year),
+        (11, fy_start_year),
+        (12, fy_start_year),
+        (1, fy_start_year + 1),
+        (2, fy_start_year + 1),
+        (3, fy_start_year + 1),
+    ]
+    month_abbr = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
+    out: list[dict[str, Any]] = []
+    for i, (m, y) in enumerate(month_nums):
+        yy = y % 100
+        out.append(
+            {
+                "year": y,
+                "month": m,
+                "label": f"{month_abbr[i]} '{yy:02d}",
+                "count": counts[i],
+            }
+        )
+    return out
 
 
 def _classify_rhythm(
@@ -55,10 +192,65 @@ def _classify_rhythm(
     return "occasional"
 
 
-def build_fir_intelligence(db: Session, company_id: int, today: date | None = None) -> dict[str, Any]:
-    today = today or datetime.now(timezone.utc).date()
+def list_fir_invoice_months(db: Session, company_id: int) -> list[dict[str, Any]]:
+    """Distinct calendar months with FIR rows (effective invoice date), newest first."""
+    eff = _effective_invoice_date_sql()
+    ycol = extract("year", eff)
+    mcol = extract("month", eff)
+    rows = db.execute(
+        select(ycol, mcol, func.count(FirReportEvent.id))
+        .where(
+            FirReportEvent.company_id == company_id,
+            ycol >= INVOICE_DATE_MIN_YEAR,
+            ycol <= INVOICE_DATE_MAX_YEAR,
+        )
+        .group_by(ycol, mcol)
+        .order_by(ycol.desc(), mcol.desc())
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        yi, mi, cnt = int(row[0]), int(row[1]), int(row[2] or 0)
+        d = date(yi, mi, 1)
+        out.append(
+            {
+                "year": yi,
+                "month": mi,
+                "row_count": cnt,
+                "label": d.strftime("%B %Y"),
+            }
+        )
+    return out
 
-    events = (
+
+def build_fir_intelligence(
+    db: Session,
+    company_id: int,
+    *,
+    filter_year: int,
+    filter_month: int | None = None,
+    qty_reliable_since: date | None = None,
+    today: date | None = None,
+) -> dict[str, Any]:
+    """Aggregate FIR intelligence for admin.
+
+    When ``filter_month`` is None, ``filter_year`` is the **April-start calendar year** of the Indian FY
+    (e.g. 2026 → 2026-04-01 through 2027-03-31). When ``filter_month`` is set, ``filter_year`` / ``filter_month``
+    are the calendar month to slice.
+    """
+    real_today = today or datetime.now(timezone.utc).date()
+    if filter_month is None:
+        # API `year` when month omitted = April-start year of Indian FY (e.g. 2026 → Apr 2026–Mar 2027).
+        fy_start = filter_year
+        month_start = date(fy_start, 4, 1)
+        month_end = date(fy_start + 1, 3, 31)
+        scope = "financial_year"
+    else:
+        month_start = date(filter_year, filter_month, 1)
+        month_end = _last_day_of_calendar_month(filter_year, filter_month)
+        scope = "calendar_month"
+    as_of = min(real_today, month_end)
+
+    events: list[FirReportEvent] = (
         db.execute(
             select(FirReportEvent)
             .where(FirReportEvent.company_id == company_id)
@@ -68,31 +260,39 @@ def build_fir_intelligence(db: Session, company_id: int, today: date | None = No
         .all()
     )
 
+    filtered = [e for e in events if month_start <= _fir_event_invoice_day(e) <= month_end]
+
     customers = (
         db.execute(select(Customer).where(Customer.company_id == company_id).order_by(Customer.name))
         .scalars()
         .all()
     )
-    cust_by_id = {c.id: c for c in customers}
 
     parts = db.execute(select(PartV2).where(PartV2.company_id == company_id)).scalars().all()
     desc_by_part_no = {p.part_no.strip(): (p.description or "") for p in parts}
 
-    # (customer_key, part_no) -> list of dates (one per event, preserves frequency on same day)
-    by_key: dict[tuple[int | None, str], list[date]] = defaultdict(list)
-    for ev in events:
+    # (customer_key, part_no) -> list of (event_date, quantity_str) — rows in selected month only
+    by_key: dict[tuple[int | None, str], list[tuple[date, str]]] = defaultdict(list)
+    for ev in filtered:
         pn = (ev.part_no or "").strip()
         if not pn:
             continue
         cid = ev.customer_id
-        by_key[(cid, pn)].append(_utc_date(ev.created_at))
+        evday = _fir_event_invoice_day(ev)
+        qty_raw = (ev.quantity or "").strip()
+        by_key[(cid, pn)].append((evday, qty_raw))
 
     rhythm_counts: dict[str, int] = defaultdict(int)
     repeated_groups = 0
     part_rows: list[dict[str, Any]] = []
 
-    for (cid, pn), dates in by_key.items():
-        sorted_dates = sorted(dates)
+    for (cid, pn), pairs in by_key.items():
+        pairs_sorted = sorted(pairs, key=lambda x: (x[0], x[1]))
+        sorted_dates = [d for d, _ in pairs_sorted]
+        qty_for_median = [
+            q for d, q in pairs_sorted if qty_reliable_since is None or d >= qty_reliable_since
+        ]
+        median_qty = _median_quantity_from_event_qty_strings(qty_for_median)
         rc = len(sorted_dates)
         if rc > 1:
             repeated_groups += 1
@@ -106,7 +306,7 @@ def build_fir_intelligence(db: Session, company_id: int, today: date | None = No
             gaps.append((b - a).days)
         med_interval = float(median(gaps)) if gaps else None
 
-        rhythm = _classify_rhythm(report_count=rc, sorted_dates=sorted_dates, today=today)
+        rhythm = _classify_rhythm(report_count=rc, sorted_dates=sorted_dates, today=as_of)
         rhythm_counts[rhythm] += 1
 
         part_rows.append(
@@ -115,17 +315,18 @@ def build_fir_intelligence(db: Session, company_id: int, today: date | None = No
                 "part_no": pn,
                 "description": (desc_by_part_no.get(pn) or "")[:500],
                 "report_count": rc,
+                "median_quantity": median_qty,
                 "is_repeat": rc > 1,
                 "first_report_date": first_d.isoformat(),
                 "last_report_date": last_d.isoformat(),
                 "median_interval_days": med_interval,
-                "days_since_last_report": (today - last_d).days,
+                "days_since_last_report": (as_of - last_d).days,
                 "avg_reports_per_day_in_span": avg_per_day,
                 "rhythm": rhythm,
             }
         )
 
-    # Per-customer rollups (include customers with zero events)
+    # Per-customer rollups (include customers with zero events in this month)
     by_customer: dict[int | None, list[dict[str, Any]]] = defaultdict(list)
     for row in part_rows:
         by_customer[row["customer_id"]].append(row)
@@ -160,11 +361,42 @@ def build_fir_intelligence(db: Session, company_id: int, today: date | None = No
 
     rhythm_summary = {k: rhythm_counts[k] for k in sorted(rhythm_counts.keys())}
 
+    # FY bar chart: invoice_date month (same as table slice and Usage FIR count).
+    fy_chart: dict[str, Any] | None = None
+    if filter_month is None:
+        fy_series = build_fy_monthly_report_series(events, filter_year, use_invoice_date=True)
+        fy_label = f"{filter_year}-{filter_year + 1}"
+        fy_chart = {
+            "fy_start_year": filter_year,
+            "fy_label": fy_label,
+            "months": fy_series,
+            "fy_total": sum(m["count"] for m in fy_series),
+        }
+    else:
+        fy_start = fy_april_start_year_for_date(month_start)
+        fy_series = build_fy_monthly_report_series(events, fy_start, use_invoice_date=True)
+        fy_label = f"{fy_start}-{fy_start + 1}"
+        fy_chart = {
+            "fy_start_year": fy_start,
+            "fy_label": fy_label,
+            "months": fy_series,
+            "fy_total": sum(m["count"] for m in fy_series),
+        }
+
     return {
-        "as_of": today.isoformat(),
+        "as_of": as_of.isoformat(),
         "company_id": company_id,
+        "view": {
+            "scope": scope,
+            "year": filter_year,
+            "month": filter_month,
+            "month_start": month_start.isoformat(),
+            "month_end": month_end.isoformat(),
+            "qty_reliable_since": qty_reliable_since.isoformat() if qty_reliable_since else None,
+        },
+        "fy_monthly_reports": fy_chart,
         "summary": {
-            "total_report_events": len(events),
+            "total_report_events": len(filtered),
             "distinct_part_customer_pairs": len(by_key),
             "repeated_part_pairs": repeated_groups,
             "rhythm_part_pairs": rhythm_summary,

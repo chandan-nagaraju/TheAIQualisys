@@ -1,0 +1,1093 @@
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { apiFetch } from "../api";
+
+type Plan = {
+  id: number;
+  product_id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  price_inr: number;
+  duration_days: number;
+  seats: number;
+  listing_active: boolean;
+  sort_order: number;
+};
+
+type Product = {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  listing_active: boolean;
+  trial_enabled?: boolean;
+  trial_duration_days?: number;
+  plans: Plan[];
+};
+
+type CheckoutContext = {
+  user_id: number;
+  email: string;
+  company_id: number;
+  company_name: string;
+};
+
+export type DesktopOrder = {
+  id: number;
+  order_number: string;
+  company_id: number;
+  user_id: number;
+  product_id: number;
+  plan_id: number;
+  product_code: string;
+  product_name: string;
+  plan_code: string;
+  plan_name: string;
+  duration_days: number;
+  seats: number;
+  unit_price_inr: number;
+  total_price_inr: number;
+  currency: string;
+  status: string;
+  created_at: string | null;
+};
+
+function statusLabel(status: string): string {
+  if (status === "pending_payment") return "Pending payment";
+  if (status === "payment_submitted") return "Payment submitted — pending review";
+  if (status === "approved") return "Approved";
+  if (status === "rejected") return "Rejected";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "pending_review") return "Pending review";
+  return status;
+}
+
+function inr(n: number): string {
+  return `₹${n.toLocaleString("en-IN")}`;
+}
+
+/** Software catalog */
+export function SoftwareCatalogPage() {
+  const nav = useNavigate();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [disabled, setDisabled] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!localStorage.getItem("fir_token")) {
+      nav("/login");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await apiFetch<Product[]>("/api/desktop/products");
+        if (!cancelled) setProducts(rows);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to load";
+        if (!cancelled) {
+          if (/404|Not found/i.test(msg)) setDisabled(true);
+          else setErr(msg);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [nav]);
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-white">Software</h1>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link to="/software/licenses" className="text-brand-500 hover:underline">
+            My licenses
+          </Link>
+          <Link to="/software/downloads" className="text-brand-500 hover:underline">
+            Downloads
+          </Link>
+          <Link to="/software/orders" className="text-brand-500 hover:underline">
+            My orders
+          </Link>
+        </div>
+      </div>
+      <p className="text-sm text-slate-400">
+        Desktop applications for Windows. Each seat is one independent license for one PC.
+      </p>
+      {loading && <p className="text-sm text-slate-500">Loading catalog…</p>}
+      {disabled && (
+        <p className="rounded-lg border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          Desktop software purchasing is not enabled on this environment yet.
+        </p>
+      )}
+      {err && <p className="text-sm text-red-400">{err}</p>}
+      <div className="space-y-4">
+        {products.map((p) => {
+          const from = p.plans.length ? Math.min(...p.plans.map((pl) => pl.price_inr)) : null;
+          return (
+            <div
+              key={p.id}
+              className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-5 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div>
+                <h2 className="text-lg font-semibold text-white">{p.name}</h2>
+                <p className="mt-1 text-sm text-slate-400">{p.description || p.code}</p>
+                {from != null && (
+                  <p className="mt-2 text-sm text-slate-300">From {inr(from)} / seat / year</p>
+                )}
+                {p.trial_enabled ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {p.trial_duration_days ?? 7}-day free trial available
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                <Link
+                  to={`/software/${encodeURIComponent(p.code)}`}
+                  className="inline-flex rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
+                >
+                  Select plan
+                </Link>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {!loading && !disabled && !err && products.length === 0 && (
+        <p className="text-sm text-slate-400">No desktop products are listed yet.</p>
+      )}
+    </div>
+  );
+}
+
+/** Product → plan → seats → checkout confirm */
+export function SoftwareProductPage() {
+  const { productCode = "" } = useParams();
+  const nav = useNavigate();
+  const [product, setProduct] = useState<Product | null>(null);
+  const [planId, setPlanId] = useState<number | null>(null);
+  const [seats, setSeats] = useState("1");
+  const [ctx, setCtx] = useState<CheckoutContext | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [trialBusy, setTrialBusy] = useState(false);
+  const [step, setStep] = useState<"plan" | "confirm">("plan");
+
+  useEffect(() => {
+    if (!localStorage.getItem("fir_token")) {
+      nav("/login");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [rows, checkout] = await Promise.all([
+          apiFetch<Product[]>("/api/desktop/products"),
+          apiFetch<CheckoutContext>("/api/desktop/checkout-context"),
+        ]);
+        if (cancelled) return;
+        const p = rows.find((r) => r.code === productCode) || null;
+        setProduct(p);
+        setCtx(checkout);
+        if (p?.plans[0]) setPlanId(p.plans[0].id);
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [nav, productCode]);
+
+  const plan = useMemo(
+    () => product?.plans.find((pl) => pl.id === planId) || null,
+    [product, planId],
+  );
+  const seatN = Math.max(1, parseInt(seats, 10) || 1);
+  const total = plan ? plan.price_inr * seatN : 0;
+
+  async function placeOrder(e: FormEvent) {
+    e.preventDefault();
+    if (!product || !plan) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const order = await apiFetch<DesktopOrder>("/api/desktop/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          product_id: product.id,
+          plan_id: plan.id,
+          seats: seatN,
+        }),
+      });
+      nav(`/software/orders/${order.id}`);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "Could not create order");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startTrial() {
+    if (!product) return;
+    setTrialBusy(true);
+    setErr(null);
+    try {
+      await apiFetch("/api/desktop/trials", {
+        method: "POST",
+        body: JSON.stringify({ product_code: product.code }),
+      });
+      nav("/software/licenses");
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "Could not start trial");
+    } finally {
+      setTrialBusy(false);
+    }
+  }
+
+  if (err && !product) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-10">
+        <p className="text-sm text-red-400">{err}</p>
+        <Link to="/software" className="mt-4 inline-block text-sm text-brand-500">
+          ← Software
+        </Link>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return <p className="px-4 py-10 text-sm text-slate-500">Loading…</p>;
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-6 px-4 py-10">
+      <Link to="/software" className="text-sm text-brand-500 hover:underline">
+        ← Software
+      </Link>
+      <h1 className="text-2xl font-semibold text-white">{product.name}</h1>
+      <p className="text-sm text-slate-400">{product.description}</p>
+
+      {product.trial_enabled ? (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-4">
+          <p className="text-sm text-slate-300">
+            Try {product.name} free for {product.trial_duration_days ?? 7} days on one PC. One trial per
+            product — buying a full license later issues a separate paid key.
+          </p>
+          <button
+            type="button"
+            disabled={trialBusy}
+            onClick={() => void startTrial()}
+            className="mt-3 rounded-lg border border-brand-500/60 bg-brand-950/40 px-4 py-2 text-sm font-medium text-brand-200 hover:bg-brand-900/50 disabled:opacity-40"
+          >
+            {trialBusy ? "Starting trial…" : "Start 7-Day Trial"}
+          </button>
+        </div>
+      ) : null}
+
+      {err && <p className="text-sm text-red-400">{err}</p>}
+
+      {step === "plan" && (
+        <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+          <h2 className="text-sm font-semibold text-slate-200">Select plan</h2>
+          <div className="space-y-2">
+            {product.plans.map((pl) => (
+              <label
+                key={pl.id}
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
+                  planId === pl.id ? "border-brand-500 bg-brand-950/30" : "border-slate-700"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="plan"
+                  checked={planId === pl.id}
+                  onChange={() => setPlanId(pl.id)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block font-medium text-white">{pl.name}</span>
+                  <span className="text-sm text-slate-400">
+                    {inr(pl.price_inr)} / seat · {pl.duration_days} days · 1 seat = 1 PC
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <label className="block text-xs text-slate-500">
+            Number of seats
+            <input
+              type="number"
+              min={1}
+              max={500}
+              className="mt-1 w-full max-w-xs rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              value={seats}
+              onChange={(e) => setSeats(e.target.value)}
+            />
+          </label>
+          {plan && (
+            <p className="text-sm text-slate-300">
+              {seatN} × {inr(plan.price_inr)} = <strong className="text-white">{inr(total)}</strong>
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={!plan}
+            onClick={() => setStep("confirm")}
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-40"
+          >
+            Continue to confirm
+          </button>
+        </div>
+      )}
+
+      {step === "confirm" && plan && ctx && (
+        <form onSubmit={placeOrder} className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+          <h2 className="text-sm font-semibold text-slate-200">Confirm order</h2>
+          <dl className="grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
+            <div>
+              <dt className="text-xs text-slate-500">Product</dt>
+              <dd className="text-white">{product.name}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Plan</dt>
+              <dd className="text-white">{plan.name}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Seats</dt>
+              <dd className="text-white">{seatN}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Price per seat</dt>
+              <dd className="text-white">{inr(plan.price_inr)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Total</dt>
+              <dd className="text-lg font-semibold text-white">{inr(total)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-slate-500">Company</dt>
+              <dd className="text-white">{ctx.company_name}</dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-xs text-slate-500">Account email</dt>
+              <dd className="text-white">{ctx.email}</dd>
+            </div>
+          </dl>
+          <p className="text-xs text-slate-500">
+            Creating this order does not charge you and does not issue license keys yet. After create, you will get UPI
+            instructions and can submit a UTR for admin review.
+          </p>
+          {err && <p className="text-sm text-red-400">{err}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setStep("plan")}
+              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200"
+            >
+              Back
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+            >
+              {busy ? "Creating…" : "Create order"}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+export function SoftwareOrdersPage() {
+  const nav = useNavigate();
+  const [orders, setOrders] = useState<DesktopOrder[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!localStorage.getItem("fir_token")) {
+      nav("/login");
+      return;
+    }
+    (async () => {
+      try {
+        setOrders(await apiFetch<DesktopOrder[]>("/api/desktop/orders"));
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Failed to load orders");
+      }
+    })();
+  }, [nav]);
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 px-4 py-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-white">My software orders</h1>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link to="/software/licenses" className="text-brand-500 hover:underline">
+            My licenses
+          </Link>
+          <Link to="/software" className="text-brand-500 hover:underline">
+            ← Software
+          </Link>
+        </div>
+      </div>
+      {err && <p className="text-sm text-red-400">{err}</p>}
+      <div className="space-y-3">
+        {orders.map((o) => (
+          <Link
+            key={o.id}
+            to={`/software/orders/${o.id}`}
+            className="block rounded-xl border border-slate-800 bg-slate-900/50 p-4 hover:border-slate-600"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="font-mono text-sm text-brand-400">{o.order_number}</span>
+              <span className="text-xs text-slate-400">{statusLabel(o.status)}</span>
+            </div>
+            <p className="mt-1 text-sm text-white">
+              {o.product_name} · {o.plan_name}
+            </p>
+            <p className="text-xs text-slate-400">
+              {o.seats} seat{o.seats === 1 ? "" : "s"} · {inr(o.total_price_inr)}
+            </p>
+          </Link>
+        ))}
+      </div>
+      {!err && orders.length === 0 && (
+        <p className="text-sm text-slate-400">No orders yet. Start from the Software catalog.</p>
+      )}
+    </div>
+  );
+}
+
+export function SoftwareOrderDetailPage() {
+  const { orderId } = useParams();
+  const nav = useNavigate();
+  const [order, setOrder] = useState<DesktopOrder | null>(null);
+  const [payments, setPayments] = useState<
+    { id: number; status: string; reference_note: string | null; amount_inr: number; created_at: string | null }[]
+  >([]);
+  const [upi, setUpi] = useState<{ upi_id: string; payee_name: string; instructions: string | null } | null>(null);
+  const [utr, setUtr] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [payErr, setPayErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(0);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!localStorage.getItem("fir_token")) {
+      nav("/login");
+      return;
+    }
+    const id = parseInt(orderId || "", 10);
+    if (!id) {
+      setErr("Invalid order");
+      return;
+    }
+    (async () => {
+      try {
+        const [o, p, u] = await Promise.all([
+          apiFetch<DesktopOrder>(`/api/desktop/orders/${id}`),
+          apiFetch<typeof payments>(`/api/desktop/orders/${id}/payments`),
+          apiFetch<{ upi_id: string; payee_name: string; instructions: string | null }>("/api/desktop/upi-settings"),
+        ]);
+        setOrder(o);
+        setPayments(p);
+        setUpi(u);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Order not found");
+      }
+    })();
+  }, [nav, orderId, tick]);
+
+  async function submitPayment(e: FormEvent) {
+    e.preventDefault();
+    if (!order) return;
+    setPayErr(null);
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("utr_reference", utr);
+      if (file) fd.append("screenshot", file);
+      const token = localStorage.getItem("fir_token");
+      const res = await fetch(`/api/desktop/orders/${order.id}/payments`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const j = await res.json();
+          if (j?.detail) detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
+      }
+      setUtr("");
+      setFile(null);
+      setTick((x) => x + 1);
+    } catch (ex) {
+      setPayErr(ex instanceof Error ? ex.message : "Payment submit failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (err) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-10">
+        <p className="text-sm text-red-400">{err}</p>
+        <Link to="/software/orders" className="mt-4 inline-block text-sm text-brand-500">
+          ← My orders
+        </Link>
+      </div>
+    );
+  }
+  if (!order) return <p className="px-4 py-10 text-sm text-slate-500">Loading…</p>;
+
+  const canPay =
+    order.status === "pending_payment" ||
+    order.status === "rejected" ||
+    (order.status === "payment_submitted" && !payments.some((p) => p.status === "pending_review"));
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-6 px-4 py-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link to="/software/orders" className="text-sm text-brand-500 hover:underline">
+          ← My orders
+        </Link>
+        <Link to="/software/licenses" className="text-sm text-brand-500 hover:underline">
+          My licenses
+        </Link>
+      </div>
+      <h1 className="text-2xl font-semibold text-white">Order confirmation</h1>
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
+        <p className="font-mono text-lg text-brand-400">{order.order_number}</p>
+        <p className="text-sm text-slate-300">
+          Status: <strong className="text-white">{statusLabel(order.status)}</strong>
+        </p>
+        <dl className="grid gap-2 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-slate-500">Product</dt>
+            <dd className="text-white">{order.product_name}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">Plan</dt>
+            <dd className="text-white">{order.plan_name}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">Seats</dt>
+            <dd className="text-white">{order.seats}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">Price per seat</dt>
+            <dd className="text-white">{inr(order.unit_price_inr)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">Total due</dt>
+            <dd className="text-lg font-semibold text-white">{inr(order.total_price_inr)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">Term</dt>
+            <dd className="text-white">{order.duration_days} days</dd>
+          </div>
+        </dl>
+        {order.status === "approved" && (
+          <div className="space-y-2 text-xs text-emerald-400">
+            <p>Payment approved. License keys were minted for each seat.</p>
+            <p>
+              <Link to="/software/licenses" className="text-brand-400 hover:underline">
+                Open My Licenses
+              </Link>
+              {" · "}
+              <button
+                type="button"
+                className="text-brand-400 hover:underline disabled:opacity-50"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setErr(null);
+                  try {
+                    await apiFetch(`/api/desktop/orders/${order.id}/resend-license-email`, {
+                      method: "POST",
+                      body: "{}",
+                    });
+                    setMsg("License email resent (or queued). Check your inbox.");
+                  } catch (e) {
+                    setErr(e instanceof Error ? e.message : "Resend failed");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Resend license email
+              </button>
+            </p>
+            {msg && <p className="text-slate-300">{msg}</p>}
+          </div>
+        )}
+      </div>
+
+      {upi && order.status !== "approved" && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-2">
+          <h2 className="text-sm font-semibold text-slate-200">UPI payment instructions</h2>
+          <p className="text-sm text-slate-300">
+            Payee: <strong className="text-white">{upi.payee_name || "—"}</strong>
+          </p>
+          <p className="text-sm text-slate-300">
+            UPI ID: <code className="text-brand-400">{upi.upi_id || "Not configured yet"}</code>
+          </p>
+          <p className="text-sm text-slate-300">
+            Amount: <strong className="text-white">{inr(order.total_price_inr)}</strong>
+          </p>
+          {upi.instructions && <p className="text-xs text-slate-500 whitespace-pre-wrap">{upi.instructions}</p>}
+        </div>
+      )}
+
+      {canPay && (
+        <form onSubmit={submitPayment} className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-200">Submit payment reference</h2>
+          <p className="text-xs text-slate-500">
+            Submitting a UTR does not automatically approve payment. An admin must verify before licenses are issued.
+          </p>
+          <label className="block text-xs text-slate-500">
+            UTR / UPI reference
+            <input
+              required
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              value={utr}
+              onChange={(e) => setUtr(e.target.value)}
+              placeholder="e.g. 123456789012"
+            />
+          </label>
+          <label className="block text-xs text-slate-500">
+            Payment screenshot (optional, JPEG/PNG/WebP, max 5 MB)
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="mt-1 block w-full text-sm text-slate-400"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
+          </label>
+          {payErr && <p className="text-sm text-red-400">{payErr}</p>}
+          <button
+            type="submit"
+            disabled={busy || !upi?.upi_id}
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-40"
+          >
+            {busy ? "Submitting…" : "Submit for review"}
+          </button>
+        </form>
+      )}
+
+      {payments.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold text-slate-200">Payment history</h2>
+          {payments.map((p) => (
+            <div key={p.id} className="rounded-lg border border-slate-800 px-3 py-2 text-sm text-slate-300">
+              <span className="text-white">{p.status}</span>
+              {p.reference_note && <span className="ml-2 text-slate-500">UTR {p.reference_note}</span>}
+              <span className="ml-2 text-slate-500">{inr(p.amount_inr)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type LicenseRow = {
+  id: number;
+  product_id?: number;
+  product_code?: string | null;
+  product_name?: string | null;
+  plan_name?: string | null;
+  order_number?: string | null;
+  order_id?: number | null;
+  order_seats?: number | null;
+  seat_index?: number | null;
+  entitlement_type?: string;
+  status: string;
+  key_masked: string;
+  device_status: string;
+  is_activated: boolean;
+  issued_at?: string | null;
+  expires_at?: string | null;
+  email_status?: string | null;
+};
+
+/** Customer My Licenses — masked keys; reveal/copy on demand; resend email. */
+export function SoftwareLicensesPage() {
+  const nav = useNavigate();
+  const [rows, setRows] = useState<LicenseRow[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [disabled, setDisabled] = useState(false);
+  const [revealed, setRevealed] = useState<Record<number, string>>({});
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = async () => {
+    setErr(null);
+    setDisabled(false);
+    try {
+      const data = await apiFetch<LicenseRow[]>("/api/desktop/licenses");
+      setRows(data);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : "Failed";
+      if (/404|Not found/i.test(m)) setDisabled(true);
+      else setErr(m);
+    }
+  };
+
+  useEffect(() => {
+    if (!localStorage.getItem("fir_token")) {
+      nav("/login");
+      return;
+    }
+    void load();
+  }, [nav]);
+
+  const reveal = async (id: number) => {
+    setBusyId(id);
+    setErr(null);
+    try {
+      const res = await apiFetch<{ license_id: number; license_key: string }>(
+        `/api/desktop/licenses/${id}/reveal`,
+        { method: "POST", body: "{}" },
+      );
+      setRevealed((prev) => ({ ...prev, [id]: res.license_key }));
+      try {
+        await navigator.clipboard.writeText(res.license_key);
+        setMsg("License key revealed and copied to clipboard.");
+      } catch {
+        setMsg("License key revealed.");
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Reveal failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const resend = async (orderId: number) => {
+    setBusyId(-orderId);
+    setErr(null);
+    setMsg(null);
+    try {
+      await apiFetch(`/api/desktop/orders/${orderId}/resend-license-email`, {
+        method: "POST",
+        body: "{}",
+      });
+      setMsg("License email resent.");
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Resend failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const grouped = rows.reduce<Record<string, LicenseRow[]>>((acc, row) => {
+    const isTrial = (row.entitlement_type || "").toLowerCase() === "trial";
+    const key = isTrial
+      ? `trial-${row.product_code || row.product_id || row.id}`
+      : row.order_number || `order-${row.order_id || row.id}`;
+    (acc[key] ||= []).push(row);
+    return acc;
+  }, {});
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 px-4 py-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-white">My licenses</h1>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link to="/software/orders" className="text-brand-500 hover:underline">
+            My orders
+          </Link>
+          <Link to="/software" className="text-brand-500 hover:underline">
+            ← Software
+          </Link>
+        </div>
+      </div>
+      <p className="text-sm text-slate-400">
+        Keys are masked by default. Reveal only when you need to activate software. Each key is for one PC and one
+        product. Trial keys are separate from paid keys.
+      </p>
+      {disabled && (
+        <p className="rounded-lg border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          Desktop licensing is not enabled on this environment yet.
+        </p>
+      )}
+      {err && <p className="text-sm text-red-400">{err}</p>}
+      {msg && <p className="text-sm text-emerald-400">{msg}</p>}
+      <div className="space-y-6">
+        {Object.entries(grouped).map(([orderKey, seats]) => {
+          const first = seats[0];
+          const isTrial = (first.entitlement_type || "").toLowerCase() === "trial";
+          return (
+            <div key={orderKey} className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold text-white">{first.product_name || "Product"}</h2>
+                    {isTrial ? (
+                      <span className="rounded border border-sky-700/50 bg-sky-950/40 px-2 py-0.5 text-[11px] uppercase tracking-wide text-sky-200">
+                        Trial
+                      </span>
+                    ) : (
+                      <span className="rounded border border-slate-600/60 bg-slate-800/60 px-2 py-0.5 text-[11px] uppercase tracking-wide text-slate-300">
+                        Paid
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-slate-400">
+                    {isTrial ? "7-day desktop trial" : first.plan_name || "Plan"}
+                    {!isTrial && first.order_seats != null
+                      ? ` · ${first.order_seats} seat${first.order_seats === 1 ? "" : "s"}`
+                      : ""}
+                  </p>
+                  {first.order_number && (
+                    <p className="mt-1 font-mono text-xs text-brand-400">{first.order_number}</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {isTrial && first.product_code && (
+                    <Link
+                      to={`/software/${encodeURIComponent(first.product_code)}`}
+                      className="rounded-lg border border-brand-500/50 px-3 py-1.5 text-xs text-brand-200 hover:bg-brand-950/40"
+                    >
+                      Buy Full License
+                    </Link>
+                  )}
+                  {isTrial && (
+                    <Link
+                      to="/software/downloads"
+                      className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800"
+                    >
+                      Downloads
+                    </Link>
+                  )}
+                  {first.order_id != null && (
+                    <button
+                      type="button"
+                      disabled={busyId === -first.order_id}
+                      onClick={() => void resend(first.order_id!)}
+                      className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                    >
+                      Resend license email
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-3">
+                {seats
+                  .slice()
+                  .sort((a, b) => (a.seat_index || 0) - (b.seat_index || 0))
+                  .map((lic) => (
+                    <div key={lic.id} className="rounded-lg border border-slate-800 px-3 py-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-white">
+                          {isTrial ? "Trial license" : `Seat ${lic.seat_index ?? "—"}`}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {lic.status} / {lic.device_status}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-mono text-xs text-slate-300">
+                        License: {revealed[lic.id] || lic.key_masked}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Issued {lic.issued_at ? new Date(lic.issued_at).toLocaleDateString() : "—"}
+                        {" · "}
+                        Expires {lic.expires_at ? new Date(lic.expires_at).toLocaleDateString() : "—"}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={busyId === lic.id}
+                        onClick={() => void reveal(lic.id)}
+                        className="mt-2 text-xs text-brand-400 hover:underline disabled:opacity-40"
+                      >
+                        {revealed[lic.id] ? "Reveal & copy again" : "Reveal / copy key"}
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {!disabled && !err && rows.length === 0 && (
+        <p className="text-sm text-slate-400">
+          No licenses yet. Start a trial or purchase from Software after payment approval.
+        </p>
+      )}
+    </div>
+  );
+}
+
+type DownloadProduct = {
+  product_id: number;
+  product_code: string;
+  product_name: string;
+  current: DownloadVersion | null;
+  recommended: DownloadVersion | null;
+  versions: DownloadVersion[];
+};
+
+type DownloadVersion = {
+  id: number;
+  version: string;
+  release_channel: string;
+  is_current: boolean;
+  is_recommended: boolean;
+  is_mandatory: boolean;
+  file_name: string | null;
+  file_sha256: string | null;
+  file_size_bytes: number | null;
+  release_date: string | null;
+  release_notes: string | null;
+};
+
+/** Entitled software downloads — short-lived token redeem. */
+export function SoftwareDownloadsPage() {
+  const nav = useNavigate();
+  const [rows, setRows] = useState<DownloadProduct[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [disabled, setDisabled] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!localStorage.getItem("fir_token")) {
+      nav("/login");
+      return;
+    }
+    (async () => {
+      try {
+        setDisabled(false);
+        const data = await apiFetch<DownloadProduct[]>("/api/desktop/downloads");
+        setRows(data);
+      } catch (e) {
+        const m = e instanceof Error ? e.message : "Failed";
+        if (/404|Not found/i.test(m)) setDisabled(true);
+        else setErr(m);
+      }
+    })();
+  }, [nav]);
+
+  const download = async (installerId: number) => {
+    setBusyId(installerId);
+    setErr(null);
+    setMsg(null);
+    try {
+      const minted = await apiFetch<{ token: string }>(
+        `/api/desktop/downloads/installers/${installerId}/token`,
+        { method: "POST", body: "{}" },
+      );
+      const redeemed = await apiFetch<{
+        download_url: string;
+        file_name: string | null;
+      }>(`/api/desktop/downloads/redeem/${encodeURIComponent(minted.token)}`);
+      if (redeemed.download_url.startsWith("memory://")) {
+        setMsg("Download authorized (test storage). Installer would download in production S3.");
+      } else {
+        window.location.href = redeemed.download_url;
+        setMsg("Download started.");
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 px-4 py-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-white">Software downloads</h1>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link to="/software/licenses" className="text-brand-500 hover:underline">
+            My licenses
+          </Link>
+          <Link to="/software" className="text-brand-500 hover:underline">
+            ← Software
+          </Link>
+        </div>
+      </div>
+      <p className="text-sm text-slate-400">
+        Downloads require an eligible paid license. Installers are delivered via short-lived private links — never share
+        permanent URLs.
+      </p>
+      {disabled && (
+        <p className="rounded-lg border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          Desktop licensing is not enabled on this environment yet.
+        </p>
+      )}
+      {err && <p className="text-sm text-red-400">{err}</p>}
+      {msg && <p className="text-sm text-emerald-400">{msg}</p>}
+      {!disabled && !err && rows.length === 0 && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 text-sm text-slate-300 space-y-2">
+          <p>No eligible licenses for downloads yet.</p>
+          <Link to="/software" className="text-brand-400 hover:underline">
+            Browse software / purchase
+          </Link>
+        </div>
+      )}
+      <div className="space-y-6">
+        {rows.map((p) => (
+          <div key={p.product_id} className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
+            <h2 className="text-lg font-semibold text-white">{p.product_name}</h2>
+            {p.current && (
+              <p className="text-xs text-emerald-400">Current: v{p.current.version}</p>
+            )}
+            {p.recommended && (
+              <p className="text-xs text-brand-400">Recommended: v{p.recommended.version}</p>
+            )}
+            {p.versions.length === 0 && (
+              <p className="text-sm text-slate-500">No published installers yet for this product.</p>
+            )}
+            <div className="space-y-3">
+              {p.versions.map((v) => (
+                <div key={v.id} className="rounded-lg border border-slate-800 px-3 py-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-white">
+                      v{v.version}
+                      {v.is_current ? " · current" : ""}
+                      {v.is_recommended ? " · recommended" : ""}
+                      {v.is_mandatory ? " · mandatory" : ""}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busyId === v.id}
+                      onClick={() => void download(v.id)}
+                      className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs text-white disabled:opacity-40"
+                    >
+                      Download
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {v.file_size_bytes != null ? `${v.file_size_bytes.toLocaleString()} bytes` : "—"} · SHA-256{" "}
+                    <code className="text-slate-400">{v.file_sha256 || "—"}</code>
+                  </p>
+                  {v.release_notes && (
+                    <p className="mt-2 text-xs text-slate-400 whitespace-pre-wrap">{v.release_notes}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

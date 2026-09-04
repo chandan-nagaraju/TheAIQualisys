@@ -11,11 +11,12 @@ export type PartSlice = {
   part: { part_no: string; drawing_rev?: string | null; description?: string | null };
   spec_rows?: AdRow[];
   ccp_rows?: AdRow[];
-  material_rows?: { material_grade: string }[];
+  material_rows?: { material_grade: string; sl_no?: number }[];
   coating_rows?: AdRow[];
 };
 
 type AdRow = {
+  sl_no?: number;
   parameter: string;
   specification?: string | null;
   special_char?: string | null;
@@ -38,6 +39,7 @@ const removePartBtnClass =
 function AdTable({
   title,
   rows,
+  slNoStart,
   onDeleteRow,
   tableClass,
   headRowClass,
@@ -47,6 +49,7 @@ function AdTable({
 }: {
   title: string;
   rows: AdRow[];
+  slNoStart: number;
   onDeleteRow?: (rowIndex: number) => void;
   tableClass: string;
   headRowClass: string;
@@ -67,6 +70,7 @@ function AdTable({
       <table className="min-w-full text-left text-xs">
         <thead>
           <tr className={`border-b ${headRowClass}`}>
+            <th className="px-2 py-1 w-10">Sl No</th>
             <th className="px-2 py-1">Parameter</th>
             <th className="px-2 py-1">Specification</th>
             <th className="px-2 py-1">Special char</th>
@@ -77,6 +81,9 @@ function AdTable({
         <tbody>
           {rows.map((r, i) => (
             <tr key={i} className={`border-b ${bodyCellClass}`}>
+              <td className={`px-2 py-1 text-center font-mono ${mutedCellClass}`}>
+                {r.sl_no ?? slNoStart + i}
+              </td>
               <td className={`px-2 py-1 font-medium ${bodyCellClass}`}>{r.parameter}</td>
               <td className={`px-2 py-1 ${bodyCellClass}`}>{r.specification ?? "—"}</td>
               <td className={`px-2 py-1 ${mutedCellClass}`}>{r.special_char ?? "—"}</td>
@@ -207,9 +214,17 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                     </div>
                   </dl>
                   <div className="mt-3 grid gap-3">
+                    {(() => {
+                      const slA = 1;
+                      const slB = slA + (sl.spec_rows?.length ?? 0);
+                      const slC = slB + (sl.ccp_rows?.length ?? 0);
+                      const slD = slC + (sl.material_rows?.length ?? 0);
+                      return (
+                        <>
                     <AdTable
                       title="Section A — dimensions"
                       rows={sl.spec_rows ?? []}
+                      slNoStart={slA}
                       onDeleteRow={(rowIndex) => removeAdRow(idx, "spec_rows", rowIndex)}
                       tableClass={tableWrapClass}
                       headRowClass={tableHeadClass}
@@ -220,6 +235,7 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                     <AdTable
                       title="Section B — customer complaints / checkpoints"
                       rows={sl.ccp_rows ?? []}
+                      slNoStart={slB}
                       onDeleteRow={(rowIndex) => removeAdRow(idx, "ccp_rows", rowIndex)}
                       tableClass={tableWrapClass}
                       headRowClass={tableHeadClass}
@@ -235,7 +251,12 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                         <ul className="px-2 py-2 text-xs text-slate-800">
                           {sl.material_rows.map((m, i) => (
                             <li key={i} className="mb-1 flex items-center justify-between gap-2">
-                              <span className="font-mono">{m.material_grade}</span>
+                              <span>
+                                <span className="mr-2 inline-block w-8 text-center font-mono text-slate-600">
+                                  {m.sl_no ?? slC + i}
+                                </span>
+                                <span className="font-mono">{m.material_grade}</span>
+                              </span>
                               <button
                                 type="button"
                                 className={removeBtnClass}
@@ -255,6 +276,7 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                     <AdTable
                       title="Section D — surface coating"
                       rows={sl.coating_rows ?? []}
+                      slNoStart={slD}
                       onDeleteRow={(rowIndex) => removeAdRow(idx, "coating_rows", rowIndex)}
                       tableClass={tableWrapClass}
                       headRowClass={tableHeadClass}
@@ -262,6 +284,9 @@ export default function PartMasterExcelReview({ bundle, fileLabel, onConfirm, on
                       mutedCellClass={tableMutedClass}
                       noRowsClass={noRowsClass}
                     />
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}

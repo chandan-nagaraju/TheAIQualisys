@@ -25,7 +25,39 @@ from typing import Any
 
 import pandas as pd
 
+from app.part_field_validation import sanitize_part_master_alnum_upper
+from app.part_master_coating_spec import normalize_ad_row_coating_spec, normalize_bundle_part_master_coating_spec
+from app.part_master_moi import preserve_user_part_master_moi
+
 BUNDLE_FORMAT = "fir_part_master_bundle_v1"
+
+
+def _normalize_ad_row(row: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalize_ad_row_coating_spec(row)
+    return {**normalized, "method_of_inspection": preserve_user_part_master_moi(normalized.get("method_of_inspection"))}
+
+
+def _normalize_bundle_part_master(bundle: dict[str, Any]) -> dict[str, Any]:
+    return normalize_bundle_part_master_coating_spec(bundle)
+
+
+def assign_continuous_sl_numbers(part: dict[str, Any]) -> dict[str, Any]:
+    """
+    Assign one global Sl No sequence across sections A → B → C → D.
+    Excel often restarts at 1 in each section; part master / FIR use one continuous run.
+    """
+    n = 1
+    for key in ("spec_rows", "ccp_rows", "material_rows", "coating_rows"):
+        for row in part.get(key) or []:
+            row["sl_no"] = n
+            n += 1
+    return part
+
+
+def assign_continuous_sl_numbers_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
+    for part in bundle.get("parts") or []:
+        assign_continuous_sl_numbers(part)
+    return bundle
 
 
 def _norm(s: str) -> str:
@@ -36,6 +68,11 @@ def _cell(v: Any) -> str:
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return ""
     return str(v).strip()
+
+
+def _sanitize_part_no(v: Any) -> str:
+    """Canonical part number for grouping and bundle output (A–Z, 0–9 only)."""
+    return sanitize_part_master_alnum_upper(_cell(v))
 
 
 _SEPARATOR_TOKENS = {":", "-", "--", "---", ":", "："}
@@ -190,12 +227,14 @@ def _ad_rows_from_df(df: pd.DataFrame) -> list[dict[str, Any]]:
         if not param:
             continue
         rows.append(
-            {
-                "parameter": param,
-                "specification": _cell(r.get("specification")) or None,
-                "special_char": _cell(r.get("special_char")) or None,
-                "method_of_inspection": _cell(r.get("method_of_inspection")) or None,
-            }
+            _normalize_ad_row(
+                {
+                    "parameter": param,
+                    "specification": _cell(r.get("specification")) or None,
+                    "special_char": _cell(r.get("special_char")) or None,
+                    "method_of_inspection": _cell(r.get("method_of_inspection")) or None,
+                }
+            )
         )
     return rows
 
@@ -244,7 +283,7 @@ def _guess_part_no_from_sheet_name(name: str, all_sheet_names: list[str]) -> str
     if len(all_sheet_names) > 1 and n in ("sheet1", "sheet 1"):
         return None
     if re.match(r"^[A-Za-z0-9][A-Za-z0-9\-._]{2,50}$", raw) and not raw.lower().startswith("sheet"):
-        return raw.strip()
+        return sanitize_part_master_alnum_upper(raw.strip())
     return None
 
 
@@ -297,7 +336,7 @@ def _scan_fir_key_values(df: pd.DataFrame) -> dict[str, str]:
                 v_inline = inline.group(2).strip()
                 if v_inline and not _is_separator_token(v_inline):
                     if "part" in k and "no" in k:
-                        out.setdefault("part_no", v_inline)
+                        out.setdefault("part_no", _sanitize_part_no(v_inline))
                     elif "draw" in k or "rev" in k:
                         out.setdefault("drawing_rev", v_inline)
                     elif k in ("description", "part name", "desc"):
@@ -310,7 +349,7 @@ def _scan_fir_key_values(df: pd.DataFrame) -> dict[str, str]:
             if not val:
                 continue
             if re.match(r"^part\s*no(\.|umber)?$", lab) or lab in ("fir part no", "part number"):
-                out.setdefault("part_no", val)
+                out.setdefault("part_no", _sanitize_part_no(val))
             elif re.match(r"^draw(?:ing)?\.?\s*rev(?:ision)?\.?\s*no\.?$", lab) or lab in (
                 "draw rev no",
                 "drawing rev",
@@ -322,8 +361,159 @@ def _scan_fir_key_values(df: pd.DataFrame) -> dict[str, str]:
     return out
 
 
-def _find_ad_header_row(df: pd.DataFrame) -> int | None:
-    for r in range(min(100, len(df))):
+def _row_joined_norm(df: pd.DataFrame, r: int) -> str:
+    max_c = min(25, df.shape[1])
+    vals = [_norm(_cell(df.iloc[r, c])) for c in range(max_c)]
+    return " ".join(x for x in vals if x)
+
+
+def _find_section_anchor_row(df: pd.DataFrame, section: str) -> int | None:
+    """Row index of a loose FIR section title (B/C/D)."""
+    max_r = min(220, len(df))
+    for r in range(max_r):
+        joined = _row_joined_norm(df, r)
+        if not joined:
+            continue
+        if section == "b" and (
+            "section b" in joined
+            or joined.startswith("b)")
+            or ("customer" in joined and "complaint" in joined)
+            or "check points" in joined
+            or "checkpoints" in joined
+        ):
+            return r
+        if section == "c" and (
+            "section c" in joined or ("material" in joined and "grade" in joined)
+        ):
+            return r
+        if section == "d" and ("section d" in joined or "surface coating" in joined):
+            return r
+    return None
+
+
+def _is_fir_section_boundary_row(df: pd.DataFrame, r: int) -> bool:
+    joined = _row_joined_norm(df, r)
+    if not joined:
+        return False
+    return (
+        joined.startswith("b)")
+        or joined.startswith("c)")
+        or joined.startswith("d)")
+        or "section b" in joined
+        or "section c" in joined
+        or "section d" in joined
+        or ("customer" in joined and "complaint" in joined)
+        or ("material" in joined and "grade" in joined)
+        or "surface coating" in joined
+    )
+
+
+_INSPECTION_METHOD_HINTS = (
+    "gauge",
+    "gau",
+    "caliper",
+    "calliper",
+    "vernier",
+    "micrometer",
+    "mic",
+    "dft",
+    "meter",
+    "metre",
+    "dhg",
+    "dvc",
+    "dhi",
+    "cmm",
+    "tpg",
+    "plug",
+    "height",
+    "visual",
+    "go no go",
+    "thread",
+    "projector",
+    "profile",
+    "scale",
+    "ruler",
+)
+
+
+def _looks_like_inspection_method(v: str) -> bool:
+    n = _norm(v)
+    if not n:
+        return False
+    if n in {"visual", "visual inspection", "ok", "n/a", "na"}:
+        return True
+    return any(h in n for h in _INSPECTION_METHOD_HINTS)
+
+
+def _looks_like_special_char_tag(v: str) -> bool:
+    n = _norm(v)
+    if not n:
+        return False
+    return n in {"c", "s", "i", "critical", "safety", "important", "spl char", "special char"}
+
+
+def _parse_ad_fields_from_rest(rest: list[str]) -> tuple[str | None, str | None, str | None]:
+    """Map trailing cells to specification / special_char / method_of_inspection."""
+    if not rest:
+        return None, None, None
+    if len(rest) == 1:
+        if _looks_like_inspection_method(rest[0]):
+            return None, None, rest[0]
+        return _normalize_spec_value(rest[0]), None, None
+    if len(rest) == 2:
+        spec = _normalize_spec_value(rest[0])
+        if _looks_like_inspection_method(rest[1]):
+            return spec, None, rest[1]
+        if _looks_like_special_char_tag(rest[1]):
+            return spec, rest[1], None
+        return spec, None, rest[1]
+    spec = _normalize_spec_value(rest[0])
+    if _looks_like_inspection_method(rest[1]) and not _looks_like_special_char_tag(rest[1]):
+        return spec, None, rest[1]
+    if len(rest) >= 3 and _looks_like_inspection_method(rest[2]):
+        special = rest[1] if _looks_like_special_char_tag(rest[1]) else None
+        return spec, special, rest[2]
+    if _looks_like_inspection_method(rest[-1]):
+        special = rest[1] if len(rest) > 2 and not _looks_like_inspection_method(rest[1]) else None
+        return spec, special, rest[-1]
+    return spec, rest[1] if len(rest) > 1 else None, rest[2] if len(rest) > 2 else None
+
+
+def _is_ad_table_header_row(vals: list[str]) -> bool:
+    norms = {_norm(v) for v in vals if v}
+    if "parameter" in norms:
+        return True
+    if "sl no" in norms or "sl.no" in norms:
+        if "specification" in norms or any("specification" in x for x in norms):
+            return True
+    return False
+
+
+def _ad_row_from_loose_row_vals(vals: list[str]) -> dict[str, Any] | None:
+    if _is_ad_table_header_row(vals):
+        return None
+    non_empty = [v for v in vals if v]
+    if not non_empty:
+        return None
+    idx = 1 if re.fullmatch(r"\d+(?:\.\d+)?", non_empty[0]) else 0
+    if idx >= len(non_empty):
+        return None
+    parameter = non_empty[idx].strip()
+    if not parameter or _norm(parameter) in {"parameter", "part", "part no", "part number"}:
+        return None
+    spec, special, method = _parse_ad_fields_from_rest(non_empty[idx + 1 :])
+    return _normalize_ad_row(
+        {
+            "parameter": parameter,
+            "specification": spec,
+            "special_char": special,
+            "method_of_inspection": method,
+        }
+    )
+
+
+def _find_ad_header_row(df: pd.DataFrame, min_row: int = 0) -> int | None:
+    for r in range(min_row, min(100, len(df))):
         cells: list[str] = []
         for c in range(min(28, df.shape[1])):
             v = df.iloc[r, c]
@@ -363,18 +553,29 @@ def _ad_colmap_from_header_row(df: pd.DataFrame, hdr: int) -> dict[str, int]:
     return m
 
 
-def _parse_loose_ad_table(df: pd.DataFrame) -> list[dict[str, Any]]:
-    hdr = _find_ad_header_row(df)
+def _parse_loose_ad_table(
+    df: pd.DataFrame,
+    start_row: int = 0,
+    end_row: int | None = None,
+) -> list[dict[str, Any]]:
+    hdr = _find_ad_header_row(df, min_row=start_row)
     if hdr is None:
+        return []
+    if end_row is not None and hdr >= end_row:
         return []
     cmap = _ad_colmap_from_header_row(df, hdr)
     pc = cmap.get("parameter")
     if pc is None:
         return []
     sc = cmap.get("specification")
+    spc = cmap.get("special_char")
+    moi = cmap.get("method_of_inspection")
     rows: list[dict[str, Any]] = []
     empty_run = 0
-    for r in range(hdr + 1, min(hdr + 250, len(df))):
+    stop = min(end_row if end_row is not None else len(df), hdr + 250, len(df))
+    for r in range(hdr + 1, stop):
+        if _is_fir_section_boundary_row(df, r):
+            break
         param = _cell(df.iloc[r, pc])
         if not param:
             empty_run += 1
@@ -382,20 +583,133 @@ def _parse_loose_ad_table(df: pd.DataFrame) -> list[dict[str, Any]]:
                 break
             continue
         empty_run = 0
+        if _norm(param) in {"parameter", "part", "part no", "part number"}:
+            continue
         spec_v = _cell(df.iloc[r, sc]) if sc is not None else ""
-        spc = cmap.get("special_char")
-        moi = cmap.get("method_of_inspection")
         sch = _cell(df.iloc[r, spc]) if spc is not None else ""
         meth = _cell(df.iloc[r, moi]) if moi is not None else ""
+        if sch and not meth and _looks_like_inspection_method(sch):
+            meth, sch = sch, ""
+        elif not sch and not meth:
+            vals = [_cell(df.iloc[r, c]) for c in range(min(25, df.shape[1]))]
+            parsed = _ad_row_from_loose_row_vals(vals)
+            if parsed and parsed["parameter"] == param:
+                spec_v = parsed.get("specification") or spec_v
+                sch = parsed.get("special_char") or sch
+                meth = parsed.get("method_of_inspection") or meth
         rows.append(
-            {
-                "parameter": param,
-                "specification": spec_v or None,
-                "special_char": sch or None,
-                "method_of_inspection": meth or None,
-            }
+            _normalize_ad_row(
+                {
+                    "parameter": param,
+                    "specification": spec_v or None,
+                    "special_char": sch or None,
+                    "method_of_inspection": meth or None,
+                }
+            )
         )
     return rows
+
+
+def _ad_row_from_colmap(df: pd.DataFrame, r: int, cmap: dict[str, int]) -> dict[str, Any] | None:
+    """Read one A/B/D-style row using a header column map from Section A."""
+    pc = cmap.get("parameter")
+    if pc is None:
+        return None
+    param = _cell(df.iloc[r, pc])
+    if _is_serial_only(param):
+        vals = [_cell(df.iloc[r, c]) for c in range(min(25, df.shape[1]))]
+        return _ad_row_from_loose_row_vals(vals)
+    if not param or _norm(param) in {"parameter", "part", "part no", "part number"}:
+        return None
+    sc = cmap.get("specification")
+    spc = cmap.get("special_char")
+    moi = cmap.get("method_of_inspection")
+    spec_v = _cell(df.iloc[r, sc]) if sc is not None else ""
+    sch = _cell(df.iloc[r, spc]) if spc is not None else ""
+    meth = _cell(df.iloc[r, moi]) if moi is not None else ""
+    if sch and not meth and _looks_like_inspection_method(sch):
+        meth, sch = sch, ""
+    if not spec_v and not sch and not meth:
+        vals = [_cell(df.iloc[r, c]) for c in range(min(25, df.shape[1]))]
+        parsed = _ad_row_from_loose_row_vals(vals)
+        if parsed and parsed["parameter"] == param:
+            spec_v = parsed.get("specification") or spec_v
+            sch = parsed.get("special_char") or sch
+            meth = parsed.get("method_of_inspection") or meth
+    return _normalize_ad_row(
+        {
+            "parameter": param,
+            "specification": spec_v or None,
+            "special_char": sch or None,
+            "method_of_inspection": meth or None,
+        }
+    )
+
+
+def _is_section_b_boilerplate_row(joined_norm: str) -> bool:
+    if not joined_norm:
+        return True
+    if joined_norm.startswith("b)") or joined_norm.startswith("section b"):
+        return True
+    if "cpi" in joined_norm and ("issue" in joined_norm or "100" in joined_norm):
+        return True
+    if "customer" in joined_norm and "complaint" in joined_norm:
+        return True
+    return False
+
+
+def _dedupe_ad_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str | None, str | None, str | None]] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        key = (
+            row["parameter"],
+            row.get("specification"),
+            row.get("special_char"),
+            row.get("method_of_inspection"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
+
+
+def _scan_section_b_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """Parse Section B (CCP) from loose single-sheet FIR layouts."""
+    b_anchor = _find_section_anchor_row(df, "b")
+    if b_anchor is None:
+        return []
+    c_anchor = _find_section_anchor_row(df, "c")
+
+    rows = _parse_loose_ad_table(df, start_row=b_anchor, end_row=c_anchor)
+    if rows:
+        return rows
+
+    # Many FIR templates omit the repeated Parameter/Specification header under Section B.
+    hdr = _find_ad_header_row(df, min_row=0)
+    cmap = _ad_colmap_from_header_row(df, hdr) if hdr is not None else {}
+    stop = c_anchor if c_anchor is not None else len(df)
+    out: list[dict[str, Any]] = []
+    for r in range(b_anchor + 1, min(stop, len(df))):
+        joined = _row_joined_norm(df, r)
+        if not joined:
+            continue
+        if _is_fir_section_boundary_row(df, r):
+            break
+        if _is_section_b_boilerplate_row(joined):
+            continue
+        vals = [_cell(df.iloc[r, c]) for c in range(min(25, df.shape[1]))]
+        if _is_ad_table_header_row(vals):
+            continue
+        row: dict[str, Any] | None = None
+        if cmap.get("parameter") is not None:
+            row = _ad_row_from_colmap(df, r, cmap)
+        if row is None:
+            row = _ad_row_from_loose_row_vals(vals)
+        if row:
+            out.append(row)
+    return _dedupe_ad_rows(out)
 
 
 def _scan_material_grade_cells(df: pd.DataFrame) -> list[dict[str, Any]]:
@@ -588,38 +902,13 @@ def _scan_section_d_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
 
     def parse_candidate_row(r: int) -> None:
         vals = [_cell(df.iloc[r, c]) for c in range(max_c)]
-        non_empty = [v for v in vals if v]
-        if not non_empty:
-            return
-        # Skip obvious section/meta rows
-        joined_norm = " ".join(_norm(v) for v in non_empty)
+        joined_norm = " ".join(_norm(v) for v in vals if v)
         if "sampling plan" in joined_norm or "inspector" in joined_norm or "status of inspection" in joined_norm:
             return
-
-        # Typical row: [slno, parameter, specification, special_char, method, ...]
-        idx = 0
-        if re.fullmatch(r"\d+(?:\.\d+)?", non_empty[0]):
-            idx = 1
-        if idx >= len(non_empty):
+        row = _ad_row_from_loose_row_vals(vals)
+        if not row:
             return
-        parameter = non_empty[idx].strip()
-        specification = _normalize_spec_value(non_empty[idx + 1]) if idx + 1 < len(non_empty) else None
-        special_char = non_empty[idx + 2].strip() if idx + 2 < len(non_empty) else None
-        method = non_empty[idx + 3].strip() if idx + 3 < len(non_empty) else None
-
-        if not parameter:
-            return
-        if _norm(parameter) in {"parameter", "part", "part no", "part number"}:
-            return
-
-        out.append(
-            {
-                "parameter": parameter,
-                "specification": specification,
-                "special_char": special_char or None,
-                "method_of_inspection": method or None,
-            }
-        )
+        out.append(row)
 
     for sr in section_d_rows:
         for r in range(sr + 1, min(sr + 60, max_r)):
@@ -657,7 +946,7 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
     if not xl0:
         return None
     names = list(xl0.keys())
-    # part_no -> {drawing_rev, description, spec_rows, material_rows, coating_rows}
+    # part_no -> {drawing_rev, description, spec_rows, ccp_rows, material_rows, coating_rows}
     buckets: dict[str, dict[str, Any]] = {}
 
     def ensure(pn: str) -> dict[str, Any]:
@@ -666,6 +955,7 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
                 "drawing_rev": None,
                 "description": None,
                 "spec_rows": [],
+                "ccp_rows": [],
                 "material_rows": [],
                 "coating_rows": [],
             }
@@ -677,14 +967,14 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
             continue
         kv0 = _scan_fir_key_values(df)
         if kv0.get("part_no"):
-            global_pn = kv0["part_no"]
+            global_pn = _sanitize_part_no(kv0["part_no"])
             break
 
     filename_pn: str | None = None
     if source_filename:
         stem = Path(source_filename).stem.strip()
         if stem and _guess_part_no_from_sheet_name(stem, [stem]):
-            filename_pn = stem
+            filename_pn = _sanitize_part_no(stem)
 
     def _split_spec_coating(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         spec: list[dict[str, Any]] = []
@@ -713,16 +1003,22 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
         kv = _scan_fir_key_values(df)
         pn_kv = kv.get("part_no")
         pn_sheet = _guess_part_no_from_sheet_name(sname, names)
-        ad_rows = _parse_loose_ad_table(df)
+        b_anchor = _find_section_anchor_row(df, "b")
+        c_anchor = _find_section_anchor_row(df, "c")
+        a_end = b_anchor if b_anchor is not None else c_anchor
+        ad_rows = _parse_loose_ad_table(df, start_row=0, end_row=a_end)
+        ccp_rows = _scan_section_b_rows(df)
         mats = _scan_section_c_rows(df)
         d_rows = _scan_section_d_rows(df)
 
         pn = pn_kv or global_pn or pn_sheet
-        if not pn and filename_pn and (ad_rows or mats or d_rows or kv):
+        if not pn and filename_pn and (ad_rows or ccp_rows or mats or d_rows or kv):
             pn = filename_pn
+        if pn:
+            pn = _sanitize_part_no(pn)
         if not pn:
             continue
-        if not ad_rows and not mats and not d_rows and not kv:
+        if not ad_rows and not ccp_rows and not mats and not d_rows and not kv:
             continue
 
         b = ensure(pn)
@@ -734,6 +1030,7 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
         if d_rows:
             coat_part.extend(d_rows)
         b["spec_rows"].extend(spec_part)
+        b["ccp_rows"].extend(ccp_rows)
         b["coating_rows"].extend(coat_part)
         b["material_rows"].extend(mats)
 
@@ -771,20 +1068,24 @@ def _try_parse_loose_fir_workbook(content: bytes, source_filename: str | None = 
     for pn in sorted(buckets.keys()):
         b = buckets[pn]
         parts_out.append(
-            {
-                "part": {
-                    "part_no": pn,
-                    "drawing_rev": b.get("drawing_rev"),
-                    "description": b.get("description"),
-                },
-                "spec_rows": _dedupe_ad(b["spec_rows"]),
-                "ccp_rows": [],
-                "material_rows": _dedupe_material(b["material_rows"]),
-                "coating_rows": _dedupe_ad(b.get("coating_rows", [])),
-            }
+            assign_continuous_sl_numbers(
+                {
+                    "part": {
+                        "part_no": pn,
+                        "drawing_rev": b.get("drawing_rev"),
+                        "description": b.get("description"),
+                    },
+                    "spec_rows": _dedupe_ad(b["spec_rows"]),
+                    "ccp_rows": _dedupe_ad(b["ccp_rows"]),
+                    "material_rows": _dedupe_material(b["material_rows"]),
+                    "coating_rows": _dedupe_ad(b.get("coating_rows", [])),
+                }
+            )
         )
 
-    return {"format": BUNDLE_FORMAT, "parts": parts_out}
+    return _normalize_bundle_part_master(
+        assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
+    )
 
 
 def _group_by_part(df: pd.DataFrame, part_col: str, builder):
@@ -792,7 +1093,7 @@ def _group_by_part(df: pd.DataFrame, part_col: str, builder):
     if part_col not in df.columns:
         return {}
     out: dict[str, list[dict[str, Any]]] = {}
-    for pn, sub in df.groupby(df[part_col].map(lambda x: _cell(x)), dropna=False):
+    for pn, sub in df.groupby(df[part_col].map(lambda x: _sanitize_part_no(x)), dropna=False):
         if not pn:
             continue
         out[pn] = builder(sub.reset_index(drop=True))
@@ -835,7 +1136,7 @@ def parse_parts_excel_to_bundle_dict(
                 f'Sheet "{parts_name}" needs a part column (e.g. Part Number). Found: {list(pdf.columns)}'
             )
         for _, r in pdf.iterrows():
-            pn = _cell(r.get("part_no"))
+            pn = _sanitize_part_no(r.get("part_no"))
             if not pn:
                 continue
             meta[pn] = {
@@ -896,20 +1197,24 @@ def parse_parts_excel_to_bundle_dict(
     for pn in sorted(all_parts):
         m = meta.get(pn, {})
         parts_out.append(
-            {
-                "part": {
-                    "part_no": pn,
-                    "drawing_rev": m.get("drawing_rev"),
-                    "description": m.get("description"),
-                },
-                "spec_rows": by_a.get(pn, []),
-                "ccp_rows": by_b.get(pn, []),
-                "material_rows": by_c.get(pn, []),
-                "coating_rows": by_d.get(pn, []),
-            }
+            assign_continuous_sl_numbers(
+                {
+                    "part": {
+                        "part_no": pn,
+                        "drawing_rev": m.get("drawing_rev"),
+                        "description": m.get("description"),
+                    },
+                    "spec_rows": by_a.get(pn, []),
+                    "ccp_rows": by_b.get(pn, []),
+                    "material_rows": by_c.get(pn, []),
+                    "coating_rows": by_d.get(pn, []),
+                }
+            )
         )
 
-    return {"format": BUNDLE_FORMAT, "parts": parts_out}
+    return _normalize_bundle_part_master(
+        assign_continuous_sl_numbers_bundle({"format": BUNDLE_FORMAT, "parts": parts_out})
+    )
 
 
 def build_part_master_template_xlsx() -> bytes:

@@ -30,7 +30,13 @@ export default function ForgotPasswordPage() {
     <div className="mx-auto max-w-md rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
       <h1 className="text-2xl font-semibold text-white">Forgot password</h1>
       <p className="mt-2 text-sm text-slate-400">
-        Enter your company account email. If it exists, we will send a reset link (when SMTP is configured on the server).
+        Enter the <strong className="text-slate-300">exact</strong> email you use for{" "}
+        <strong className="text-slate-300">unified sign-in</strong> (company workspace or platform admin). If that
+        account exists, the server sends a reset link via <strong className="text-slate-300">Resend</strong> or{" "}
+        <strong className="text-slate-300">SMTP</strong> when configured: set{" "}
+        <code className="text-xs text-slate-500">RESEND_API_KEY</code> and{" "}
+        <code className="text-xs text-slate-500">EMAIL_FROM</code>, or SMTP host/port and{" "}
+        <code className="text-xs text-slate-500">EMAIL_FROM</code>.
       </p>
       <form className="mt-8 space-y-4" onSubmit={onSubmit}>
         <div>
@@ -47,7 +53,9 @@ export default function ForgotPasswordPage() {
         {err && <p className="text-sm text-red-400">{err}</p>}
         {ok && (
           <p className="text-sm text-green-400">
-            If an account exists for that email, you will receive instructions shortly.
+            If an account exists for that email, you will receive instructions shortly. Check spam/junk. If nothing
+            arrives, the address may not be registered for this workspace, or the sender may need a verified domain in
+            Resend (or working SMTP).
           </p>
         )}
         <button

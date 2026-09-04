@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.dates import format_date_english
 from app.models import Company, FirReportEvent, InvoiceV2, SubscriptionStatus
 from app.pricing_catalog import invoice_cap_for_plan
 
@@ -40,14 +41,201 @@ def count_invoices_this_month(db: Session, company_id: int, today: date | None =
 
 
 def count_fir_reports_this_month(db: Session, company_id: int, today: date | None = None) -> int:
+    """FIR intelligence rows whose **invoice_date** falls in the same calendar month as ``today``.
+
+    One row per invoice line ingested into ``fir_events``; the business month is the invoice date
+    on the file (same basis as admin FIR charts and monthly slices), not ``created_at``.
+    """
     today = today or datetime.now(timezone.utc).date()
-    start, end = month_bounds_utc(today)
+    first = date(today.year, today.month, 1)
+    last_day_num = monthrange(today.year, today.month)[1]
+    last = date(today.year, today.month, last_day_num)
     q = select(func.count()).select_from(FirReportEvent).where(
         FirReportEvent.company_id == company_id,
-        FirReportEvent.created_at >= start,
-        FirReportEvent.created_at <= end,
+        FirReportEvent.invoice_date >= first,
+        FirReportEvent.invoice_date <= last,
     )
     return int(db.execute(q).scalar_one())
+
+
+def count_fir_reports_total(db: Session, company_id: int) -> int:
+    """All-time FIR intelligence row count for this tenant (``fir_events`` for ``company_id``)."""
+    q = select(func.count()).select_from(FirReportEvent).where(FirReportEvent.company_id == company_id)
+    return int(db.execute(q).scalar_one())
+
+
+def top_fir_part_report_counts(
+    db: Session, company_id: int, *, limit: int = 5
+) -> list[tuple[str, int]]:
+    """Most common ``part_no`` values in ``fir_events`` for this tenant, by row count (ties arbitrary)."""
+    return top_fir_part_report_counts_in_range(
+        db, company_id, limit=limit, invoice_date_start=None, invoice_date_end=None
+    )
+
+
+def top_fir_part_report_counts_in_range(
+    db: Session,
+    company_id: int,
+    *,
+    limit: int = 5,
+    invoice_date_start: date | None,
+    invoice_date_end: date | None,
+) -> list[tuple[str, int]]:
+    """Top part numbers by FIR row count, optionally limited to ``invoice_date`` range (inclusive)."""
+    cnt = func.count(FirReportEvent.id).label("n")
+    q = select(FirReportEvent.part_no, cnt).where(FirReportEvent.company_id == company_id)
+    if invoice_date_start is not None:
+        q = q.where(FirReportEvent.invoice_date >= invoice_date_start)
+    if invoice_date_end is not None:
+        q = q.where(FirReportEvent.invoice_date <= invoice_date_end)
+    q = q.group_by(FirReportEvent.part_no).order_by(cnt.desc()).limit(limit)
+    rows = list(db.execute(q).all())
+    out: list[tuple[str, int]] = [(str(part_no), int(n or 0)) for part_no, n in rows]
+    while len(out) < limit:
+        out.append(("—", 0))
+    return out[:limit]
+
+
+def count_fir_reports_in_invoice_range(
+    db: Session,
+    company_id: int,
+    *,
+    invoice_date_start: date | None,
+    invoice_date_end: date | None,
+) -> int:
+    """Count ``fir_events`` rows for tenant with optional inclusive ``invoice_date`` bounds."""
+    q = select(func.count()).select_from(FirReportEvent).where(FirReportEvent.company_id == company_id)
+    if invoice_date_start is not None:
+        q = q.where(FirReportEvent.invoice_date >= invoice_date_start)
+    if invoice_date_end is not None:
+        q = q.where(FirReportEvent.invoice_date <= invoice_date_end)
+    return int(db.execute(q).scalar_one())
+
+
+def fir_first_invoice_date(db: Session, company_id: int) -> date | None:
+    d = db.execute(
+        select(func.min(FirReportEvent.invoice_date)).where(FirReportEvent.company_id == company_id)
+    ).scalar_one()
+    return d
+
+
+def thank_you_engagement_invoice_range(
+    engagement_key: str,
+    *,
+    today: date,
+    first_fir_date: date | None,
+) -> tuple[date | None, date | None] | None:
+    """Return inclusive (start, end) for ``invoice_date`` for a part engagement category, or None to skip this section entirely."""
+    if engagement_key == "running":
+        return today - timedelta(days=29), today
+    if engagement_key == "regular":
+        return today - timedelta(days=89), today - timedelta(days=30)
+    if engagement_key == "occasional":
+        return today - timedelta(days=364), today - timedelta(days=90)
+    if engagement_key == "stranger":
+        return None, today - timedelta(days=365)
+    if engagement_key == "new":
+        if first_fir_date is None:
+            return None
+        return first_fir_date, min(first_fir_date + timedelta(days=60), today)
+    raise ValueError(f"Unknown engagement key: {engagement_key!r}")
+
+
+def top_fir_part_thank_you_table_rows(
+    db: Session,
+    company_id: int,
+    *,
+    limit: int = 5,
+    invoice_date_start: date | None = None,
+    invoice_date_end: date | None = None,
+) -> list[tuple[str, int, str, str]]:
+    """Top ``part_no`` rows: (part_no, count, median_gap_label, last_dispatched) — optional invoice_date window."""
+    base = top_fir_part_report_counts_in_range(
+        db,
+        company_id,
+        limit=limit,
+        invoice_date_start=invoice_date_start,
+        invoice_date_end=invoice_date_end,
+    )
+    parts_needed = [p for p, n in base if p != "—" and n > 0]
+    dates_by_part: dict[str, list[date]] = {p: [] for p in parts_needed}
+    if parts_needed:
+        q = select(FirReportEvent.part_no, FirReportEvent.invoice_date).where(
+            FirReportEvent.company_id == company_id,
+            FirReportEvent.part_no.in_(parts_needed),
+        )
+        if invoice_date_start is not None:
+            q = q.where(FirReportEvent.invoice_date >= invoice_date_start)
+        if invoice_date_end is not None:
+            q = q.where(FirReportEvent.invoice_date <= invoice_date_end)
+        q = q.order_by(FirReportEvent.part_no, FirReportEvent.invoice_date, FirReportEvent.id)
+        for part_no, inv_dt in db.execute(q).all():
+            dates_by_part.setdefault(str(part_no), []).append(inv_dt)
+
+    rows_out: list[tuple[str, int, str, str]] = []
+    for part_no, count in base:
+        if part_no == "—" or count == 0:
+            rows_out.append((part_no, count, "—", "—"))
+            continue
+        dlist = dates_by_part.get(part_no, [])
+        gap_lbl = _format_median_gap_label(_median_gap_days_consecutive(dlist))
+        last_dt = max(dlist) if dlist else None
+        last_lbl = format_date_english(last_dt) if last_dt is not None else "—"
+        rows_out.append((part_no, count, gap_lbl, last_lbl))
+    return rows_out
+
+
+def thank_you_engagement_section_rows(
+    db: Session,
+    company_id: int,
+    engagement_key: str,
+    *,
+    today: date,
+) -> tuple[int, int, list[tuple[str, int, str, str]]]:
+    """FIR row counts (report and row are identical) and Top-5 table rows for one part engagement category window."""
+    first_fir = fir_first_invoice_date(db, company_id)
+    rng = thank_you_engagement_invoice_range(engagement_key, today=today, first_fir_date=first_fir)
+    if rng is None:
+        return 0, 0, [("—", 0, "—", "—")] * 5
+    start, end = rng
+    n = count_fir_reports_in_invoice_range(
+        db, company_id, invoice_date_start=start, invoice_date_end=end
+    )
+    rows = top_fir_part_thank_you_table_rows(
+        db, company_id, limit=5, invoice_date_start=start, invoice_date_end=end
+    )
+    return n, n, rows
+
+
+def _median_gap_days_consecutive(sorted_dates: list[date]) -> float | None:
+    """Median of gaps between consecutive *distinct* invoice calendar days.
+
+    Multiple ``fir_events`` rows often share the same ``invoice_date`` (same dispatch batch).
+    Counting row-by-row yields many zero-day gaps and a median of 0. Collapsing duplicate
+    days matches :func:`app.fir_analytics.build_fir_intelligence` ``median_interval_days``.
+    """
+    if not sorted_dates:
+        return None
+    uniq_days = sorted(set(sorted_dates))
+    if len(uniq_days) < 2:
+        return None
+    gaps: list[int] = []
+    for i in range(len(uniq_days) - 1):
+        gaps.append((uniq_days[i + 1] - uniq_days[i]).days)
+    gaps.sort()
+    n = len(gaps)
+    mid = n // 2
+    if n % 2 == 1:
+        return float(gaps[mid])
+    return (gaps[mid - 1] + gaps[mid]) / 2.0
+
+
+def _format_median_gap_label(days: float | None) -> str:
+    if days is None:
+        return "—"
+    if days == int(days):
+        return str(int(days))
+    return f"{days:.1f}"
 
 
 def count_combined_usage_this_month(db: Session, company_id: int, today: date | None = None) -> int:
@@ -58,8 +246,9 @@ def count_combined_usage_this_month(db: Session, company_id: int, today: date | 
 
 
 def trial_is_valid(company: Company, today: date | None = None) -> bool:
+    """True when today falls in the company's trial calendar window (independent of stored status)."""
     today = today or datetime.now(timezone.utc).date()
-    return company.subscription_status == SubscriptionStatus.trial.value and today <= company.trial_end_date
+    return company.trial_start_date <= today <= company.trial_end_date
 
 
 def trial_days_remaining_company(company: Company, today: date | None = None) -> int | None:
@@ -71,12 +260,44 @@ def trial_days_remaining_company(company: Company, today: date | None = None) ->
 
 
 def subscription_is_active(company: Company, today: date | None = None) -> bool:
+    """
+    True when the company's paid subscription window covers `today` (calendar only).
+
+    Do not require subscription_status == "active": billing flows sometimes leave
+    status as "trial" until a job updates it, which incorrectly blocked FIR access
+    between trial_end and subscription_end.
+    """
     today = today or datetime.now(timezone.utc).date()
-    if company.subscription_status != SubscriptionStatus.active.value:
+    if company.subscription_status == SubscriptionStatus.expired.value:
         return False
     if company.subscription_end is None:
         return False
-    return today <= company.subscription_end
+    if today > company.subscription_end:
+        return False
+    if company.subscription_start is not None and today < company.subscription_start:
+        return False
+    return True
+
+
+def sync_subscription_status_from_dates(company: Company, today: date | None = None) -> bool:
+    """
+    Set subscription_status from trial and subscription dates.
+    Priority: trial window > paid window > expired.
+    Returns True if the stored status was changed (caller may commit).
+    """
+    today = today or datetime.now(timezone.utc).date()
+    if company.trial_start_date <= today <= company.trial_end_date:
+        new_status = SubscriptionStatus.trial.value
+    elif company.subscription_end is not None and today <= company.subscription_end and (
+        company.subscription_start is None or today >= company.subscription_start
+    ):
+        new_status = SubscriptionStatus.active.value
+    else:
+        new_status = SubscriptionStatus.expired.value
+    if company.subscription_status != new_status:
+        company.subscription_status = new_status
+        return True
+    return False
 
 
 def subscription_days_remaining_company(company: Company, today: date | None = None) -> int | None:
@@ -183,12 +404,21 @@ def can_access_app(company: Company, *, enable_subscription: bool, today: date |
     return True
 
 
-def can_access_fir_workspace(company: Company, *, enable_subscription: bool, today: date | None = None) -> bool:
+def can_access_fir_workspace(
+    company: Company,
+    *,
+    enable_subscription: bool,
+    today: date | None = None,
+    impersonated_by_admin: bool = False,
+) -> bool:
     """
-    FIR workspace (/api/app/*) — when subscription enforcement is on, require an active trial or paid period.
+    FIR workspace (/api/app/*) — always requires an active company trial or paid subscription window.
     Company billing routes (v2 /me, /subscription/status, etc.) stay reachable via can_access_app.
+    Platform admins impersonating a tenant always get workspace access for support.
+    `enable_subscription` is kept for call-site compatibility; it does not bypass this gate.
     """
-    if not enable_subscription:
+    _ = enable_subscription
+    if impersonated_by_admin:
         return True
     today = today or datetime.now(timezone.utc).date()
     if trial_is_valid(company, today):

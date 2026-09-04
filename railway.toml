@@ -12,4 +12,5 @@ cmds = [
 ]
 
 [start]
-cmd = "cd saas/backend && gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
+# Single worker: one in-process subscription reminder scheduler; multiple workers would duplicate emails.
+cmd = "cd saas/backend && gunicorn app.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"

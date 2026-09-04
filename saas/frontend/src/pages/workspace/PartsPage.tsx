@@ -5,16 +5,30 @@ import {
   openWorkspacePdfInNewTab,
   workspaceDownloadBlob,
   workspaceFetch,
+  getWorkspaceCustomerId,
+  setWorkspaceCustomerId,
 } from "../../api";
 import PartMasterExcelReview, { type PartMasterBundle } from "../../components/PartMasterExcelReview";
+import { sanitizePartNoUpper as sanitizePartMasterAlnumUpper } from "../../utils/partFields";
 
 type Row = {
   part_id: number;
   part_no: string;
+  customer_id: number;
+  customer_vendor_code?: string;
+  customer_name?: string;
   drawing_rev: string | null;
   description: string | null;
   has_drawing?: boolean;
 };
+
+type CustomerOpt = { id: number; vendor_code: string; name: string };
+
+function customerIdFromSelectValue(v: string): number | null {
+  if (v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 export default function PartsPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -33,16 +47,49 @@ export default function PartsPage() {
   const [deleteBusyId, setDeleteBusyId] = useState<number | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const excelRef = useRef<HTMLInputElement>(null);
+  const [customers, setCustomers] = useState<CustomerOpt[]>([]);
+  /** Table filter: null = all customers */
+  const [filterCustomerId, setFilterCustomerId] = useState<number | null>(null);
+  /** Part form / import target customer (required when multiple customers) */
+  const [formCustomerId, setFormCustomerId] = useState<number | null>(null);
 
   async function load() {
-    setRows(await workspaceFetch<Row[]>("/api/app/parts"));
+    const q = filterCustomerId != null ? `?customer_id=${filterCustomerId}` : "";
+    setRows(await workspaceFetch<Row[]>(`/api/app/parts${q}`));
   }
 
   useEffect(() => {
-    load().catch((e) => setErr(e.message));
+    workspaceFetch<CustomerOpt[]>("/api/app/customers")
+      .then((list) => {
+        setCustomers(list);
+        const ws = getWorkspaceCustomerId();
+        if (list.length === 1) {
+          setFormCustomerId(list[0].id);
+        } else if (ws != null && list.some((c) => c.id === ws)) {
+          setFormCustomerId(ws);
+        } else if (list.length > 1) {
+          setFormCustomerId((prev) => prev ?? list[0].id);
+        }
+      })
+      .catch(() => setCustomers([]));
   }, []);
 
-  const filterQ = part_no.trim().toLowerCase();
+  useEffect(() => {
+    load().catch((e) => setErr(e.message));
+  }, [filterCustomerId]);
+  useEffect(() => {
+    if (formCustomerId != null) {
+      setWorkspaceCustomerId(formCustomerId);
+    }
+  }, [formCustomerId]);
+
+
+  const formRows = useMemo(
+    () => rows.filter((r) => formCustomerId == null || r.customer_id === formCustomerId),
+    [rows, formCustomerId],
+  );
+
+  const filterQ = sanitizePartMasterAlnumUpper(part_no).toLowerCase();
   const visibleRows = useMemo(() => {
     if (!filterQ) return rows;
     return rows.filter((r) => r.part_no.toLowerCase().includes(filterQ));
@@ -50,16 +97,25 @@ export default function PartsPage() {
 
   /** Exact match: helps avoid duplicate uploads when the part already exists */
   const partNoExistsInMaster = useMemo(() => {
-    const q = part_no.trim().toLowerCase();
+    const q = sanitizePartMasterAlnumUpper(part_no).toLowerCase();
     if (!q) return false;
-    return rows.some((r) => r.part_no.trim().toLowerCase() === q);
-  }, [rows, part_no]);
+    return formRows.some((r) => sanitizePartMasterAlnumUpper(r.part_no).toLowerCase() === q);
+  }, [formRows, part_no]);
+
+  const existingPartNoKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of formRows) {
+      s.add(sanitizePartMasterAlnumUpper(r.part_no).toLowerCase());
+    }
+    return s;
+  }, [formRows]);
 
   async function downloadAll() {
     setErr(null);
     setImportMsg(null);
     try {
-      const blob = await workspaceDownloadBlob("/api/app/parts/export-all");
+      const exq = filterCustomerId != null ? `?customer_id=${filterCustomerId}` : "";
+      const blob = await workspaceDownloadBlob(`/api/app/parts/export-all${exq}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -116,11 +172,30 @@ export default function PartsPage() {
         method: "POST",
         body: fd,
       });
-      setPendingExcelLabel(file.name);
-      setPendingExcelBundle(bundle);
       if (!bundle.parts?.length) {
         setErr("Excel parsed but no parts were found — check the Parts sheet and Part Number column.");
+        return;
       }
+      const dupes: string[] = [];
+      const seenDupe = new Set<string>();
+      for (const sl of bundle.parts) {
+        const raw = (sl.part?.part_no ?? "").trim();
+        const key = sanitizePartMasterAlnumUpper(raw).toLowerCase();
+        if (key && existingPartNoKeys.has(key) && !seenDupe.has(key)) {
+          seenDupe.add(key);
+          dupes.push(raw);
+        }
+      }
+      if (dupes.length) {
+        const shown = dupes.slice(0, 8);
+        const more = dupes.length - shown.length;
+        setErr(
+          `Part number(s) already in Parts master — remove them from the file or delete the existing part(s) first: ${shown.join(", ")}${more > 0 ? ` (+${more} more)` : ""}`,
+        );
+        return;
+      }
+      setPendingExcelLabel(file.name);
+      setPendingExcelBundle(bundle);
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Excel preview failed");
     } finally {
@@ -177,6 +252,7 @@ export default function PartsPage() {
           description: description || null,
           part_id: editingPartId,
           revision_change_reason: revisionReason.trim() || null,
+          customer_id: formCustomerId,
         }),
       });
       if (pendingPdf) {
@@ -202,10 +278,11 @@ export default function PartsPage() {
 
   function startEdit(r: Row) {
     setEditingPartId(r.part_id);
+    setFormCustomerId(r.customer_id);
     setOriginalDrawingRev(r.drawing_rev ?? null);
-    setPartNo(r.part_no);
+    setPartNo(sanitizePartMasterAlnumUpper(r.part_no));
     setDrawingRev(r.drawing_rev ?? "");
-    setDescription(r.description ?? "");
+    setDescription(sanitizePartMasterAlnumUpper(r.description ?? ""));
     setRevisionReason("");
     setPendingPdf(null);
     setErr(null);
@@ -213,6 +290,12 @@ export default function PartsPage() {
 
   function cancelEdit() {
     setEditingPartId(null);
+    const ws = getWorkspaceCustomerId();
+    if (customers.length === 1) {
+      setFormCustomerId(customers[0].id);
+    } else if (ws != null && customers.some((c) => c.id === ws)) {
+      setFormCustomerId(ws);
+    }
     setOriginalDrawingRev(null);
     setPartNo("");
     setDrawingRev("");
@@ -292,10 +375,45 @@ export default function PartsPage() {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h1 className="text-xl font-semibold text-slate-900">Parts master</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        Same layout as legacy Flask: filter the table with the part number field, add or edit core fields, then open{" "}
-        <strong>Edit A–D</strong> for dimension / complaint / material / coating rows.
-      </p>
+      {customers.length > 1 && (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+          <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+            <span className="text-slate-600">Show parts for</span>
+            <select
+              className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              value={filterCustomerId ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setFilterCustomerId(customerIdFromSelectValue(v));
+              }}
+            >
+              <option value="">All customers</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.vendor_code} — {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+            <span className="text-slate-600">Add / import for customer</span>
+            <select
+              className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              value={formCustomerId ?? ""}
+              onChange={(e) => {
+                const id = customerIdFromSelectValue(e.target.value);
+                if (id != null) setFormCustomerId(id);
+              }}
+            >
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.vendor_code} — {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 sm:gap-3 sm:px-4">
         <button
@@ -343,17 +461,6 @@ export default function PartsPage() {
           {excelBusy ? "Reading Excel…" : "Upload Excel (first sheet only, review before save)"}
         </button>
       </div>
-      <p className="mt-2 text-xs text-slate-500">
-        <strong>Excel:</strong> sheets <code className="rounded bg-slate-100 px-1">Parts</code>,{" "}
-        <code className="rounded bg-slate-100 px-1">Section_A</code>–<code className="rounded bg-slate-100 px-1">D</code>{" "}
-        (dimensions, CCP, material grade, coating). After upload you review extracted part master fields;{" "}
-        <strong>OK</strong> saves the same way as JSON <code className="rounded bg-slate-100 px-1">import-bundle</code>. See{" "}
-        <code className="rounded bg-slate-100 px-1">docs/PART_MASTER_EXCEL.md</code>.
-      </p>
-      <p className="mt-1 text-xs text-slate-500">
-        <strong>JSON</strong> import matches legacy bundle / single-part formats.
-      </p>
-
       {importMsg && <p className="mt-2 text-sm text-green-700">{importMsg}</p>}
       {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
 
@@ -361,12 +468,17 @@ export default function PartsPage() {
         <h2 className="text-sm font-semibold text-slate-800">{editingPartId != null ? "Update part" : "New part"}</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div>
-            <label className="text-xs text-slate-500">Part number * (also filters table below)</label>
+            <label className="text-xs text-slate-500">Part number * (also filters table below) — A–Z and 0–9 only</label>
             <div className="mt-1 flex items-center gap-2">
               <input
-                className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm uppercase"
                 value={part_no}
-                onChange={(e) => setPartNo(e.target.value)}
+                onChange={(e) => setPartNo(sanitizePartMasterAlnumUpper(e.target.value))}
+                inputMode="text"
+                autoCapitalize="characters"
+                spellCheck={false}
+                pattern="[A-Z0-9]+"
+                title="Letters A–Z and digits 0–9 only"
                 required
                 autoComplete="off"
                 aria-describedby={partNoExistsInMaster ? "parts-master-part-exists" : undefined}
@@ -404,11 +516,16 @@ export default function PartsPage() {
             />
           </div>
           <div className="md:col-span-2">
-            <label className="text-xs text-slate-500">Description</label>
+            <label className="text-xs text-slate-500">Description — A–Z and 0–9 only (optional)</label>
             <input
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm uppercase"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => setDescription(sanitizePartMasterAlnumUpper(e.target.value))}
+              inputMode="text"
+              autoCapitalize="characters"
+              spellCheck={false}
+              pattern="[A-Z0-9]*"
+              title="Letters A–Z and digits 0–9 only"
             />
           </div>
           <div className="md:col-span-2">
@@ -461,6 +578,7 @@ export default function PartsPage() {
             <tr className="border-b border-slate-200 bg-slate-100 text-slate-700">
               <th className="px-3 py-2 font-semibold">#</th>
               <th className="px-3 py-2 font-semibold">Part number</th>
+              <th className="px-3 py-2 font-semibold">Customer</th>
               <th className="px-3 py-2 font-semibold">Drawing rev</th>
               <th className="px-3 py-2 font-semibold">Description</th>
               <th className="px-3 py-2 font-semibold">Drawing</th>
@@ -471,7 +589,7 @@ export default function PartsPage() {
           <tbody>
             {visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                   {rows.length === 0
                     ? "No parts yet — add one above, import JSON, or upload Excel."
                     : "No parts match the filter."}
@@ -485,6 +603,10 @@ export default function PartsPage() {
                     <Link className="hover:underline" to={`/workspace/parts/${r.part_id}`}>
                       {r.part_no}
                     </Link>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-slate-600">
+                    {r.customer_vendor_code ?? "—"}
+                    {r.customer_name ? <span className="text-slate-500"> · {r.customer_name}</span> : null}
                   </td>
                   <td className="px-3 py-2 text-slate-700">{r.drawing_rev ?? ""}</td>
                   <td className="px-3 py-2 text-slate-700">{r.description ?? ""}</td>

@@ -5,8 +5,13 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import PublicPricingGate from "./components/PublicPricingGate";
 import WorkspaceSubscriptionGate from "./components/WorkspaceSubscriptionGate";
 import WorkspaceLayout from "./layouts/WorkspaceLayout";
+import AdminCompanyFirIntelligencePage from "./pages/AdminCompanyFirIntelligencePage";
 import AdminCompanyPage from "./pages/AdminCompanyPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import AdminDesktopInstallersPage from "./pages/AdminDesktopInstallersPage";
+import AdminDesktopLicensingPage from "./pages/AdminDesktopLicensingPage";
+import AdminDesktopLicensesPage from "./pages/AdminDesktopLicensesPage";
+import AdminDesktopPaymentsPage from "./pages/AdminDesktopPaymentsPage";
 import AdminPricingPage from "./pages/AdminPricingPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import CompanyDashboardPage from "./pages/CompanyDashboardPage";
@@ -18,7 +23,17 @@ import ModuleWorkbenchPage from "./pages/ModuleWorkbenchPage";
 import ModulesDashboardPage from "./pages/ModulesDashboardPage";
 import PricingPage from "./pages/PricingPage";
 import SignupPage from "./pages/SignupPage";
+import SignupCompletePage from "./pages/SignupCompletePage";
+import {
+  SoftwareCatalogPage,
+  SoftwareDownloadsPage,
+  SoftwareLicensesPage,
+  SoftwareOrderDetailPage,
+  SoftwareOrdersPage,
+  SoftwareProductPage,
+} from "./pages/SoftwarePages";
 import UpgradePage from "./pages/UpgradePage";
+import UpgradePayPage from "./pages/UpgradePayPage";
 import CustomersPage from "./pages/workspace/CustomersPage";
 import ExtractedPage from "./pages/workspace/ExtractedPage";
 import InspectionPage from "./pages/workspace/InspectionPage";
@@ -65,6 +80,7 @@ export default function App() {
 
       <Route element={<Layout />}>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/signup/complete" element={<SignupCompletePage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -113,6 +129,55 @@ export default function App() {
           }
         />
         <Route path="/upgrade" element={<UpgradePage />} />
+        <Route path="/upgrade/pay" element={<UpgradePayPage />} />
+        <Route
+          path="/software"
+          element={
+            <ProtectedRoute>
+              <SoftwareCatalogPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/software/orders"
+          element={
+            <ProtectedRoute>
+              <SoftwareOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/software/licenses"
+          element={
+            <ProtectedRoute>
+              <SoftwareLicensesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/software/downloads"
+          element={
+            <ProtectedRoute>
+              <SoftwareDownloadsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/software/orders/:orderId"
+          element={
+            <ProtectedRoute>
+              <SoftwareOrderDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/software/:productCode"
+          element={
+            <ProtectedRoute>
+              <SoftwareProductPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/admin/login" element={<Navigate to="/login" replace />} />
         <Route
           path="/admin"
@@ -135,6 +200,46 @@ export default function App() {
           element={
             <AdminRoute>
               <AdminPricingPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/desktop-licensing"
+          element={
+            <AdminRoute>
+              <AdminDesktopLicensingPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/desktop-payments"
+          element={
+            <AdminRoute>
+              <AdminDesktopPaymentsPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/desktop-licenses"
+          element={
+            <AdminRoute>
+              <AdminDesktopLicensesPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/desktop-installers"
+          element={
+            <AdminRoute>
+              <AdminDesktopInstallersPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/companies/:id/fir-intelligence"
+          element={
+            <AdminRoute>
+              <AdminCompanyFirIntelligencePage />
             </AdminRoute>
           }
         />
