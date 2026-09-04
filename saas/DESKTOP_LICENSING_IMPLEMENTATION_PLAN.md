@@ -18,8 +18,8 @@ Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
 | Phase | Scope | Status |
 |-------|--------|--------|
 | 0 | Audit / gap | **Done** — production repo had no licensing tables/APIs |
-| 1 | Foundation (schema, flag, service, admin/customer/machine routers, key crypto) | **In review** |
-| 2 | Admin catalog / pricing | **In progress** |
+| 1 | Foundation (schema, flag, service, admin/customer/machine routers, key crypto) | **Merged** (PR #31) |
+| 2 | Admin catalog / pricing | **In review** |
 | 3 | Customer orders | Not started |
 | 4 | UPI payment approval + mint | Not started |
 | 5 | Email + My Licenses | Not started |
@@ -117,3 +117,25 @@ Addressed before Phase 2:
    - Admin device reset helper (clears bind; does not reassign user/product)
 
 **Production prerequisite for 033:** if any license already has >1 `status='active'` activation (unlikely on fresh 032), deactivate extras manually before applying 033.
+
+## Phase 2 — Admin catalog / pricing
+
+### APIs (`ENABLE_DESKTOP_LICENSING=true`, platform admin JWT)
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/admin/desktop/products` | All products/plans including inactive |
+| PATCH | `/api/admin/desktop/products/{id}` | name, description, listing_active, sort_order, buy_url_path |
+| POST | `/api/admin/desktop/products/{id}/plans` | Create 1-seat plan |
+| PATCH | `/api/admin/desktop/plans/{id}` | price_inr, listing, duration, code, name; seats forced to 1 |
+
+### UI
+
+- `/admin/desktop-licensing` — product/plan editors (nav + dashboard link)
+- Disabled banner when API returns 404 (flag off)
+
+### Out of scope for Phase 2
+
+Orders, UPI, minting/emails, My Licenses, downloads, machine API, trials.
+
+**Stop after Phase 2 for review** before Phase 3 customer orders.
