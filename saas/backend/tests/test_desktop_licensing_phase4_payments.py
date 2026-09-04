@@ -387,6 +387,155 @@ def test_approve_refuses_when_licenses_already_exist():
     assert exc.value.status_code == 409
 
 
+def test_admin_list_payment_requests():
+    from app.licensing.payments import list_payment_requests
+
+    pending = DesktopPayment(order_id=1, amount_inr=100, status=PAYMENT_STATUS_PENDING_REVIEW)
+    pending.id = 1
+    other = DesktopPayment(order_id=2, amount_inr=200, status=PAYMENT_STATUS_APPROVED)
+    other.id = 2
+    db = MagicMock()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [pending]
+    db.execute.return_value = result
+    rows = list_payment_requests(db, status=PAYMENT_STATUS_PENDING_REVIEW)
+    assert len(rows) == 1
+    assert rows[0].status == PAYMENT_STATUS_PENDING_REVIEW
+
+
+def test_unauthorized_cannot_approve_payment_requests(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import app.licensing.feature_flag as ff
+    from app.main import create_app
+
+    monkeypatch.setattr(ff, "get_settings", lambda: Settings(enable_desktop_licensing=True))
+    app = create_app()
+    app.state.startup_complete = True
+    app.state.startup_status = "ok"
+    client = TestClient(app)
+    # No Authorization header → platform admin dependency rejects
+    assert client.get("/api/admin/desktop/payment-requests").status_code == 401
+    assert client.post("/api/admin/desktop/payment-requests/1/approve").status_code == 401
+    assert client.post(
+        "/api/admin/desktop/payment-requests/1/reject", json={"reason": "bad utr"}
+    ).status_code == 401
+
+
+def test_concurrent_approve_integrity_error_does_not_remint():
+    """Second concurrent mint that hits unique (order_id, seat_index) must 409."""
+    from sqlalchemy.exc import IntegrityError
+
+    settings = _fernet_settings()
+    payment = DesktopPayment(
+        order_id=9, amount_inr=1000, status=PAYMENT_STATUS_PENDING_REVIEW, reference_note="UTR999999"
+    )
+    payment.id = 90
+    order = DesktopOrder(
+        order_number="TAQ-2026-000090",
+        company_id=1,
+        user_id=2,
+        product_id=1,
+        plan_id=1,
+        product_code="QR_CODE",
+        product_name="QR",
+        plan_code="ANNUAL",
+        plan_name="Annual",
+        duration_days=365,
+        seats=2,
+        unit_price_inr=500,
+        total_price_inr=1000,
+        currency="INR",
+        status=ORDER_STATUS_PAYMENT_SUBMITTED,
+    )
+    order.id = 9
+    db = MagicMock()
+
+    def execute(stmt):
+        result = MagicMock()
+        if not hasattr(execute, "n"):
+            execute.n = 0
+        execute.n += 1
+        if execute.n == 1:
+            result.scalar_one_or_none.return_value = payment
+        elif execute.n == 2:
+            result.scalar_one.return_value = order
+        else:
+            result.scalar_one.return_value = 0
+        return result
+
+    db.execute.side_effect = execute
+    with patch("app.licensing.payments.create_paid_licenses_for_seats") as mint:
+        mint.side_effect = IntegrityError("INSERT", {}, Exception("uq_desktop_licenses_order_seat"))
+        with pytest.raises(HTTPException) as exc:
+            approve_payment_and_mint_licenses(db, settings, admin=SimpleNamespace(id=1), payment_id=90)
+        assert exc.value.status_code == 409
+        assert mint.call_count == 1
+    assert payment.status == PAYMENT_STATUS_PENDING_REVIEW
+    assert order.status == ORDER_STATUS_PAYMENT_SUBMITTED
+
+
+def test_approve_uses_row_locks():
+    """Approve must lock payment + order rows (FOR UPDATE) before minting."""
+    settings = _fernet_settings()
+    payment = DesktopPayment(
+        order_id=12, amount_inr=100, status=PAYMENT_STATUS_PENDING_REVIEW, reference_note="UTRLOCK01"
+    )
+    payment.id = 120
+    order = DesktopOrder(
+        order_number="TAQ-2026-000120",
+        company_id=1,
+        user_id=2,
+        product_id=1,
+        plan_id=1,
+        product_code="QR_CODE",
+        product_name="QR",
+        plan_code="A",
+        plan_name="A",
+        duration_days=30,
+        seats=1,
+        unit_price_inr=100,
+        total_price_inr=100,
+        currency="INR",
+        status=ORDER_STATUS_PAYMENT_SUBMITTED,
+    )
+    order.id = 12
+    db = MagicMock()
+    statements: list[str] = []
+
+    def execute(stmt):
+        statements.append(str(stmt))
+        result = MagicMock()
+        if len(statements) == 1:
+            result.scalar_one_or_none.return_value = payment
+        elif len(statements) == 2:
+            result.scalar_one.return_value = order
+        else:
+            result.scalar_one.return_value = 0
+        return result
+
+    db.execute.side_effect = execute
+    with patch("app.licensing.payments.create_paid_licenses_for_seats") as mint:
+        fake = DesktopLicense(
+            product_id=1,
+            plan_id=1,
+            order_id=12,
+            company_id=1,
+            licensed_user_id=2,
+            entitlement_type="paid",
+            seat_index=1,
+            key_prefix="AQ",
+            key_last4="ZZZZ",
+            key_hash="h" * 64,
+            key_encrypted="c",
+            status=LICENSE_STATUS_ISSUED,
+        )
+        fake.id = 99
+        mint.return_value = [(fake, "AQ-KEY")]
+        approve_payment_and_mint_licenses(db, settings, admin=SimpleNamespace(id=1), payment_id=120)
+    assert any("FOR UPDATE" in s.upper() for s in statements)
+
+
 def test_feature_flag_off_payment_routes(monkeypatch):
     from fastapi.testclient import TestClient
 

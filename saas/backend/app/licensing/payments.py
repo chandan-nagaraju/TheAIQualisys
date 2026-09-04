@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings
@@ -302,41 +303,48 @@ def approve_payment_and_mint_licenses(
     if int(payment.amount_inr) != int(order.total_price_inr):
         raise HTTPException(status_code=400, detail="Payment amount does not match order total")
 
-    minted = create_paid_licenses_for_seats(
-        db,
-        settings,
-        product_id=int(order.product_id),
-        plan_id=int(order.plan_id),
-        order_id=int(order.id),
-        company_id=int(order.company_id),
-        licensed_user_id=int(order.user_id),
-        seat_count=seats,
-        duration_days=int(order.duration_days),
-        created_by_admin_id=int(admin.id),
-    )
-    licenses = [row for row, _plaintext in minted]
-    # Discard plaintext here — Phase 5 email/reveal; do not return keys in Phase 4 admin response by default
+    try:
+        minted = create_paid_licenses_for_seats(
+            db,
+            settings,
+            product_id=int(order.product_id),
+            plan_id=int(order.plan_id),
+            order_id=int(order.id),
+            company_id=int(order.company_id),
+            licensed_user_id=int(order.user_id),
+            seat_count=seats,
+            duration_days=int(order.duration_days),
+            created_by_admin_id=int(admin.id),
+        )
+        licenses = [row for row, _plaintext in minted]
+        # Discard plaintext here — Phase 5 email/reveal; do not return keys in Phase 4 admin response
 
-    payment.status = PAYMENT_STATUS_APPROVED
-    payment.reviewed_by_admin_id = admin.id
-    payment.reviewed_at = _utc_now()
-    order.status = ORDER_STATUS_APPROVED
-    db.add(payment)
-    db.add(order)
-    record_license_event(
-        db,
-        license_id=None,
-        actor_type="admin",
-        actor_id=admin.id,
-        event_type="payment_approved_licenses_minted",
-        meta={
-            "order_id": order.id,
-            "payment_id": payment.id,
-            "seats": seats,
-            "license_ids": [lic.id for lic in licenses],
-        },
-    )
-    db.flush()
+        payment.status = PAYMENT_STATUS_APPROVED
+        payment.reviewed_by_admin_id = admin.id
+        payment.reviewed_at = _utc_now()
+        order.status = ORDER_STATUS_APPROVED
+        db.add(payment)
+        db.add(order)
+        record_license_event(
+            db,
+            license_id=None,
+            actor_type="admin",
+            actor_id=admin.id,
+            event_type="payment_approved_licenses_minted",
+            meta={
+                "order_id": order.id,
+                "payment_id": payment.id,
+                "seats": seats,
+                "license_ids": [lic.id for lic in licenses],
+            },
+        )
+        db.flush()
+    except IntegrityError as exc:
+        # Concurrent approve lost the unique (order_id, seat_index) race — do not remint.
+        raise HTTPException(
+            status_code=409,
+            detail="Concurrent approval conflict; licenses were not minted again",
+        ) from exc
     return payment, order, licenses
 
 
