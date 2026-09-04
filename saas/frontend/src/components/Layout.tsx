@@ -243,6 +243,9 @@ export default function Layout() {
                 <NavLink className={navItemCls} to="/admin/desktop-payments">
                   Desktop payments
                 </NavLink>
+                <NavLink className={navItemCls} to="/admin/desktop-licenses">
+                  Desktop licenses
+                </NavLink>
                 <button type="button" className={logoutBtn} onClick={logoutAdmin}>
                   Log out
                 </button>
@@ -263,6 +266,9 @@ export default function Layout() {
                 </NavLink>
                 <NavLink className={navItemCls} to="/software">
                   Software
+                </NavLink>
+                <NavLink className={navItemCls} to="/software/licenses">
+                  My licenses
                 </NavLink>
                 <NavLink className={navItemCls} to="/profile">
                   Profile

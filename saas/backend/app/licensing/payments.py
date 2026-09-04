@@ -338,6 +338,12 @@ def approve_payment_and_mint_licenses(
                 "license_ids": [lic.id for lic in licenses],
             },
         )
+        # Queue email delivery row in the same transaction as mint (send happens after commit).
+        from app.licensing.customer_licenses import ensure_email_delivery_pending
+
+        buyer = db.get(CompanyUser, int(order.user_id))
+        if buyer:
+            ensure_email_delivery_pending(db, order=order, user=buyer)
         db.flush()
     except IntegrityError as exc:
         # Concurrent approve lost the unique (order_id, seat_index) race — do not remint.

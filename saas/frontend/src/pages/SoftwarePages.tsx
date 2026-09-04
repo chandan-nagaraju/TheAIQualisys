@@ -102,13 +102,17 @@ export function SoftwareCatalogPage() {
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-white">Software</h1>
-        <Link to="/software/orders" className="text-sm text-brand-500 hover:underline">
-          My orders
-        </Link>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link to="/software/licenses" className="text-brand-500 hover:underline">
+            My licenses
+          </Link>
+          <Link to="/software/orders" className="text-brand-500 hover:underline">
+            My orders
+          </Link>
+        </div>
       </div>
       <p className="text-sm text-slate-400">
-        Desktop applications for Windows. Each seat is one independent license for one PC (keys are issued after
-        payment is approved — Phase 4).
+        Desktop applications for Windows. Each seat is one independent license for one PC.
       </p>
       {loading && <p className="text-sm text-slate-500">Loading catalog…</p>}
       {disabled && (
@@ -376,9 +380,14 @@ export function SoftwareOrdersPage() {
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-white">My software orders</h1>
-        <Link to="/software" className="text-sm text-brand-500 hover:underline">
-          ← Software
-        </Link>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link to="/software/licenses" className="text-brand-500 hover:underline">
+            My licenses
+          </Link>
+          <Link to="/software" className="text-brand-500 hover:underline">
+            ← Software
+          </Link>
+        </div>
       </div>
       {err && <p className="text-sm text-red-400">{err}</p>}
       <div className="space-y-3">
@@ -422,6 +431,7 @@ export function SoftwareOrderDetailPage() {
   const [payErr, setPayErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!localStorage.getItem("fir_token")) {
@@ -503,9 +513,14 @@ export function SoftwareOrderDetailPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-10">
-      <Link to="/software/orders" className="text-sm text-brand-500 hover:underline">
-        ← My orders
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link to="/software/orders" className="text-sm text-brand-500 hover:underline">
+          ← My orders
+        </Link>
+        <Link to="/software/licenses" className="text-sm text-brand-500 hover:underline">
+          My licenses
+        </Link>
+      </div>
       <h1 className="text-2xl font-semibold text-white">Order confirmation</h1>
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
         <p className="font-mono text-lg text-brand-400">{order.order_number}</p>
@@ -539,9 +554,38 @@ export function SoftwareOrderDetailPage() {
           </div>
         </dl>
         {order.status === "approved" && (
-          <p className="text-xs text-emerald-400">
-            Payment approved. License keys were minted for each seat (My Licenses / email arrive in Phase 5).
-          </p>
+          <div className="space-y-2 text-xs text-emerald-400">
+            <p>Payment approved. License keys were minted for each seat.</p>
+            <p>
+              <Link to="/software/licenses" className="text-brand-400 hover:underline">
+                Open My Licenses
+              </Link>
+              {" · "}
+              <button
+                type="button"
+                className="text-brand-400 hover:underline disabled:opacity-50"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setErr(null);
+                  try {
+                    await apiFetch(`/api/desktop/orders/${order.id}/resend-license-email`, {
+                      method: "POST",
+                      body: "{}",
+                    });
+                    setMsg("License email resent (or queued). Check your inbox.");
+                  } catch (e) {
+                    setErr(e instanceof Error ? e.message : "Resend failed");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Resend license email
+              </button>
+            </p>
+            {msg && <p className="text-slate-300">{msg}</p>}
+          </div>
         )}
       </div>
 
@@ -608,6 +652,195 @@ export function SoftwareOrderDetailPage() {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+type LicenseRow = {
+  id: number;
+  product_name?: string | null;
+  plan_name?: string | null;
+  order_number?: string | null;
+  order_id?: number | null;
+  order_seats?: number | null;
+  seat_index?: number | null;
+  status: string;
+  key_masked: string;
+  device_status: string;
+  is_activated: boolean;
+  issued_at?: string | null;
+  expires_at?: string | null;
+  email_status?: string | null;
+};
+
+/** Customer My Licenses — masked keys; reveal/copy on demand; resend email. */
+export function SoftwareLicensesPage() {
+  const nav = useNavigate();
+  const [rows, setRows] = useState<LicenseRow[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [disabled, setDisabled] = useState(false);
+  const [revealed, setRevealed] = useState<Record<number, string>>({});
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = async () => {
+    setErr(null);
+    setDisabled(false);
+    try {
+      const data = await apiFetch<LicenseRow[]>("/api/desktop/licenses");
+      setRows(data);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : "Failed";
+      if (/404|Not found/i.test(m)) setDisabled(true);
+      else setErr(m);
+    }
+  };
+
+  useEffect(() => {
+    if (!localStorage.getItem("fir_token")) {
+      nav("/login");
+      return;
+    }
+    void load();
+  }, [nav]);
+
+  const reveal = async (id: number) => {
+    setBusyId(id);
+    setErr(null);
+    try {
+      const res = await apiFetch<{ license_id: number; license_key: string }>(
+        `/api/desktop/licenses/${id}/reveal`,
+        { method: "POST", body: "{}" },
+      );
+      setRevealed((prev) => ({ ...prev, [id]: res.license_key }));
+      try {
+        await navigator.clipboard.writeText(res.license_key);
+        setMsg("License key revealed and copied to clipboard.");
+      } catch {
+        setMsg("License key revealed.");
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Reveal failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const resend = async (orderId: number) => {
+    setBusyId(-orderId);
+    setErr(null);
+    setMsg(null);
+    try {
+      await apiFetch(`/api/desktop/orders/${orderId}/resend-license-email`, {
+        method: "POST",
+        body: "{}",
+      });
+      setMsg("License email resent.");
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Resend failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const grouped = rows.reduce<Record<string, LicenseRow[]>>((acc, row) => {
+    const key = row.order_number || `order-${row.order_id || row.id}`;
+    (acc[key] ||= []).push(row);
+    return acc;
+  }, {});
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 px-4 py-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-white">My licenses</h1>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link to="/software/orders" className="text-brand-500 hover:underline">
+            My orders
+          </Link>
+          <Link to="/software" className="text-brand-500 hover:underline">
+            ← Software
+          </Link>
+        </div>
+      </div>
+      <p className="text-sm text-slate-400">
+        Keys are masked by default. Reveal only when you need to activate software. Each key is for one PC and one
+        product.
+      </p>
+      {disabled && (
+        <p className="rounded-lg border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          Desktop licensing is not enabled on this environment yet.
+        </p>
+      )}
+      {err && <p className="text-sm text-red-400">{err}</p>}
+      {msg && <p className="text-sm text-emerald-400">{msg}</p>}
+      <div className="space-y-6">
+        {Object.entries(grouped).map(([orderKey, seats]) => {
+          const first = seats[0];
+          return (
+            <div key={orderKey} className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">{first.product_name || "Product"}</h2>
+                  <p className="text-sm text-slate-400">
+                    {first.plan_name || "Plan"}
+                    {first.order_seats != null
+                      ? ` · ${first.order_seats} seat${first.order_seats === 1 ? "" : "s"}`
+                      : ""}
+                  </p>
+                  {first.order_number && (
+                    <p className="mt-1 font-mono text-xs text-brand-400">{first.order_number}</p>
+                  )}
+                </div>
+                {first.order_id != null && (
+                  <button
+                    type="button"
+                    disabled={busyId === -first.order_id}
+                    onClick={() => void resend(first.order_id!)}
+                    className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                  >
+                    Resend license email
+                  </button>
+                )}
+              </div>
+              <div className="space-y-3">
+                {seats
+                  .slice()
+                  .sort((a, b) => (a.seat_index || 0) - (b.seat_index || 0))
+                  .map((lic) => (
+                    <div key={lic.id} className="rounded-lg border border-slate-800 px-3 py-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-white">Seat {lic.seat_index ?? "—"}</span>
+                        <span className="text-xs text-slate-400">
+                          {lic.status} / {lic.device_status}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-mono text-xs text-slate-300">
+                        License: {revealed[lic.id] || lic.key_masked}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Issued {lic.issued_at ? new Date(lic.issued_at).toLocaleDateString() : "—"}
+                        {" · "}
+                        Expires {lic.expires_at ? new Date(lic.expires_at).toLocaleDateString() : "—"}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={busyId === lic.id}
+                        onClick={() => void reveal(lic.id)}
+                        className="mt-2 text-xs text-brand-400 hover:underline disabled:opacity-40"
+                      >
+                        {revealed[lic.id] ? "Reveal & copy again" : "Reveal / copy key"}
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {!disabled && !err && rows.length === 0 && (
+        <p className="text-sm text-slate-400">No licenses yet. Purchase from Software after payment approval.</p>
       )}
     </div>
   );

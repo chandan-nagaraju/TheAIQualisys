@@ -76,7 +76,7 @@ class LicensingHealthOut(BaseModel):
     enabled: bool
     products_seeded: int
     plans_seeded: int
-    phase: str = "4-payment-mint"
+    phase: str = "5-email-licenses"
     message: str
 
 
@@ -171,6 +171,59 @@ class DesktopPaymentApproveOut(BaseModel):
     order: DesktopOrderOut
     licenses_minted: int
     licenses: List[DesktopLicenseMintSummaryOut]
+    email_delivery: Optional["DesktopLicenseEmailDeliveryOut"] = None
+
+
+class DesktopLicenseOut(BaseModel):
+    """Masked license for list/detail — never includes plaintext or ciphertext."""
+
+    id: int
+    product_id: int
+    plan_id: Optional[int] = None
+    order_id: Optional[int] = None
+    company_id: int
+    licensed_user_id: int
+    entitlement_type: str
+    seat_index: Optional[int] = None
+    status: str
+    key_masked: str
+    key_prefix: str
+    key_last4: str
+    issued_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    activated_at: Optional[str] = None
+    bound_device_id: Optional[int] = None
+    device_status: str
+    is_activated: bool = False
+    order_number: Optional[str] = None
+    product_code: Optional[str] = None
+    product_name: Optional[str] = None
+    plan_code: Optional[str] = None
+    plan_name: Optional[str] = None
+    duration_days: Optional[int] = None
+    order_seats: Optional[int] = None
+    email_status: Optional[str] = None
+    email_sent_at: Optional[str] = None
+
+
+class DesktopLicenseRevealOut(BaseModel):
+    """Authorized reveal — plaintext only; no ciphertext / secrets."""
+
+    license_id: int
+    seat_index: Optional[int] = None
+    license_key: str
+    key_masked: str
+
+
+class DesktopLicenseEmailDeliveryOut(BaseModel):
+    id: int
+    order_id: int
+    status: str
+    attempt_count: int
+    last_attempted_at: Optional[str] = None
+    sent_at: Optional[str] = None
+    last_error: Optional[str] = None
+    to_email: str
 
 
 class LicenseKeyMaterialOut(BaseModel):

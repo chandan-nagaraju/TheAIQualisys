@@ -9,6 +9,7 @@ import AdminCompanyFirIntelligencePage from "./pages/AdminCompanyFirIntelligence
 import AdminCompanyPage from "./pages/AdminCompanyPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import AdminDesktopLicensingPage from "./pages/AdminDesktopLicensingPage";
+import AdminDesktopLicensesPage from "./pages/AdminDesktopLicensesPage";
 import AdminDesktopPaymentsPage from "./pages/AdminDesktopPaymentsPage";
 import AdminPricingPage from "./pages/AdminPricingPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
@@ -24,6 +25,7 @@ import SignupPage from "./pages/SignupPage";
 import SignupCompletePage from "./pages/SignupCompletePage";
 import {
   SoftwareCatalogPage,
+  SoftwareLicensesPage,
   SoftwareOrderDetailPage,
   SoftwareOrdersPage,
   SoftwareProductPage,
@@ -143,6 +145,14 @@ export default function App() {
           }
         />
         <Route
+          path="/software/licenses"
+          element={
+            <ProtectedRoute>
+              <SoftwareLicensesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/software/orders/:orderId"
           element={
             <ProtectedRoute>
@@ -196,6 +206,14 @@ export default function App() {
           element={
             <AdminRoute>
               <AdminDesktopPaymentsPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/desktop-licenses"
+          element={
+            <AdminRoute>
+              <AdminDesktopLicensesPage />
             </AdminRoute>
           }
         />

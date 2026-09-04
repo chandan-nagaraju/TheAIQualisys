@@ -18,6 +18,9 @@ from app.licensing.orders import (
 )
 from app.licensing.schemas import (
     DesktopCheckoutContextOut,
+    DesktopLicenseEmailDeliveryOut,
+    DesktopLicenseOut,
+    DesktopLicenseRevealOut,
     DesktopOrderCreate,
     DesktopOrderOut,
     DesktopPaymentOut,
@@ -40,7 +43,7 @@ def customer_desktop_licensing_health(
 ):
     del user
     out = foundation_health(db, enabled=bool(settings.enable_desktop_licensing))
-    out["phase"] = "4-payment-mint"
+    out["phase"] = "5-email-licenses"
     return out
 
 
@@ -182,3 +185,131 @@ async def customer_submit_payment(
         db.rollback()
         raise
     return serialize_payment(payment)
+
+
+@router.get("/licenses", response_model=list[DesktopLicenseOut])
+def customer_list_licenses(
+    _: None = Depends(require_desktop_licensing_enabled),
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+    limit: int = 200,
+):
+    from app.licensing.customer_licenses import list_licenses_for_user, serialize_license_public
+    from app.licensing.models import DesktopLicenseEmailDelivery
+    from sqlalchemy import select
+
+    rows = list_licenses_for_user(db, user=user, limit=limit)
+    # Attach email status when order has a delivery row
+    order_ids = {int(r.order_id) for r in rows if r.order_id}
+    deliveries = {}
+    if order_ids:
+        for d in db.execute(
+            select(DesktopLicenseEmailDelivery).where(DesktopLicenseEmailDelivery.order_id.in_(order_ids))
+        ).scalars().all():
+            deliveries[int(d.order_id)] = d
+    return [
+        serialize_license_public(
+            lic,
+            order=lic.order,
+            email_delivery=deliveries.get(int(lic.order_id)) if lic.order_id else None,
+        )
+        for lic in rows
+    ]
+
+
+@router.get("/licenses/{license_id}", response_model=DesktopLicenseOut)
+def customer_get_license(
+    license_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+):
+    from app.licensing.customer_licenses import get_owned_license, serialize_license_public
+    from app.licensing.models import DesktopLicenseEmailDelivery
+    from sqlalchemy import select
+
+    lic = get_owned_license(db, user=user, license_id=license_id)
+    delivery = None
+    if lic.order_id:
+        delivery = db.execute(
+            select(DesktopLicenseEmailDelivery).where(
+                DesktopLicenseEmailDelivery.order_id == int(lic.order_id)
+            )
+        ).scalar_one_or_none()
+    return serialize_license_public(lic, order=lic.order, email_delivery=delivery)
+
+
+@router.post("/licenses/{license_id}/reveal", response_model=DesktopLicenseRevealOut)
+def customer_reveal_license(
+    license_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    from app.licensing.customer_licenses import (
+        get_owned_license,
+        masked_key_from_parts,
+        reveal_license_key_for_user,
+    )
+
+    try:
+        plaintext = reveal_license_key_for_user(db, settings, user=user, license_id=license_id)
+        lic = get_owned_license(db, user=user, license_id=license_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {
+        "license_id": lic.id,
+        "seat_index": lic.seat_index,
+        "license_key": plaintext,
+        "key_masked": masked_key_from_parts(lic.key_prefix, lic.key_last4),
+    }
+
+
+@router.post(
+    "/orders/{order_id}/resend-license-email",
+    response_model=DesktopLicenseEmailDeliveryOut,
+)
+def customer_resend_license_email(
+    order_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    from app.licensing.customer_licenses import (
+        resend_license_email_for_customer,
+        serialize_email_delivery,
+    )
+
+    try:
+        delivery = resend_license_email_for_customer(db, settings, user=user, order_id=order_id)
+        db.commit()
+        db.refresh(delivery)
+    except Exception:
+        db.rollback()
+        raise
+    return serialize_email_delivery(delivery)
+
+
+@router.get(
+    "/orders/{order_id}/license-email-status",
+    response_model=DesktopLicenseEmailDeliveryOut | None,
+)
+def customer_license_email_status(
+    order_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+):
+    from app.licensing.customer_licenses import (
+        get_email_delivery_for_customer_order,
+        serialize_email_delivery,
+    )
+
+    row = get_email_delivery_for_customer_order(db, user=user, order_id=order_id)
+    if not row:
+        return None
+    return serialize_email_delivery(row)
