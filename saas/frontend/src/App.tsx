@@ -8,6 +8,7 @@ import WorkspaceLayout from "./layouts/WorkspaceLayout";
 import AdminCompanyFirIntelligencePage from "./pages/AdminCompanyFirIntelligencePage";
 import AdminCompanyPage from "./pages/AdminCompanyPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import AdminDesktopInstallersPage from "./pages/AdminDesktopInstallersPage";
 import AdminDesktopLicensingPage from "./pages/AdminDesktopLicensingPage";
 import AdminDesktopLicensesPage from "./pages/AdminDesktopLicensesPage";
 import AdminDesktopPaymentsPage from "./pages/AdminDesktopPaymentsPage";
@@ -25,6 +26,7 @@ import SignupPage from "./pages/SignupPage";
 import SignupCompletePage from "./pages/SignupCompletePage";
 import {
   SoftwareCatalogPage,
+  SoftwareDownloadsPage,
   SoftwareLicensesPage,
   SoftwareOrderDetailPage,
   SoftwareOrdersPage,
@@ -153,6 +155,14 @@ export default function App() {
           }
         />
         <Route
+          path="/software/downloads"
+          element={
+            <ProtectedRoute>
+              <SoftwareDownloadsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/software/orders/:orderId"
           element={
             <ProtectedRoute>
@@ -214,6 +224,14 @@ export default function App() {
           element={
             <AdminRoute>
               <AdminDesktopLicensesPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/desktop-installers"
+          element={
+            <AdminRoute>
+              <AdminDesktopInstallersPage />
             </AdminRoute>
           }
         />

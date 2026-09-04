@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -12,6 +12,10 @@ from app.licensing.feature_flag import require_desktop_licensing_enabled
 from app.licensing.models import DesktopProduct
 from app.licensing.orders import list_all_orders_admin, serialize_order
 from app.licensing.schemas import (
+    DesktopInstallerAdminOut,
+    DesktopInstallerChannelBody,
+    DesktopInstallerCreate,
+    DesktopInstallerPatch,
     DesktopLicenseEmailDeliveryOut,
     DesktopLicenseOut,
     DesktopLicenseRevealOut,
@@ -78,7 +82,7 @@ def admin_desktop_licensing_health(
 ):
     del admin
     out = foundation_health(db, enabled=bool(settings.enable_desktop_licensing))
-    out["phase"] = "5-email-licenses"
+    out["phase"] = "6-protected-downloads"
     return out
 
 
@@ -373,3 +377,175 @@ def admin_resend_license_email(
         db.rollback()
         raise
     return serialize_email_delivery(delivery)
+
+
+@router.get("/products/{product_id}/installers", response_model=list[DesktopInstallerAdminOut])
+def admin_list_installers(
+    product_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    del admin
+    from app.licensing.downloads import list_installers_admin, serialize_installer_admin
+    from app.licensing.service import get_product_or_404
+
+    product = get_product_or_404(db, product_id)
+    return [serialize_installer_admin(r, product=product) for r in list_installers_admin(db, product_id=product.id)]
+
+
+@router.post("/products/{product_id}/installers", response_model=DesktopInstallerAdminOut, status_code=201)
+def admin_create_installer(
+    product_id: int,
+    body: DesktopInstallerCreate,
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    from datetime import date as date_cls
+
+    from app.licensing.downloads import create_installer_version, serialize_installer_admin
+    from app.licensing.service import get_product_or_404
+
+    product = get_product_or_404(db, product_id)
+    rd = None
+    if body.release_date:
+        rd = date_cls.fromisoformat(body.release_date)
+    try:
+        row = create_installer_version(
+            db,
+            admin=admin,
+            product_id=product.id,
+            version=body.version,
+            release_notes=body.release_notes,
+            release_date=rd,
+            min_windows_version=body.min_windows_version,
+            min_supported_version=body.min_supported_version,
+        )
+        db.commit()
+        db.refresh(row)
+    except Exception:
+        db.rollback()
+        raise
+    return serialize_installer_admin(row, product=product)
+
+
+@router.post("/installers/{installer_id}/upload", response_model=DesktopInstallerAdminOut)
+async def admin_upload_installer(
+    installer_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    file: UploadFile = File(...),
+):
+    from app.licensing.downloads import serialize_installer_admin, upload_installer_file
+    from app.licensing.service import get_product_or_404
+
+    try:
+        row = await upload_installer_file(db, settings, admin=admin, installer_id=installer_id, file=file)
+        product = get_product_or_404(db, row.product_id)
+        db.commit()
+        db.refresh(row)
+    except Exception:
+        db.rollback()
+        raise
+    return serialize_installer_admin(row, product=product)
+
+
+@router.patch("/installers/{installer_id}", response_model=DesktopInstallerAdminOut)
+def admin_patch_installer(
+    installer_id: int,
+    body: DesktopInstallerPatch,
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    from datetime import date as date_cls
+
+    from app.licensing.downloads import patch_installer, serialize_installer_admin
+    from app.licensing.service import get_product_or_404
+
+    rd = date_cls.fromisoformat(body.release_date) if body.release_date else None
+    try:
+        row = patch_installer(
+            db,
+            admin=admin,
+            installer_id=installer_id,
+            release_notes=body.release_notes,
+            release_date=rd,
+            min_windows_version=body.min_windows_version,
+            min_supported_version=body.min_supported_version,
+            clear_notes=body.clear_notes,
+        )
+        product = get_product_or_404(db, row.product_id)
+        db.commit()
+        db.refresh(row)
+    except Exception:
+        db.rollback()
+        raise
+    return serialize_installer_admin(row, product=product)
+
+
+@router.post("/installers/{installer_id}/publish", response_model=DesktopInstallerAdminOut)
+def admin_publish_installer(
+    installer_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    from app.licensing.downloads import serialize_installer_admin, set_installer_listing
+    from app.licensing.service import get_product_or_404
+
+    try:
+        row = set_installer_listing(db, admin=admin, installer_id=installer_id, listing_active=True)
+        product = get_product_or_404(db, row.product_id)
+        db.commit()
+        db.refresh(row)
+    except Exception:
+        db.rollback()
+        raise
+    return serialize_installer_admin(row, product=product)
+
+
+@router.post("/installers/{installer_id}/unpublish", response_model=DesktopInstallerAdminOut)
+def admin_unpublish_installer(
+    installer_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    from app.licensing.downloads import serialize_installer_admin, set_installer_listing
+    from app.licensing.service import get_product_or_404
+
+    try:
+        row = set_installer_listing(db, admin=admin, installer_id=installer_id, listing_active=False)
+        product = get_product_or_404(db, row.product_id)
+        db.commit()
+        db.refresh(row)
+    except Exception:
+        db.rollback()
+        raise
+    return serialize_installer_admin(row, product=product)
+
+
+@router.post("/installers/{installer_id}/set-channel", response_model=DesktopInstallerAdminOut)
+def admin_set_installer_channel(
+    installer_id: int,
+    body: DesktopInstallerChannelBody,
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    from app.licensing.downloads import serialize_installer_admin, set_installer_channel
+    from app.licensing.service import get_product_or_404
+
+    try:
+        row = set_installer_channel(db, admin=admin, installer_id=installer_id, channel=body.channel)
+        product = get_product_or_404(db, row.product_id)
+        db.commit()
+        db.refresh(row)
+    except Exception:
+        db.rollback()
+        raise
+    return serialize_installer_admin(row, product=product)

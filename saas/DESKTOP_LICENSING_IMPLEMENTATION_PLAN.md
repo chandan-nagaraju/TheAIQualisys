@@ -23,7 +23,7 @@ Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
 | 3 | Customer orders | **Merged** (PR #33) |
 | 4 | UPI payment approval + mint | **Merged** (PR #34) |
 | 5 | Email + My Licenses | **Merged** (PR #35) |
-| 6 | Protected installers / downloads | Not started |
+| 6 | Protected installers / downloads | **In review** |
 | 7 | Machine License API (Ed25519) | Not started (stubs return 501) |
 | 7A | 7-day trial system | Not started |
 | 8+ | Desktop app integration (QR / ASN) | Explicitly deferred |
@@ -218,3 +218,31 @@ Recorded from the Phase 4 security review approval. Do **not** treat as Phase 5 
 
 ### Out of scope
 Downloads, machine activation, trials, QR/ASN desktop, payment gateway, production secrets.
+
+## Phase 6 — Software management + protected downloads
+
+### Schema
+- Reuses `desktop_installers` + `desktop_download_tokens` from `032`
+- **No migration 037** — service enforces exclusive current/recommended/mandatory channels
+
+### Storage
+- Private S3 (or `INSTALLER_STORAGE_BACKEND=memory` for tests)
+- Keys: `desktop-installers/{product_code}/{version}/{safe_filename}`
+- Never uses `PUBLIC_S3_BASE_URL` / permanent public URLs / AWS credentials in responses
+
+### Entitlement
+Paid license, `licensed_user_id` match, status issued/active, wall-clock `expires_at`, no device binding.
+Installer must be published, not archived, file present.
+
+### Tokens
+Opaque single-use, hash-only storage, TTL 60–300s; redeem re-checks entitlement + installer eligibility; concurrent redeem → one success.
+
+### Version history
+Entitled customers may download any **published** version; archived/unpublished admin-only; no hard delete.
+
+### APIs / UI
+Admin: `/admin/desktop-installers` + `/api/admin/desktop/.../installers*`
+Customer: `/software/downloads` + `/api/desktop/downloads*`
+
+### Out of scope
+Machine activation, trials, QR/ASN desktop integration, payment gateway, prod deploy/migrate/flag.

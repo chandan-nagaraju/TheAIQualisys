@@ -18,6 +18,9 @@ from app.licensing.orders import (
 )
 from app.licensing.schemas import (
     DesktopCheckoutContextOut,
+    DesktopDownloadProductOut,
+    DesktopDownloadRedeemOut,
+    DesktopDownloadTokenOut,
     DesktopLicenseEmailDeliveryOut,
     DesktopLicenseOut,
     DesktopLicenseRevealOut,
@@ -43,7 +46,7 @@ def customer_desktop_licensing_health(
 ):
     del user
     out = foundation_health(db, enabled=bool(settings.enable_desktop_licensing))
-    out["phase"] = "5-email-licenses"
+    out["phase"] = "6-protected-downloads"
     return out
 
 
@@ -313,3 +316,69 @@ def customer_license_email_status(
     if not row:
         return None
     return serialize_email_delivery(row)
+
+
+@router.get("/downloads", response_model=list[DesktopDownloadProductOut])
+def customer_list_downloads(
+    _: None = Depends(require_desktop_licensing_enabled),
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+):
+    from app.licensing.downloads import list_customer_downloads
+
+    return list_customer_downloads(db, user=user)
+
+
+@router.get("/downloads/products/{product_code}", response_model=DesktopDownloadProductOut)
+def customer_product_downloads(
+    product_code: str,
+    _: None = Depends(require_desktop_licensing_enabled),
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+):
+    from app.licensing.downloads import list_customer_product_versions
+
+    return list_customer_product_versions(db, user=user, product_code=product_code)
+
+
+@router.post(
+    "/downloads/installers/{installer_id}/token",
+    response_model=DesktopDownloadTokenOut,
+)
+def customer_mint_download_token(
+    installer_id: int,
+    _: None = Depends(require_desktop_licensing_enabled),
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    from app.licensing.downloads import mint_download_token
+
+    try:
+        raw, token = mint_download_token(db, settings, user=user, installer_id=installer_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    ttl = int(settings.installer_download_token_ttl_seconds or 120)
+    ttl = max(60, min(ttl, 300))
+    return {"token": raw, "expires_in_seconds": ttl, "installer_id": installer_id}
+
+
+@router.get("/downloads/redeem/{token}", response_model=DesktopDownloadRedeemOut)
+def customer_redeem_download_token(
+    token: str,
+    _: None = Depends(require_desktop_licensing_enabled),
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    from app.licensing.downloads import redeem_download_token
+
+    try:
+        out = redeem_download_token(db, settings, user=user, raw_token=token)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return out
