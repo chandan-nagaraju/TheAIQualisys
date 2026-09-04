@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.licensing.constants import (
     ACTIVATION_STATUS_ACTIVE,
     ACTIVATION_STATUS_DEACTIVATED,
+    ENTITLEMENT_PAID,
     LICENSE_STATUS_ACTIVE,
     LICENSE_STATUS_EXPIRED,
     LICENSE_STATUS_ISSUED,
@@ -64,7 +65,30 @@ def assert_license_user_product(
         )
 
 
-def assert_license_not_terminal(license_row: DesktopLicense) -> None:
+def assert_license_not_expired_wall_clock(
+    license_row: DesktopLicense, *, now: Optional[datetime] = None
+) -> None:
+    """Wall-clock expires_at always overrides stale issued/active status."""
+    if license_row.expires_at is None:
+        return
+    when = now or _utc_now()
+    exp = license_row.expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp <= when:
+        raise LicenseBindingError("expired", "This license has expired.")
+
+
+def assert_license_paid_entitlement(license_row: DesktopLicense) -> None:
+    """Phase 7 machine API accepts paid entitlements only (trials → Phase 7A)."""
+    if (license_row.entitlement_type or "").lower() != ENTITLEMENT_PAID:
+        raise LicenseBindingError(
+            "trial_not_supported",
+            "Trial entitlements are not supported for machine activation in this phase.",
+        )
+
+
+def assert_license_not_terminal(license_row: DesktopLicense, *, now: Optional[datetime] = None) -> None:
     status = (license_row.status or "").strip().lower()
     if status == LICENSE_STATUS_REVOKED:
         raise LicenseBindingError("revoked", "This license has been revoked.")
@@ -74,6 +98,7 @@ def assert_license_not_terminal(license_row: DesktopLicense) -> None:
         raise LicenseBindingError("suspended", "This license is suspended.")
     if status not in (LICENSE_STATUS_ISSUED, LICENSE_STATUS_ACTIVE):
         raise LicenseBindingError("invalid_status", f"License status '{status}' cannot be activated.")
+    assert_license_not_expired_wall_clock(license_row, now=now)
 
 
 def get_active_activation(db: Session, license_id: int) -> Optional[DesktopActivation]:
@@ -93,7 +118,7 @@ def get_or_create_device(
     label: Optional[str] = None,
     os_meta: Optional[str] = None,
 ) -> DesktopDevice:
-    fp = (fingerprint_hash or "").strip()
+    fp = (fingerprint_hash or "").strip().lower()
     if not fp:
         raise LicenseBindingError("invalid_device", "Device fingerprint is required.")
     existing = db.execute(
@@ -170,6 +195,7 @@ def activate_license_on_device(
     ).scalar_one()
 
     assert_license_not_terminal(locked)
+    assert_license_paid_entitlement(locked)
     assert_license_user_product(locked, website_user_id=website_user_id, product_id=product_id)
 
     # Optional: confirm product row exists / matches code path callers already have product_id
@@ -230,25 +256,84 @@ def activate_license_on_device(
     )
 
 
+@dataclass(frozen=True)
+class AdminResetResult:
+    license: DesktopLicense
+    previous_activation_id: Optional[int]
+    previous_device_id: Optional[int]
+
+
 def admin_reset_device_binding(
     db: Session,
     *,
     license_row: DesktopLicense,
     admin_id: int,
-) -> None:
+) -> AdminResetResult:
     """
     Admin-authorized machine replacement: clear device bind and deactivate active activation.
     Does NOT reassign the license to another website user or product.
+    Does NOT auto-activate a replacement device.
     """
     locked = db.execute(
         select(DesktopLicense).where(DesktopLicense.id == license_row.id).with_for_update()
     ).scalar_one()
     active = get_active_activation(db, locked.id)
+    prev_act = int(active.id) if active and active.id is not None else None
+    prev_dev = int(active.device_id) if active else (
+        int(locked.bound_device_id) if locked.bound_device_id is not None else None
+    )
     if active:
         active.status = ACTIVATION_STATUS_DEACTIVATED
         active.deactivated_at = _utc_now()
     locked.bound_device_id = None
     if locked.status == LICENSE_STATUS_ACTIVE:
         locked.status = LICENSE_STATUS_ISSUED
-    # Audit is recorded by caller via record_license_event to avoid circular imports if needed.
     _ = admin_id
+    db.flush()
+    return AdminResetResult(
+        license=locked,
+        previous_activation_id=prev_act,
+        previous_device_id=prev_dev,
+    )
+
+
+def deactivate_activation_preserve_binding(
+    db: Session,
+    *,
+    license_row: DesktopLicense,
+    website_user_id: int,
+    product_id: int,
+    fingerprint_hash: str,
+) -> DesktopActivation:
+    """
+    Client deactivate: mark active activation deactivated but KEEP bound_device_id.
+    Other devices remain denied until admin reset.
+    """
+    locked = db.execute(
+        select(DesktopLicense).where(DesktopLicense.id == license_row.id).with_for_update()
+    ).scalar_one()
+    assert_license_user_product(locked, website_user_id=website_user_id, product_id=product_id)
+    device = db.execute(
+        select(DesktopDevice).where(DesktopDevice.fingerprint_hash == (fingerprint_hash or "").strip().lower())
+    ).scalar_one_or_none()
+    if device is None:
+        raise LicenseBindingError("invalid_device", "Device fingerprint is required.")
+    if locked.bound_device_id is not None and int(locked.bound_device_id) != int(device.id):
+        raise LicenseBindingError(
+            "device_bound",
+            "This license is bound to another computer.",
+        )
+    active = get_active_activation(db, locked.id)
+    if active is None:
+        raise LicenseBindingError("invalid_status", "No active activation to deactivate.")
+    if int(active.device_id) != int(device.id):
+        raise LicenseBindingError(
+            "device_bound",
+            "This license is bound to another computer.",
+        )
+    active.status = ACTIVATION_STATUS_DEACTIVATED
+    active.deactivated_at = _utc_now()
+    # bound_device_id intentionally preserved
+    device.last_seen_at = _utc_now()
+    db.flush()
+    return active

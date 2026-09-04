@@ -30,6 +30,8 @@ from app.licensing.schemas import (
     DesktopProductWithPlansOut,
     DesktopUpiSettingsAdminOut,
     DesktopUpiSettingsPatch,
+    LicenseDeviceResetIn,
+    LicenseDeviceResetOut,
     LicensingHealthOut,
 )
 from app.licensing.service import (
@@ -350,6 +352,66 @@ def admin_reveal_license(
         "seat_index": lic.seat_index,
         "license_key": plaintext,
         "key_masked": masked_key_from_parts(lic.key_prefix, lic.key_last4),
+    }
+
+
+@router.post("/licenses/{license_id}/reset-device", response_model=LicenseDeviceResetOut)
+def admin_reset_license_device(
+    license_id: int,
+    body: LicenseDeviceResetIn,
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    """Platform-admin machine replacement — clears binding; does not auto-activate."""
+    from app.licensing.binding import admin_reset_device_binding
+    from app.licensing.constants import ADMIN_RESET_REASON_MIN_LEN
+    from app.licensing.machine import machine_http_error
+    from app.licensing.constants import MACHINE_ERR_INVALID_LICENSE, MACHINE_ERR_INVALID_REQUEST
+    from app.licensing.models import DesktopLicense
+    from app.licensing.rate_limit import check_rate_limit
+    from app.licensing.service import record_license_event
+
+    del settings
+    check_rate_limit(scope="admin_license_reset", key=str(admin.id), limit=20)
+    reason = (body.reason or "").strip()
+    if len(reason) < ADMIN_RESET_REASON_MIN_LEN:
+        raise machine_http_error(
+            MACHINE_ERR_INVALID_REQUEST,
+            f"reason must be at least {ADMIN_RESET_REASON_MIN_LEN} characters",
+            http_status=400,
+        )
+    lic = db.get(DesktopLicense, int(license_id))
+    if not lic:
+        raise machine_http_error(MACHINE_ERR_INVALID_LICENSE, "License not found", http_status=404)
+    try:
+        result = admin_reset_device_binding(db, license_row=lic, admin_id=admin.id)
+        record_license_event(
+            db,
+            license_id=result.license.id,
+            actor_type="admin",
+            actor_id=admin.id,
+            event_type="license_device_reset",
+            meta={
+                "previous_activation_id": result.previous_activation_id,
+                "previous_device_id": result.previous_device_id,
+                "reason": reason,
+                # never log plaintext key / tokens / secrets
+            },
+        )
+        db.commit()
+        db.refresh(result.license)
+    except Exception:
+        db.rollback()
+        raise
+    return {
+        "license_id": result.license.id,
+        "status": result.license.status,
+        "bound_device_id": result.license.bound_device_id,
+        "previous_activation_id": result.previous_activation_id,
+        "previous_device_id": result.previous_device_id,
+        "reason": reason,
     }
 
 

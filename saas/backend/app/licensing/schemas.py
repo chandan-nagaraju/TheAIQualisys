@@ -319,8 +319,76 @@ class LicenseKeyMaterialOut(BaseModel):
 
 
 class MachineApiStubOut(BaseModel):
-    """Phase 1 placeholder until Phase 7 implements Ed25519 machine APIs."""
+    """Legacy Phase 1 placeholder — retained for schema compatibility; routes are live in Phase 7."""
 
-    phase: str = "1-foundation"
-    implemented: bool = False
+    phase: str = "7-machine-license"
+    implemented: bool = True
     detail: str
+
+
+class LicenseActivateIn(BaseModel):
+    license_key: str
+    product_code: str
+    fingerprint_hash: str
+    device_label: Optional[str] = None
+    os_meta: Optional[str] = None
+    app_version: Optional[str] = None
+
+
+class LicenseValidateIn(BaseModel):
+    license_id: int
+    product_code: str
+    fingerprint_hash: str
+    app_version: Optional[str] = None
+
+
+class LicenseRefreshIn(BaseModel):
+    license_id: int
+    product_code: str
+    fingerprint_hash: str
+    app_version: Optional[str] = None
+
+
+class LicenseDeactivateIn(BaseModel):
+    license_id: int
+    product_code: str
+    fingerprint_hash: str
+
+
+class LicenseMachineEntitlementOut(BaseModel):
+    license_id: int
+    activation_id: int
+    product_code: str
+    status: str
+    expires_at: Optional[str] = None
+    device_bound: bool = True
+    reaffirmed: Optional[bool] = None
+    entitlement_token: str
+    token_naf: Optional[int] = None
+    token_jti: Optional[str] = None
+
+
+class LicenseDeactivateOut(BaseModel):
+    deactivated: bool
+    binding_preserved: bool
+    license_id: int
+    bound_device_id: Optional[int] = None
+
+
+class LicensePublicKeyOut(BaseModel):
+    algorithm: str
+    keys: List[dict]
+    trust_note: Optional[str] = None
+
+
+class LicenseDeviceResetIn(BaseModel):
+    reason: str
+
+
+class LicenseDeviceResetOut(BaseModel):
+    license_id: int
+    status: str
+    bound_device_id: Optional[int] = None
+    previous_activation_id: Optional[int] = None
+    previous_device_id: Optional[int] = None
+    reason: str
