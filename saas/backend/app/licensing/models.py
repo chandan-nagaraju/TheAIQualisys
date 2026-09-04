@@ -68,6 +68,7 @@ class DesktopOrder(Base):
     __tablename__ = "desktop_orders"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    order_number: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
     company_id: Mapped[int] = mapped_column(
         ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -80,6 +81,12 @@ class DesktopOrder(Base):
     plan_id: Mapped[int] = mapped_column(
         ForeignKey("desktop_plans.id", ondelete="RESTRICT"), nullable=False
     )
+    # Catalog snapshots at order time (historical price/name integrity)
+    product_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    plan_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    plan_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
     seats: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     unit_price_inr: Mapped[int] = mapped_column(Integer, nullable=False)
     total_price_inr: Mapped[int] = mapped_column(Integer, nullable=False)

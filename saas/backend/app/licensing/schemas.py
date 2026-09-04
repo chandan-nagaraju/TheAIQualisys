@@ -76,8 +76,43 @@ class LicensingHealthOut(BaseModel):
     enabled: bool
     products_seeded: int
     plans_seeded: int
-    phase: str = "2-admin-catalog"
+    phase: str = "3-customer-orders"
     message: str
+
+
+class DesktopOrderCreate(BaseModel):
+    product_id: int = Field(ge=1)
+    plan_id: int = Field(ge=1)
+    seats: int = Field(ge=1, le=500)
+
+
+class DesktopOrderOut(BaseModel):
+    id: int
+    order_number: str
+    company_id: int
+    user_id: int
+    product_id: int
+    plan_id: int
+    product_code: str
+    product_name: str
+    plan_code: str
+    plan_name: str
+    duration_days: int
+    seats: int
+    unit_price_inr: int
+    total_price_inr: int
+    currency: str
+    status: str
+    created_at: Optional[str] = None
+
+
+class DesktopCheckoutContextOut(BaseModel):
+    """Authenticated buyer identity for checkout confirmation (no secrets)."""
+
+    user_id: int
+    email: str
+    company_id: int
+    company_name: str
 
 
 class LicenseKeyMaterialOut(BaseModel):

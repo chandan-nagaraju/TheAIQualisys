@@ -10,7 +10,9 @@ from app.config import Settings, get_settings
 from app.deps import get_db_session, get_platform_admin
 from app.licensing.feature_flag import require_desktop_licensing_enabled
 from app.licensing.models import DesktopProduct
+from app.licensing.orders import list_all_orders_admin, serialize_order
 from app.licensing.schemas import (
+    DesktopOrderOut,
     DesktopPlanCreate,
     DesktopPlanOut,
     DesktopPlanPatch,
@@ -138,3 +140,15 @@ def admin_patch_desktop_plan(
     db.commit()
     db.refresh(plan)
     return _plan_out(plan)
+
+
+@router.get("/orders", response_model=list[DesktopOrderOut])
+def admin_list_desktop_orders(
+    _: None = Depends(require_desktop_licensing_enabled),
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+    limit: int = 200,
+):
+    """Read-only order list for ops visibility. No payment approve/reject in Phase 3."""
+    del admin
+    return [serialize_order(o) for o in list_all_orders_admin(db, limit=limit)]
