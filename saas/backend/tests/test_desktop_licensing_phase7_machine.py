@@ -409,7 +409,7 @@ def test_activate_wrong_user_and_product_and_states():
             assert exc.value.detail["code"] == code
 
 
-def test_integrity_error_maps_to_device_bound():
+def test_integrity_error_one_active_maps_to_device_bound():
     settings = _settings()
     plaintext = "AQ-TEST-KEY-0003"
     product = _product()
@@ -424,9 +424,13 @@ def test_integrity_error_maps_to_device_bound():
 
     db = MagicMock()
     db.execute.side_effect = exec2
+    orig = Exception(
+        'duplicate key value violates unique constraint "uq_desktop_activations_one_active_per_license"'
+    )
+    orig.diag = SimpleNamespace(constraint_name="uq_desktop_activations_one_active_per_license")
     with patch(
         "app.licensing.machine.activate_license_on_device",
-        side_effect=IntegrityError("stmt", {}, Exception("dup")),
+        side_effect=IntegrityError("stmt", {}, orig),
     ):
         with pytest.raises(HTTPException) as exc:
             activate_machine_license(
@@ -439,6 +443,89 @@ def test_integrity_error_maps_to_device_bound():
             )
         assert exc.value.status_code == 409
         assert exc.value.detail["code"] == "device_bound"
+        db.rollback.assert_called()
+
+
+def test_integrity_error_license_device_unique_not_device_bound():
+    from app.licensing.machine import is_license_device_pair_conflict, is_one_active_activation_conflict
+
+    orig = Exception(
+        'duplicate key value violates unique constraint "uq_desktop_activations_license_device"'
+    )
+    orig.diag = SimpleNamespace(constraint_name="uq_desktop_activations_license_device")
+    exc = IntegrityError("stmt", {}, orig)
+    assert is_one_active_activation_conflict(exc) is False
+    assert is_license_device_pair_conflict(exc) is True
+
+    settings = _settings()
+    plaintext = "AQ-TEST-KEY-0003b"
+    product = _product()
+    lic = _license(key_hash=hash_license_key(plaintext))
+    calls = []
+
+    def exec2(stmt):
+        calls.append(1)
+        r = MagicMock()
+        r.scalar_one_or_none.return_value = product if len(calls) == 1 else lic
+        return r
+
+    db = MagicMock()
+    db.execute.side_effect = exec2
+    with patch(
+        "app.licensing.machine.activate_license_on_device",
+        side_effect=IntegrityError("stmt", {}, orig),
+    ):
+        with pytest.raises(HTTPException) as exc_http:
+            activate_machine_license(
+                db,
+                settings,
+                user=SimpleNamespace(id=7),
+                license_key=plaintext,
+                product_code="QR_CODE",
+                fingerprint_hash=_fp(),
+            )
+        assert exc_http.value.status_code == 409
+        assert exc_http.value.detail["code"] == "invalid_request"
+        assert exc_http.value.detail["code"] != "device_bound"
+
+
+def test_integrity_error_fingerprint_unique_not_device_bound():
+    from app.licensing.machine import is_one_active_activation_conflict
+
+    orig = Exception('duplicate key value violates unique constraint "desktop_devices_fingerprint_hash_key"')
+    orig.diag = SimpleNamespace(constraint_name="desktop_devices_fingerprint_hash_key")
+    exc = IntegrityError("stmt", {}, orig)
+    assert is_one_active_activation_conflict(exc) is False
+
+    settings = _settings()
+    plaintext = "AQ-TEST-KEY-0003c"
+    product = _product()
+    lic = _license(key_hash=hash_license_key(plaintext))
+    calls = []
+
+    def exec2(stmt):
+        calls.append(1)
+        r = MagicMock()
+        r.scalar_one_or_none.return_value = product if len(calls) == 1 else lic
+        return r
+
+    db = MagicMock()
+    db.execute.side_effect = exec2
+    with patch(
+        "app.licensing.machine.activate_license_on_device",
+        side_effect=IntegrityError("stmt", {}, orig),
+    ):
+        with pytest.raises(HTTPException) as exc_http:
+            activate_machine_license(
+                db,
+                settings,
+                user=SimpleNamespace(id=7),
+                license_key=plaintext,
+                product_code="QR_CODE",
+                fingerprint_hash=_fp(),
+            )
+        assert exc_http.value.detail["code"] == "invalid_request"
+        assert exc_http.value.detail["code"] != "device_bound"
 
 
 def test_unknown_key_safe_invalid_license():
@@ -634,8 +721,12 @@ def test_unauthenticated_machine_and_non_admin_reset(monkeypatch):
 
 
 def test_concurrent_activation_integrity_path_deterministic():
-    """Simulate race: second bind raises IntegrityError → device_bound."""
-    # covered by test_integrity_error_maps_to_device_bound
+    """Classification only — real dual-session coverage is in remediation tests."""
+    from app.licensing.machine import is_one_active_activation_conflict
+
+    orig = Exception('duplicate key "uq_desktop_activations_one_active_per_license"')
+    orig.diag = SimpleNamespace(constraint_name="uq_desktop_activations_one_active_per_license")
+    assert is_one_active_activation_conflict(IntegrityError("s", {}, orig)) is True
     assert map_binding_error(LicenseBindingError("device_bound", "x")).status_code == 409
 
 
@@ -706,3 +797,310 @@ def test_attacker_supplied_public_key_not_trust_root():
         verify_entitlement_token(token, public_key_pem=attacker_pub)
     # Correct pin works
     verify_entitlement_token(token, public_key_pem=published["keys"][0]["public_key_pem"])
+
+
+# --- Phase 7 security remediation coverage ---
+
+
+def test_deactivate_then_same_device_activate_reactivates_row():
+    """Client deactivate → same-device activate must UPDATE existing row, not INSERT."""
+    lic = _license(status=LICENSE_STATUS_ACTIVE, bound_device_id=55)
+    device = DesktopDevice(fingerprint_hash=_fp())
+    device.id = 55
+    historical = DesktopActivation(
+        license_id=lic.id,
+        user_id=7,
+        device_id=55,
+        status=ACTIVATION_STATUS_DEACTIVATED,
+    )
+    historical.id = 99
+    historical.deactivated_at = datetime.now(timezone.utc)
+    historical.activated_at = datetime.now(timezone.utc) - timedelta(days=1)
+    product = _product()
+
+    db = MagicMock()
+    lock = MagicMock()
+    lock.scalar_one.return_value = lic
+    db.execute.return_value = lock
+    db.get.return_value = product
+
+    with patch("app.licensing.binding.get_or_create_device", return_value=device), patch(
+        "app.licensing.binding.get_active_activation", return_value=None
+    ), patch(
+        "app.licensing.binding.get_activation_for_license_device", return_value=historical
+    ):
+        result = activate_license_on_device(
+            db,
+            license_row=lic,
+            website_user_id=7,
+            product_id=1,
+            fingerprint_hash=_fp(),
+        )
+
+    assert result.created_new_activation is False
+    assert result.activation.id == 99
+    assert historical.status == ACTIVATION_STATUS_ACTIVE
+    assert historical.deactivated_at is None
+    assert lic.bound_device_id == 55
+    assert lic.status == LICENSE_STATUS_ACTIVE
+
+
+def test_admin_reset_then_same_device_activate_reactivates_row():
+    lic = _license(status=LICENSE_STATUS_ISSUED, bound_device_id=None)
+    device = DesktopDevice(fingerprint_hash=_fp())
+    device.id = 55
+    historical = DesktopActivation(
+        license_id=lic.id,
+        user_id=7,
+        device_id=55,
+        status=ACTIVATION_STATUS_DEACTIVATED,
+    )
+    historical.id = 88
+    historical.deactivated_at = datetime.now(timezone.utc)
+    product = _product()
+
+    db = MagicMock()
+    lock = MagicMock()
+    lock.scalar_one.return_value = lic
+    db.execute.return_value = lock
+    db.get.return_value = product
+
+    with patch("app.licensing.binding.get_or_create_device", return_value=device), patch(
+        "app.licensing.binding.get_active_activation", return_value=None
+    ), patch(
+        "app.licensing.binding.get_activation_for_license_device", return_value=historical
+    ):
+        result = activate_license_on_device(
+            db,
+            license_row=lic,
+            website_user_id=7,
+            product_id=1,
+            fingerprint_hash=_fp(),
+        )
+
+    assert result.activation.id == 88
+    assert result.created_new_activation is False
+    assert historical.status == ACTIVATION_STATUS_ACTIVE
+    assert lic.bound_device_id == 55
+
+
+def test_admin_reset_then_new_device_activate_inserts():
+    lic = _license(status=LICENSE_STATUS_ISSUED, bound_device_id=None)
+    device_b = DesktopDevice(fingerprint_hash=_fp("device-b"))
+    device_b.id = 77
+    product = _product()
+
+    db = MagicMock()
+    lock = MagicMock()
+    lock.scalar_one.return_value = lic
+    db.execute.return_value = lock
+    db.get.return_value = product
+
+    with patch("app.licensing.binding.get_or_create_device", return_value=device_b), patch(
+        "app.licensing.binding.get_active_activation", return_value=None
+    ), patch(
+        "app.licensing.binding.get_activation_for_license_device", return_value=None
+    ):
+        result = activate_license_on_device(
+            db,
+            license_row=lic,
+            website_user_id=7,
+            product_id=1,
+            fingerprint_hash=_fp("device-b"),
+        )
+
+    assert result.created_new_activation is True
+    assert result.device.id == 77
+    assert lic.bound_device_id == 77
+    db.add.assert_called()
+
+
+def test_wrong_fingerprint_validate_does_not_create_device():
+    from app.licensing.machine import _require_bound_active
+
+    lic = _license(status=LICENSE_STATUS_ACTIVE, bound_device_id=55)
+    product = _product()
+    db = MagicMock()
+    lock = MagicMock()
+    lock.scalar_one.return_value = lic
+
+    def execute(stmt):
+        return lock
+
+    db.execute.side_effect = execute
+    db.get.side_effect = lambda model, ident: lic if model is DesktopLicense else product
+
+    with patch("app.licensing.machine._product_by_code", return_value=product), patch(
+        "app.licensing.machine._get_owned_license", return_value=lic
+    ), patch("app.licensing.binding.get_device_by_fingerprint", return_value=None) as lookup, patch(
+        "app.licensing.binding.get_or_create_device"
+    ) as create:
+        with pytest.raises(HTTPException) as exc:
+            _require_bound_active(
+                db,
+                user=SimpleNamespace(id=7),
+                license_id=101,
+                product_code="QR_CODE",
+                fingerprint_hash=_fp("unknown"),
+            )
+        assert exc.value.detail["code"] == "device_bound"
+        create.assert_not_called()
+        lookup.assert_called()
+
+
+def test_http_idor_user_b_cannot_validate_user_a_license(monkeypatch):
+    """Explicit ownership check: authenticated user B cannot operate user A's license_id."""
+    from app.licensing.machine import _get_owned_license
+
+    lic = _license(licensed_user_id=7, id=101)
+    db = MagicMock()
+    db.get.return_value = lic
+    with pytest.raises(HTTPException) as exc:
+        _get_owned_license(db, user=SimpleNamespace(id=99), license_id=101)
+    assert exc.value.status_code == 403
+    assert exc.value.detail["code"] == "wrong_user"
+
+    # HTTP path: validate/refresh/deactivate use ownership
+    settings = _settings()
+    with patch("app.licensing.machine._get_owned_license", side_effect=HTTPException(
+        status_code=403, detail={"code": "wrong_user", "message": "no"}
+    )):
+        with pytest.raises(HTTPException) as e2:
+            validate_machine_license(
+                MagicMock(),
+                settings,
+                user=SimpleNamespace(id=99),
+                license_id=101,
+                product_code="QR_CODE",
+                fingerprint_hash=_fp(),
+            )
+        assert e2.value.detail["code"] == "wrong_user"
+
+
+def test_malformed_signing_key_http_public_key_503(monkeypatch):
+    import app.licensing.feature_flag as ff
+    from app.config import get_settings as real_get_settings
+    from app.main import create_app
+
+    settings = Settings(
+        enable_desktop_licensing=True,
+        license_signing_private_key="not-a-valid-ed25519-key",
+    )
+    monkeypatch.setattr(ff, "get_settings", lambda: settings)
+    app = create_app()
+    app.dependency_overrides[real_get_settings] = lambda: settings
+    app.state.startup_complete = True
+    app.state.startup_status = "ok"
+    client = TestClient(app)
+    r = client.get("/api/license/public-key")
+    assert r.status_code == 503
+    assert r.json()["detail"]["code"] == "signing_unavailable"
+    app.dependency_overrides.clear()
+
+
+def test_sqlite_concurrent_two_device_activation_one_wins():
+    """
+    Real dual-connection concurrency against SQLite partial unique index.
+    Exercises DB guarantee used by activate: exactly one active activation per license.
+    """
+    import threading
+    import tempfile
+    import os
+
+    from sqlalchemy import create_engine, event, text
+
+    fd, path = tempfile.mkstemp(suffix=".sqlite")
+    os.close(fd)
+    try:
+        engine = create_engine(
+            f"sqlite:///{path}",
+            connect_args={"check_same_thread": False},
+        )
+
+        @event.listens_for(engine, "connect")
+        def _fk_off(dbapi_conn, _):
+            cur = dbapi_conn.cursor()
+            cur.execute("PRAGMA foreign_keys=OFF")
+            cur.close()
+
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE desktop_activations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        license_id INTEGER NOT NULL,
+                        device_id INTEGER NOT NULL,
+                        status VARCHAR(32) NOT NULL,
+                        UNIQUE (license_id, device_id)
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX uq_desktop_activations_one_active_per_license
+                        ON desktop_activations (license_id) WHERE status = 'active'
+                    """
+                )
+            )
+
+        barrier = threading.Barrier(2)
+        results: list[str] = []
+        lock = threading.Lock()
+
+        def worker(device_id: int) -> None:
+            with engine.connect() as conn:
+                barrier.wait()
+                try:
+                    conn.execute(text("BEGIN IMMEDIATE"))
+                    active = conn.execute(
+                        text(
+                            "SELECT id FROM desktop_activations "
+                            "WHERE license_id = 1 AND status = 'active'"
+                        )
+                    ).fetchone()
+                    if active:
+                        conn.execute(text("ROLLBACK"))
+                        with lock:
+                            results.append("device_bound")
+                        return
+                    conn.execute(
+                        text(
+                            "INSERT INTO desktop_activations (license_id, device_id, status) "
+                            "VALUES (1, :d, 'active')"
+                        ),
+                        {"d": device_id},
+                    )
+                    conn.execute(text("COMMIT"))
+                    with lock:
+                        results.append("success")
+                except Exception:
+                    try:
+                        conn.execute(text("ROLLBACK"))
+                    except Exception:
+                        pass
+                    with lock:
+                        results.append("device_bound")
+
+        t1 = threading.Thread(target=worker, args=(10,))
+        t2 = threading.Thread(target=worker, args=(20,))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert results.count("success") == 1, results
+        assert results.count("device_bound") == 1, results
+
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT device_id FROM desktop_activations WHERE status = 'active'")
+            ).fetchall()
+            assert len(rows) == 1
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass

@@ -284,6 +284,7 @@ def test_activate_after_reset_allows_new_device(monkeypatch):
     monkeypatch.setattr("app.licensing.binding.get_or_create_device", lambda *a, **k: device_b)
     # Historical deactivated activation exists but get_active_activation returns None
     monkeypatch.setattr("app.licensing.binding.get_active_activation", lambda *a, **k: None)
+    monkeypatch.setattr("app.licensing.binding.get_activation_for_license_device", lambda *a, **k: None)
 
     result = activate_license_on_device(
         db,

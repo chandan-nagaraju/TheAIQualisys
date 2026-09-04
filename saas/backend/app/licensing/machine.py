@@ -167,6 +167,54 @@ def _issue_token(
     return token, claims
 
 
+def _integrity_constraint_name(exc: IntegrityError) -> str:
+    orig = getattr(exc, "orig", None)
+    diag = getattr(orig, "diag", None) if orig is not None else None
+    name = getattr(diag, "constraint_name", None) if diag is not None else None
+    if name:
+        return str(name).lower()
+    return ""
+
+
+def _integrity_error_text(exc: IntegrityError) -> str:
+    parts = [
+        _integrity_constraint_name(exc),
+        str(getattr(exc, "orig", "") or ""),
+        str(exc),
+    ]
+    return " ".join(parts).lower()
+
+
+def is_one_active_activation_conflict(exc: IntegrityError) -> bool:
+    """
+    True only for the partial unique index that enforces one active activation per license.
+    Must NOT match UNIQUE(license_id, device_id) or fingerprint_hash uniqueness.
+    """
+    name = _integrity_constraint_name(exc)
+    if name == "uq_desktop_activations_one_active_per_license":
+        return True
+    text = _integrity_error_text(exc)
+    if "uq_desktop_activations_one_active_per_license" in text:
+        return True
+    return False
+
+
+def is_license_device_pair_conflict(exc: IntegrityError) -> bool:
+    """UNIQUE(license_id, device_id) — should be rare after reactivation path; not device_bound."""
+    name = _integrity_constraint_name(exc)
+    if name in {"uq_desktop_activations_license_device", "desktop_activations_license_id_device_id_key"}:
+        return True
+    text = _integrity_error_text(exc)
+    if "uq_desktop_activations_license_device" in text:
+        return True
+    # Avoid matching the one-active index
+    if "one_active" in text:
+        return False
+    if "license_id" in text and "device_id" in text and ("unique" in text or "duplicate" in text):
+        return True
+    return False
+
+
 def activate_machine_license(
     db: Session,
     settings: Settings,
@@ -203,11 +251,24 @@ def activate_machine_license(
     except LicenseBindingError as exc:
         raise map_binding_error(exc) from exc
     except IntegrityError as exc:
-        # Concurrent first-bind race against partial unique active index
+        # Roll back the failed flush unit so the session can continue cleanly.
+        db.rollback()
+        if is_one_active_activation_conflict(exc):
+            raise machine_http_error(
+                MACHINE_ERR_DEVICE_BOUND,
+                "This license is already bound to another computer. "
+                "Contact support for an admin-authorized device reset.",
+                http_status=409,
+            ) from exc
+        if is_license_device_pair_conflict(exc):
+            raise machine_http_error(
+                MACHINE_ERR_INVALID_REQUEST,
+                "Activation state conflict for this device. Retry activation.",
+                http_status=409,
+            ) from exc
         raise machine_http_error(
-            MACHINE_ERR_DEVICE_BOUND,
-            "This license is already bound to another computer. "
-            "Contact support for an admin-authorized device reset.",
+            MACHINE_ERR_INVALID_REQUEST,
+            "Could not complete activation due to a data integrity conflict.",
             http_status=409,
         ) from exc
 
@@ -274,7 +335,7 @@ def _require_bound_active(
     from app.licensing.binding import (
         assert_license_not_terminal,
         assert_license_paid_entitlement,
-        get_or_create_device,
+        get_device_by_fingerprint,
         assert_device_binding_allowed,
     )
 
@@ -284,7 +345,12 @@ def _require_bound_active(
     try:
         assert_license_paid_entitlement(locked)
         assert_license_not_terminal(locked)
-        device = get_or_create_device(db, fingerprint_hash=fp)
+        device = get_device_by_fingerprint(db, fingerprint_hash=fp)
+        if device is None:
+            raise LicenseBindingError(
+                "device_bound",
+                "This license is already bound to another computer.",
+            )
         active = get_active_activation(db, locked.id)
         if active is None:
             raise LicenseBindingError("invalid_status", "License has no active activation.")

@@ -110,6 +110,28 @@ def get_active_activation(db: Session, license_id: int) -> Optional[DesktopActiv
     ).scalar_one_or_none()
 
 
+def get_activation_for_license_device(
+    db: Session, *, license_id: int, device_id: int
+) -> Optional[DesktopActivation]:
+    """Return the unique (license_id, device_id) activation row if it exists (any status)."""
+    return db.execute(
+        select(DesktopActivation).where(
+            DesktopActivation.license_id == int(license_id),
+            DesktopActivation.device_id == int(device_id),
+        )
+    ).scalar_one_or_none()
+
+
+def get_device_by_fingerprint(db: Session, *, fingerprint_hash: str) -> Optional[DesktopDevice]:
+    """Lookup-only — does not create rows (validate/refresh must use this)."""
+    fp = (fingerprint_hash or "").strip().lower()
+    if not fp:
+        return None
+    return db.execute(
+        select(DesktopDevice).where(DesktopDevice.fingerprint_hash == fp)
+    ).scalar_one_or_none()
+
+
 def get_or_create_device(
     db: Session,
     *,
@@ -184,10 +206,13 @@ def activate_license_on_device(
     app_version: Optional[str] = None,
 ) -> ActivationBindResult:
     """
-    Bind (first activation) or reaffirm (same device) a license.
+    Bind (first activation), reaffirm (same active device), or reactivate
+    a previously deactivated (license_id, device_id) row.
 
     Locks the license row for concurrent first-bind protection when supported.
     Caller must commit the transaction.
+
+    UNIQUE(license_id, device_id) is preserved: never INSERT a duplicate pair.
     """
     # Concurrent first-bind protection
     locked = db.execute(
@@ -217,6 +242,7 @@ def activate_license_on_device(
     active = get_active_activation(db, locked.id)
     assert_device_binding_allowed(locked, device=device, active_activation=active)
 
+    # Same device already active → reaffirm
     if active is not None and int(active.device_id) == int(device.id):
         active.last_validated_at = _utc_now()
         if app_version:
@@ -232,7 +258,47 @@ def activate_license_on_device(
             created_new_activation=False,
         )
 
-    # First bind or re-bind after admin reset (no active activation; bound_device cleared)
+    # Existing row for this (license, device) — reactivate instead of INSERT
+    existing = get_activation_for_license_device(db, license_id=locked.id, device_id=device.id)
+    if existing is not None:
+        if (existing.status or "").lower() == ACTIVATION_STATUS_ACTIVE:
+            # Defensive: should have been handled above via get_active_activation
+            existing.last_validated_at = _utc_now()
+            if app_version:
+                existing.app_version = app_version
+            locked.bound_device_id = device.id
+            if locked.status == LICENSE_STATUS_ISSUED:
+                locked.status = LICENSE_STATUS_ACTIVE
+                locked.activated_at = locked.activated_at or _utc_now()
+            return ActivationBindResult(
+                license=locked,
+                device=device,
+                activation=existing,
+                created_new_activation=False,
+            )
+        # Deactivated (or other non-active) → reactivate SAME row; preserve id/history
+        now = _utc_now()
+        existing.status = ACTIVATION_STATUS_ACTIVE
+        existing.deactivated_at = None
+        existing.user_id = website_user_id
+        existing.last_validated_at = now
+        # Keep original activated_at for history; do not wipe identity
+        if app_version:
+            existing.app_version = app_version
+        locked.bound_device_id = device.id
+        locked.status = LICENSE_STATUS_ACTIVE
+        if locked.activated_at is None:
+            locked.activated_at = now
+        db.add(existing)
+        db.flush()
+        return ActivationBindResult(
+            license=locked,
+            device=device,
+            activation=existing,
+            created_new_activation=False,
+        )
+
+    # No prior (license, device) row — first bind for this pair
     activation = DesktopActivation(
         license_id=locked.id,
         user_id=website_user_id,
