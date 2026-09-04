@@ -240,6 +240,9 @@ export default function Layout() {
                 <NavLink className={navItemCls} to="/admin/desktop-licensing">
                   Desktop licensing
                 </NavLink>
+                <NavLink className={navItemCls} to="/admin/desktop-payments">
+                  Desktop payments
+                </NavLink>
                 <button type="button" className={logoutBtn} onClick={logoutAdmin}>
                   Log out
                 </button>

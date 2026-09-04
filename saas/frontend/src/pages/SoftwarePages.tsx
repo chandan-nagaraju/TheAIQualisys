@@ -53,10 +53,11 @@ export type DesktopOrder = {
 
 function statusLabel(status: string): string {
   if (status === "pending_payment") return "Pending payment";
-  if (status === "payment_submitted") return "Payment submitted";
+  if (status === "payment_submitted") return "Payment submitted — pending review";
   if (status === "approved") return "Approved";
   if (status === "rejected") return "Rejected";
   if (status === "cancelled") return "Cancelled";
+  if (status === "pending_review") return "Pending review";
   return status;
 }
 
@@ -326,8 +327,8 @@ export function SoftwareProductPage() {
             </div>
           </dl>
           <p className="text-xs text-slate-500">
-            Creating this order does not charge you and does not issue license keys yet. Status will be{" "}
-            <strong className="text-slate-300">Pending payment</strong> until you complete UPI payment in a later step.
+            Creating this order does not charge you and does not issue license keys yet. After create, you will get UPI
+            instructions and can submit a UTR for admin review.
           </p>
           {err && <p className="text-sm text-red-400">{err}</p>}
           <div className="flex flex-wrap gap-2">
@@ -411,7 +412,16 @@ export function SoftwareOrderDetailPage() {
   const { orderId } = useParams();
   const nav = useNavigate();
   const [order, setOrder] = useState<DesktopOrder | null>(null);
+  const [payments, setPayments] = useState<
+    { id: number; status: string; reference_note: string | null; amount_inr: number; created_at: string | null }[]
+  >([]);
+  const [upi, setUpi] = useState<{ upi_id: string; payee_name: string; instructions: string | null } | null>(null);
+  const [utr, setUtr] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [payErr, setPayErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!localStorage.getItem("fir_token")) {
@@ -425,12 +435,54 @@ export function SoftwareOrderDetailPage() {
     }
     (async () => {
       try {
-        setOrder(await apiFetch<DesktopOrder>(`/api/desktop/orders/${id}`));
+        const [o, p, u] = await Promise.all([
+          apiFetch<DesktopOrder>(`/api/desktop/orders/${id}`),
+          apiFetch<typeof payments>(`/api/desktop/orders/${id}/payments`),
+          apiFetch<{ upi_id: string; payee_name: string; instructions: string | null }>("/api/desktop/upi-settings"),
+        ]);
+        setOrder(o);
+        setPayments(p);
+        setUpi(u);
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Order not found");
       }
     })();
-  }, [nav, orderId]);
+  }, [nav, orderId, tick]);
+
+  async function submitPayment(e: FormEvent) {
+    e.preventDefault();
+    if (!order) return;
+    setPayErr(null);
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("utr_reference", utr);
+      if (file) fd.append("screenshot", file);
+      const token = localStorage.getItem("fir_token");
+      const res = await fetch(`/api/desktop/orders/${order.id}/payments`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const j = await res.json();
+          if (j?.detail) detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
+      }
+      setUtr("");
+      setFile(null);
+      setTick((x) => x + 1);
+    } catch (ex) {
+      setPayErr(ex instanceof Error ? ex.message : "Payment submit failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (err) {
     return (
@@ -443,6 +495,11 @@ export function SoftwareOrderDetailPage() {
     );
   }
   if (!order) return <p className="px-4 py-10 text-sm text-slate-500">Loading…</p>;
+
+  const canPay =
+    order.status === "pending_payment" ||
+    order.status === "rejected" ||
+    (order.status === "payment_submitted" && !payments.some((p) => p.status === "pending_review"));
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-10">
@@ -473,7 +530,7 @@ export function SoftwareOrderDetailPage() {
             <dd className="text-white">{inr(order.unit_price_inr)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-slate-500">Total</dt>
+            <dt className="text-xs text-slate-500">Total due</dt>
             <dd className="text-lg font-semibold text-white">{inr(order.total_price_inr)}</dd>
           </div>
           <div>
@@ -481,10 +538,77 @@ export function SoftwareOrderDetailPage() {
             <dd className="text-white">{order.duration_days} days</dd>
           </div>
         </dl>
-        <p className="text-xs text-slate-500">
-          License keys are not issued at this step. Payment instructions will be available in a later release (Phase 4).
-        </p>
+        {order.status === "approved" && (
+          <p className="text-xs text-emerald-400">
+            Payment approved. License keys were minted for each seat (My Licenses / email arrive in Phase 5).
+          </p>
+        )}
       </div>
+
+      {upi && order.status !== "approved" && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-2">
+          <h2 className="text-sm font-semibold text-slate-200">UPI payment instructions</h2>
+          <p className="text-sm text-slate-300">
+            Payee: <strong className="text-white">{upi.payee_name || "—"}</strong>
+          </p>
+          <p className="text-sm text-slate-300">
+            UPI ID: <code className="text-brand-400">{upi.upi_id || "Not configured yet"}</code>
+          </p>
+          <p className="text-sm text-slate-300">
+            Amount: <strong className="text-white">{inr(order.total_price_inr)}</strong>
+          </p>
+          {upi.instructions && <p className="text-xs text-slate-500 whitespace-pre-wrap">{upi.instructions}</p>}
+        </div>
+      )}
+
+      {canPay && (
+        <form onSubmit={submitPayment} className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-200">Submit payment reference</h2>
+          <p className="text-xs text-slate-500">
+            Submitting a UTR does not automatically approve payment. An admin must verify before licenses are issued.
+          </p>
+          <label className="block text-xs text-slate-500">
+            UTR / UPI reference
+            <input
+              required
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              value={utr}
+              onChange={(e) => setUtr(e.target.value)}
+              placeholder="e.g. 123456789012"
+            />
+          </label>
+          <label className="block text-xs text-slate-500">
+            Payment screenshot (optional, JPEG/PNG/WebP, max 5 MB)
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="mt-1 block w-full text-sm text-slate-400"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
+          </label>
+          {payErr && <p className="text-sm text-red-400">{payErr}</p>}
+          <button
+            type="submit"
+            disabled={busy || !upi?.upi_id}
+            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-40"
+          >
+            {busy ? "Submitting…" : "Submit for review"}
+          </button>
+        </form>
+      )}
+
+      {payments.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold text-slate-200">Payment history</h2>
+          {payments.map((p) => (
+            <div key={p.id} className="rounded-lg border border-slate-800 px-3 py-2 text-sm text-slate-300">
+              <span className="text-white">{p.status}</span>
+              {p.reference_note && <span className="ml-2 text-slate-500">UTR {p.reference_note}</span>}
+              <span className="ml-2 text-slate-500">{inr(p.amount_inr)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

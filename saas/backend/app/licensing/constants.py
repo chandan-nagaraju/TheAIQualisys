@@ -31,9 +31,16 @@ ORDER_STATUS_APPROVED = "approved"
 ORDER_STATUS_REJECTED = "rejected"
 ORDER_STATUS_CANCELLED = "cancelled"
 
-PAYMENT_STATUS_SUBMITTED = "submitted"
+PAYMENT_STATUS_SUBMITTED = "submitted"  # legacy alias; prefer pending_review
+PAYMENT_STATUS_PENDING_REVIEW = "pending_review"
 PAYMENT_STATUS_APPROVED = "approved"
 PAYMENT_STATUS_REJECTED = "rejected"
+
+# Screenshot upload limits (customer payment proof)
+PAYMENT_SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024
+PAYMENT_SCREENSHOT_ALLOWED_MIME = frozenset(
+    {"image/jpeg", "image/png", "image/webp", "image/jpg"}
+)
 
 ACTIVATION_STATUS_ACTIVE = "active"
 ACTIVATION_STATUS_DEACTIVATED = "deactivated"

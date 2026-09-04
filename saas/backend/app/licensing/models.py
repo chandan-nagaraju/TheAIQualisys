@@ -112,7 +112,7 @@ class DesktopPayment(Base):
     reference_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     screenshot_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     screenshot_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="submitted")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_review")
     reviewed_by_admin_id: Mapped[int | None] = mapped_column(
         ForeignKey("platform_admins.id", ondelete="SET NULL"), nullable=True
     )
@@ -121,6 +121,22 @@ class DesktopPayment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     order: Mapped[DesktopOrder] = relationship("DesktopOrder", back_populates="payments")
+
+
+class DesktopUpiSettings(Base):
+    """Singleton row (id=1) for manual UPI payee instructions shown to customers."""
+
+    __tablename__ = "desktop_upi_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    upi_id: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    payee_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qr_image_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_by_admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("platform_admins.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class DesktopDevice(Base):
