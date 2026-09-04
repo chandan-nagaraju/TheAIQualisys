@@ -1,0 +1,108 @@
+# Desktop Licensing — Production Implementation Plan
+
+This document tracks the **production** desktop licensing system in this repository.
+The prior local BETA is reference-only architecture; nothing was recovered from beta Git history.
+
+## Non-negotiable rule
+
+**1 license key = 1 website user + 1 physical device + 1 product.**
+
+No `max_devices=N`, no shared seats. Multiple installations require multiple paid keys.
+
+Products: `QR_CODE`, `ASN_PDF_PRINTER`, `ASN_AUTO_FILLER`
+
+Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
+
+## Phase status
+
+| Phase | Scope | Status |
+|-------|--------|--------|
+| 0 | Audit / gap | **Done** — production repo had no licensing tables/APIs |
+| 1 | Foundation (schema, flag, service, admin/customer/machine routers, key crypto) | **In review** |
+| 2 | Admin catalog / pricing | Not started |
+| 3 | Customer orders | Not started |
+| 4 | UPI payment approval + mint | Not started |
+| 5 | Email + My Licenses | Not started |
+| 6 | Protected installers / downloads | Not started |
+| 7 | Machine License API (Ed25519) | Not started (stubs return 501) |
+| 7A | 7-day trial system | Not started |
+| 8+ | Desktop app integration (QR / ASN) | Explicitly deferred |
+
+## Phase 0 — Gap summary
+
+- No `032_*` licensing migration existed on production branches before this work.
+- No `/api/license/*`, `/api/desktop/*`, or `ENABLE_DESKTOP_LICENSING`.
+- Existing auth, companies, email, UPI settings, and migration runner are reusable.
+- Identity must not be duplicated: licenses bind to `company_users` / `companies`.
+
+## Phase 1 — What shipped
+
+### Migration
+
+- `saas/backend/migrations/032_desktop_licensing.sql`
+  - Products, plans, orders, payments, licenses, devices, activations, events
+  - Installers + download tokens (schema ready for Phase 6)
+  - Seeds three products + annual 1-seat plans (placeholder INR)
+
+### Backend package
+
+- `saas/backend/app/licensing/` — models, constants, keys, service, feature flag, schemas, routers
+
+### APIs (only when `ENABLE_DESKTOP_LICENSING=true`)
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/admin/desktop/health` | Platform admin |
+| GET | `/api/admin/desktop/products` | Platform admin catalog |
+| GET | `/api/desktop/health` | Company user |
+| GET | `/api/desktop/products` | Company user catalog |
+| POST | `/api/license/activate` | **501 stub** (Phase 7) |
+| POST | `/api/license/validate` | **501 stub** (Phase 7) |
+| POST | `/api/license/refresh` | **501 stub** (Phase 7) |
+| POST | `/api/license/deactivate` | **501 stub** (Phase 7) |
+| GET | `/api/license/public-key` | **501 stub** (Phase 7) |
+
+When the flag is **false**, all of the above return **404**.
+
+`/health` exposes `enable_desktop_licensing` for ops visibility (not a secret).
+
+### Secure key handling
+
+- Server-side generation (`AQ-XXXX-…`)
+- SHA-256 hash for lookup; optional Fernet ciphertext via `LICENSE_KEY_ENCRYPTION_SECRET`
+- Plaintext returned only at mint time to the caller (later: email / reveal)
+- Masking helper for UI defaults
+- `LICENSE_SIGNING_PRIVATE_KEY` setting reserved for Phase 7 — **do not commit production keys**
+
+### Service helpers ready for later phases
+
+- `create_paid_license_row` / `create_paid_licenses_for_seats` (N independent keys)
+- `record_license_event` audit rows
+
+## Security notes (Phase 1)
+
+- Private Ed25519 signing key is **not** generated or committed.
+- Feature flag defaults off — schema can apply dark without exposing routes.
+- No desktop app code in this phase; no localhost API fallbacks added.
+- Rate limiting for machine endpoints lands with Phase 7 implementation.
+
+## Explicitly out of scope until later phases
+
+- Admin pricing UI, customer checkout/UPI, payment approval, emails, My Licenses UI
+- Trial issuance / day-6 reminder / unique trial index (Phase 7A)
+- Real activate/validate/refresh/deactivate + signed entitlements (Phase 7)
+- QR_CODE / ASN_* desktop integration
+
+## How to verify Phase 1
+
+```bash
+cd saas/backend
+pip install -r requirements.txt -r requirements-dev.txt
+pytest tests/test_desktop_licensing_foundation.py -q
+```
+
+With DB + flag on (local): apply migrations via normal API startup, then call admin/customer health/products with JWTs.
+
+## Stop
+
+**Stop at Phase 1 for review.** Do not start Phase 2 until approved.

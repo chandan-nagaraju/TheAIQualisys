@@ -45,6 +45,31 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ENABLE_SUBSCRIPTION", "enable_subscription"),
     )
 
+    # Desktop product licensing (QR_CODE / ASN_*). Default off — additive; FIR/QMS unchanged.
+    # When false, /api/desktop/*, /api/admin/desktop/*, /api/license/* return 404.
+    enable_desktop_licensing: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("ENABLE_DESKTOP_LICENSING", "enable_desktop_licensing"),
+    )
+    # Fernet key or passphrase for reversible license-key ciphertext (authorized reveal).
+    # Separate from JWT secrets. Never commit production values. Optional for hash-only mint.
+    license_key_encryption_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "LICENSE_KEY_ENCRYPTION_SECRET",
+            "license_key_encryption_secret",
+        ),
+    )
+    # Ed25519 private key (PEM or raw) for signed entitlements — Phase 7. Server-side only.
+    # Do NOT generate a production key in source control or desktop apps.
+    license_signing_private_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "LICENSE_SIGNING_PRIVATE_KEY",
+            "license_signing_private_key",
+        ),
+    )
+
     upi_id: str = "chandanregins1@okaxis"
     whatsapp_number: str = "917892007580"
     whatsapp_message_template: str = (
@@ -152,6 +177,8 @@ class Settings(BaseSettings):
         "bootstrap_admin_password",
         "resend_api_key",
         "cron_secret",
+        "license_key_encryption_secret",
+        "license_signing_private_key",
         mode="before",
     )
     @classmethod
