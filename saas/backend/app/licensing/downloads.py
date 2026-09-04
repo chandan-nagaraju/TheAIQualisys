@@ -15,6 +15,7 @@ from app.config import Settings
 from app.licensing.constants import (
     DOWNLOAD_TOKEN_BYTES,
     ENTITLEMENT_PAID,
+    ENTITLEMENT_TRIAL,
     INSTALLER_ALLOWED_CONTENT_TYPES,
     INSTALLER_ALLOWED_EXTENSIONS,
     INSTALLER_CHANNEL_ARCHIVED,
@@ -105,10 +106,11 @@ def serialize_installer_customer(row: DesktopInstaller, *, product: DesktopProdu
 
 
 def license_entitles_download(lic: DesktopLicense, *, now: Optional[datetime] = None) -> bool:
-    """Paid + issued/active + wall-clock expiry. No device binding required."""
+    """Paid or trial + issued/active + wall-clock expiry. No device binding required."""
     if int(lic.licensed_user_id) <= 0:
         return False
-    if (lic.entitlement_type or "").lower() != ENTITLEMENT_PAID:
+    ent = (lic.entitlement_type or "").lower()
+    if ent not in (ENTITLEMENT_PAID, ENTITLEMENT_TRIAL):
         return False
     status = (lic.status or "").lower()
     if status not in (LICENSE_STATUS_ISSUED, LICENSE_STATUS_ACTIVE):

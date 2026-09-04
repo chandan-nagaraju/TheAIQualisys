@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -28,6 +28,7 @@ from app.licensing.schemas import (
     DesktopOrderOut,
     DesktopPaymentOut,
     DesktopProductWithPlansOut,
+    DesktopTrialCreate,
     DesktopUpiSettingsOut,
     LicensingHealthOut,
 )
@@ -74,6 +75,66 @@ def customer_checkout_context(
         company_id=company.id,
         company_name=company.company_name,
     )
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for") or ""
+    if forwarded:
+        return forwarded.split(",")[0].strip() or "unknown"
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+@router.post("/trials", response_model=DesktopLicenseOut, status_code=201)
+def customer_create_trial(
+    body: DesktopTrialCreate,
+    request: Request,
+    _: None = Depends(require_desktop_licensing_enabled),
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    """Start a 7-day desktop trial. One trial ever per (user, product). No plaintext in response."""
+    from app.licensing.trials import (
+        apply_trial_create_rate_limits,
+        attempt_send_trial_email,
+        create_desktop_trial,
+        serialize_trial_create_response,
+    )
+
+    apply_trial_create_rate_limits(user_id=int(user.id), client_ip=_client_ip(request))
+    try:
+        license_row, product, _delivery = create_desktop_trial(
+            db,
+            settings,
+            user=user,
+            product_code=body.product_code,
+        )
+        db.commit()
+        db.refresh(license_row)
+    except Exception:
+        db.rollback()
+        raise
+
+    # Email after commit — failure must not undo the trial license
+    try:
+        attempt_send_trial_email(
+            db,
+            settings,
+            license_id=int(license_row.id),
+            actor_type="user",
+            actor_id=int(user.id),
+            is_resend=False,
+            enforce_rate_limit=False,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        # Soft-fail: license remains issued
+        pass
+
+    return serialize_trial_create_response(license_row, product=product)
 
 
 @router.post("/orders", response_model=DesktopOrderOut, status_code=201)
@@ -198,7 +259,7 @@ def customer_list_licenses(
     limit: int = 200,
 ):
     from app.licensing.customer_licenses import list_licenses_for_user, serialize_license_public
-    from app.licensing.models import DesktopLicenseEmailDelivery
+    from app.licensing.models import DesktopLicenseEmailDelivery, DesktopProduct, DesktopTrialEmailDelivery
     from sqlalchemy import select
 
     rows = list_licenses_for_user(db, user=user, limit=limit)
@@ -210,14 +271,39 @@ def customer_list_licenses(
             select(DesktopLicenseEmailDelivery).where(DesktopLicenseEmailDelivery.order_id.in_(order_ids))
         ).scalars().all():
             deliveries[int(d.order_id)] = d
-    return [
-        serialize_license_public(
-            lic,
-            order=lic.order,
-            email_delivery=deliveries.get(int(lic.order_id)) if lic.order_id else None,
+    trial_license_ids = {
+        int(r.id) for r in rows if (r.entitlement_type or "").lower() == "trial"
+    }
+    trial_deliveries = {}
+    if trial_license_ids:
+        for d in db.execute(
+            select(DesktopTrialEmailDelivery).where(
+                DesktopTrialEmailDelivery.license_id.in_(trial_license_ids)
+            )
+        ).scalars().all():
+            trial_deliveries[int(d.license_id)] = d
+    product_ids = {int(r.product_id) for r in rows if not r.order_id}
+    products = {}
+    if product_ids:
+        for p in db.execute(select(DesktopProduct).where(DesktopProduct.id.in_(product_ids))).scalars().all():
+            products[int(p.id)] = p
+    out = []
+    for lic in rows:
+        email_delivery = deliveries.get(int(lic.order_id)) if lic.order_id else None
+        # Map trial email onto the same email_status fields for UI
+        trial_delivery = trial_deliveries.get(int(lic.id))
+        if email_delivery is None and trial_delivery is not None:
+            # Lightweight adapter: serialize_license_public reads .status / .sent_at
+            email_delivery = trial_delivery
+        out.append(
+            serialize_license_public(
+                lic,
+                order=lic.order,
+                product=None if lic.order_id else products.get(int(lic.product_id)),
+                email_delivery=email_delivery,
+            )
         )
-        for lic in rows
-    ]
+    return out
 
 
 @router.get("/licenses/{license_id}", response_model=DesktopLicenseOut)

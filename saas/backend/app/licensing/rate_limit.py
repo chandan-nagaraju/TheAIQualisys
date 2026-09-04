@@ -6,6 +6,9 @@ tests and single-worker deployments. It is NOT a production-grade distributed
 rate limiter across multiple Gunicorn/Railway workers. Prefer edge/API-gateway
 limits (or Redis) for multi-worker production — documented as non-blocking
 hardening. Unknown-key activate attempts still count against IP buckets here.
+
+Phase 7A also uses this limiter for trial creation (per-user and per-IP hourly
+buckets). The same in-process / non-distributed limitation applies.
 """
 
 from __future__ import annotations

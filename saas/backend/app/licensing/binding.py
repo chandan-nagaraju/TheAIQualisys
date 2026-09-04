@@ -17,6 +17,7 @@ from app.licensing.constants import (
     ACTIVATION_STATUS_ACTIVE,
     ACTIVATION_STATUS_DEACTIVATED,
     ENTITLEMENT_PAID,
+    ENTITLEMENT_TRIAL,
     LICENSE_STATUS_ACTIVE,
     LICENSE_STATUS_EXPIRED,
     LICENSE_STATUS_ISSUED,
@@ -80,12 +81,23 @@ def assert_license_not_expired_wall_clock(
 
 
 def assert_license_paid_entitlement(license_row: DesktopLicense) -> None:
-    """Phase 7 machine API accepts paid entitlements only (trials → Phase 7A)."""
+    """Legacy paid-only gate. Prefer assert_license_activatable_entitlement (Phase 7A)."""
     if (license_row.entitlement_type or "").lower() != ENTITLEMENT_PAID:
         raise LicenseBindingError(
             "trial_not_supported",
             "Trial entitlements are not supported for machine activation in this phase.",
         )
+
+
+def assert_license_activatable_entitlement(license_row: DesktopLicense) -> None:
+    """Phase 7A: machine API accepts paid and trial entitlements only."""
+    ent = (license_row.entitlement_type or "").lower()
+    if ent in (ENTITLEMENT_PAID, ENTITLEMENT_TRIAL):
+        return
+    raise LicenseBindingError(
+        "unsupported_entitlement",
+        f"Entitlement type '{license_row.entitlement_type}' cannot be activated.",
+    )
 
 
 def assert_license_not_terminal(license_row: DesktopLicense, *, now: Optional[datetime] = None) -> None:
@@ -220,7 +232,7 @@ def activate_license_on_device(
     ).scalar_one()
 
     assert_license_not_terminal(locked)
-    assert_license_paid_entitlement(locked)
+    assert_license_activatable_entitlement(locked)
     assert_license_user_product(locked, website_user_id=website_user_id, product_id=product_id)
 
     # Optional: confirm product row exists / matches code path callers already have product_id

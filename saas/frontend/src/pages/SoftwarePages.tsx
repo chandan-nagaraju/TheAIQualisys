@@ -21,6 +21,8 @@ type Product = {
   name: string;
   description: string | null;
   listing_active: boolean;
+  trial_enabled?: boolean;
+  trial_duration_days?: number;
   plans: Plan[];
 };
 
@@ -138,13 +140,20 @@ export function SoftwareCatalogPage() {
                 {from != null && (
                   <p className="mt-2 text-sm text-slate-300">From {inr(from)} / seat / year</p>
                 )}
+                {p.trial_enabled ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {p.trial_duration_days ?? 7}-day free trial available
+                  </p>
+                ) : null}
               </div>
-              <Link
-                to={`/software/${encodeURIComponent(p.code)}`}
-                className="inline-flex shrink-0 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
-              >
-                Select plan
-              </Link>
+              <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                <Link
+                  to={`/software/${encodeURIComponent(p.code)}`}
+                  className="inline-flex rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
+                >
+                  Select plan
+                </Link>
+              </div>
             </div>
           );
         })}
@@ -166,6 +175,7 @@ export function SoftwareProductPage() {
   const [ctx, setCtx] = useState<CheckoutContext | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [trialBusy, setTrialBusy] = useState(false);
   const [step, setStep] = useState<"plan" | "confirm">("plan");
 
   useEffect(() => {
@@ -223,6 +233,23 @@ export function SoftwareProductPage() {
     }
   }
 
+  async function startTrial() {
+    if (!product) return;
+    setTrialBusy(true);
+    setErr(null);
+    try {
+      await apiFetch("/api/desktop/trials", {
+        method: "POST",
+        body: JSON.stringify({ product_code: product.code }),
+      });
+      nav("/software/licenses");
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "Could not start trial");
+    } finally {
+      setTrialBusy(false);
+    }
+  }
+
   if (err && !product) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-10">
@@ -245,6 +272,25 @@ export function SoftwareProductPage() {
       </Link>
       <h1 className="text-2xl font-semibold text-white">{product.name}</h1>
       <p className="text-sm text-slate-400">{product.description}</p>
+
+      {product.trial_enabled ? (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-4">
+          <p className="text-sm text-slate-300">
+            Try {product.name} free for {product.trial_duration_days ?? 7} days on one PC. One trial per
+            product — buying a full license later issues a separate paid key.
+          </p>
+          <button
+            type="button"
+            disabled={trialBusy}
+            onClick={() => void startTrial()}
+            className="mt-3 rounded-lg border border-brand-500/60 bg-brand-950/40 px-4 py-2 text-sm font-medium text-brand-200 hover:bg-brand-900/50 disabled:opacity-40"
+          >
+            {trialBusy ? "Starting trial…" : "Start 7-Day Trial"}
+          </button>
+        </div>
+      ) : null}
+
+      {err && <p className="text-sm text-red-400">{err}</p>}
 
       {step === "plan" && (
         <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-5">
@@ -662,12 +708,15 @@ export function SoftwareOrderDetailPage() {
 
 type LicenseRow = {
   id: number;
+  product_id?: number;
+  product_code?: string | null;
   product_name?: string | null;
   plan_name?: string | null;
   order_number?: string | null;
   order_id?: number | null;
   order_seats?: number | null;
   seat_index?: number | null;
+  entitlement_type?: string;
   status: string;
   key_masked: string;
   device_status: string;
@@ -749,7 +798,10 @@ export function SoftwareLicensesPage() {
   };
 
   const grouped = rows.reduce<Record<string, LicenseRow[]>>((acc, row) => {
-    const key = row.order_number || `order-${row.order_id || row.id}`;
+    const isTrial = (row.entitlement_type || "").toLowerCase() === "trial";
+    const key = isTrial
+      ? `trial-${row.product_code || row.product_id || row.id}`
+      : row.order_number || `order-${row.order_id || row.id}`;
     (acc[key] ||= []).push(row);
     return acc;
   }, {});
@@ -769,7 +821,7 @@ export function SoftwareLicensesPage() {
       </div>
       <p className="text-sm text-slate-400">
         Keys are masked by default. Reveal only when you need to activate software. Each key is for one PC and one
-        product.
+        product. Trial keys are separate from paid keys.
       </p>
       {disabled && (
         <p className="rounded-lg border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
@@ -781,14 +833,26 @@ export function SoftwareLicensesPage() {
       <div className="space-y-6">
         {Object.entries(grouped).map(([orderKey, seats]) => {
           const first = seats[0];
+          const isTrial = (first.entitlement_type || "").toLowerCase() === "trial";
           return (
             <div key={orderKey} className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-white">{first.product_name || "Product"}</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold text-white">{first.product_name || "Product"}</h2>
+                    {isTrial ? (
+                      <span className="rounded border border-sky-700/50 bg-sky-950/40 px-2 py-0.5 text-[11px] uppercase tracking-wide text-sky-200">
+                        Trial
+                      </span>
+                    ) : (
+                      <span className="rounded border border-slate-600/60 bg-slate-800/60 px-2 py-0.5 text-[11px] uppercase tracking-wide text-slate-300">
+                        Paid
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-slate-400">
-                    {first.plan_name || "Plan"}
-                    {first.order_seats != null
+                    {isTrial ? "7-day desktop trial" : first.plan_name || "Plan"}
+                    {!isTrial && first.order_seats != null
                       ? ` · ${first.order_seats} seat${first.order_seats === 1 ? "" : "s"}`
                       : ""}
                   </p>
@@ -796,16 +860,34 @@ export function SoftwareLicensesPage() {
                     <p className="mt-1 font-mono text-xs text-brand-400">{first.order_number}</p>
                   )}
                 </div>
-                {first.order_id != null && (
-                  <button
-                    type="button"
-                    disabled={busyId === -first.order_id}
-                    onClick={() => void resend(first.order_id!)}
-                    className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-40"
-                  >
-                    Resend license email
-                  </button>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {isTrial && first.product_code && (
+                    <Link
+                      to={`/software/${encodeURIComponent(first.product_code)}`}
+                      className="rounded-lg border border-brand-500/50 px-3 py-1.5 text-xs text-brand-200 hover:bg-brand-950/40"
+                    >
+                      Buy Full License
+                    </Link>
+                  )}
+                  {isTrial && (
+                    <Link
+                      to="/software/downloads"
+                      className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800"
+                    >
+                      Downloads
+                    </Link>
+                  )}
+                  {first.order_id != null && (
+                    <button
+                      type="button"
+                      disabled={busyId === -first.order_id}
+                      onClick={() => void resend(first.order_id!)}
+                      className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                    >
+                      Resend license email
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="space-y-3">
                 {seats
@@ -814,7 +896,9 @@ export function SoftwareLicensesPage() {
                   .map((lic) => (
                     <div key={lic.id} className="rounded-lg border border-slate-800 px-3 py-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium text-white">Seat {lic.seat_index ?? "—"}</span>
+                        <span className="font-medium text-white">
+                          {isTrial ? "Trial license" : `Seat ${lic.seat_index ?? "—"}`}
+                        </span>
                         <span className="text-xs text-slate-400">
                           {lic.status} / {lic.device_status}
                         </span>
@@ -843,7 +927,9 @@ export function SoftwareLicensesPage() {
         })}
       </div>
       {!disabled && !err && rows.length === 0 && (
-        <p className="text-sm text-slate-400">No licenses yet. Purchase from Software after payment approval.</p>
+        <p className="text-sm text-slate-400">
+          No licenses yet. Start a trial or purchase from Software after payment approval.
+        </p>
       )}
     </div>
   );

@@ -74,6 +74,10 @@ def map_binding_error(exc: LicenseBindingError) -> HTTPException:
         return machine_http_error(MACHINE_ERR_INVALID_DEVICE, str(exc), http_status=400)
     if code == "trial_not_supported":
         return machine_http_error(MACHINE_ERR_TRIAL_NOT_SUPPORTED, str(exc), http_status=403)
+    if code == "unsupported_entitlement":
+        from app.licensing.constants import MACHINE_ERR_UNSUPPORTED_ENTITLEMENT
+
+        return machine_http_error(MACHINE_ERR_UNSUPPORTED_ENTITLEMENT, str(exc), http_status=403)
     if code == "invalid_status":
         return machine_http_error(MACHINE_ERR_INVALID_STATUS, str(exc), http_status=403)
     return machine_http_error(MACHINE_ERR_INVALID_REQUEST, str(exc), http_status=400)
@@ -334,7 +338,7 @@ def _require_bound_active(
 
     from app.licensing.binding import (
         assert_license_not_terminal,
-        assert_license_paid_entitlement,
+        assert_license_activatable_entitlement,
         get_device_by_fingerprint,
         assert_device_binding_allowed,
     )
@@ -343,7 +347,7 @@ def _require_bound_active(
         select(DesktopLicense).where(DesktopLicense.id == license_row.id).with_for_update()
     ).scalar_one()
     try:
-        assert_license_paid_entitlement(locked)
+        assert_license_activatable_entitlement(locked)
         assert_license_not_terminal(locked)
         device = get_device_by_fingerprint(db, fingerprint_hash=fp)
         if device is None:

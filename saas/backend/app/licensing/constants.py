@@ -83,6 +83,24 @@ MACHINE_ERR_RATE_LIMITED = "rate_limited"
 MACHINE_ERR_INVALID_REQUEST = "invalid_request"
 MACHINE_ERR_INVALID_STATUS = "invalid_status"
 MACHINE_ERR_TRIAL_NOT_SUPPORTED = "trial_not_supported"
+MACHINE_ERR_UNSUPPORTED_ENTITLEMENT = "unsupported_entitlement"
+
+# Phase 7A trial creation API error codes
+TRIAL_ERR_INVALID_REQUEST = "invalid_request"
+TRIAL_ERR_PRODUCT_NOT_FOUND = "product_not_found"
+TRIAL_ERR_PRODUCT_INACTIVE = "product_inactive"
+TRIAL_ERR_TRIAL_DISABLED = "trial_disabled"
+TRIAL_ERR_BLOCKED_BY_PAID = "trial_blocked_by_paid"
+TRIAL_ERR_ALREADY_USED = "trial_already_used"
+TRIAL_ERR_RATE_LIMITED = "rate_limited"
+
+# Trial creation rate limits (in-process; not distributed across workers)
+TRIAL_CREATE_PER_USER_PER_HOUR = 5
+TRIAL_CREATE_PER_IP_PER_HOUR = 20
+TRIAL_CREATE_RATE_WINDOW_SECONDS = 3600
+
+# Partial unique index name (migration 037) — narrow IntegrityError mapping only
+UQ_DESKTOP_LICENSES_ONE_TRIAL_PER_USER_PRODUCT = "uq_desktop_licenses_one_trial_per_user_product"
 
 ADMIN_RESET_REASON_MIN_LEN = 8
 
