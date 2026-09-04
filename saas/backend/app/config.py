@@ -199,6 +199,27 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Phase 7: offline entitlement window (days). naf = min(expires_at, iat + this).
+    license_max_offline_days: int = Field(
+        default=14,
+        ge=1,
+        le=90,
+        validation_alias=AliasChoices(
+            "LICENSE_MAX_OFFLINE_DAYS",
+            "license_max_offline_days",
+        ),
+    )
+    # Baseline machine API rate limit (per minute). Used with scope-specific buckets.
+    # In-process only — not distributed across workers (see rate_limit.py docs).
+    license_api_rate_limit_per_minute: int = Field(
+        default=30,
+        ge=1,
+        validation_alias=AliasChoices(
+            "LICENSE_API_RATE_LIMIT_PER_MINUTE",
+            "license_api_rate_limit_per_minute",
+        ),
+    )
+
     # FIR Intelligence admin: only events with invoice_date >= this day contribute quantities to Expected QTY
     # (median). Rows before this often have placeholder quantity 0 from legacy migrations. ISO YYYY-MM-DD.
     fir_intelligence_qty_reliable_since: date | None = Field(

@@ -23,8 +23,8 @@ Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
 | 3 | Customer orders | **Merged** (PR #33) |
 | 4 | UPI payment approval + mint | **Merged** (PR #34) |
 | 5 | Email + My Licenses | **Merged** (PR #35) |
-| 6 | Protected installers / downloads | **In review** |
-| 7 | Machine License API (Ed25519) | Not started (stubs return 501) |
+| 6 | Protected installers / downloads | **Merged** (PR #36) |
+| 7 | Machine License API (Ed25519) | **In review** |
 | 7A | 7-day trial system | Not started |
 | 8+ | Desktop app integration (QR / ASN) | Explicitly deferred |
 
@@ -246,3 +246,87 @@ Customer: `/software/downloads` + `/api/desktop/downloads*`
 
 ### Out of scope
 Machine activation, trials, QR/ASN desktop integration, payment gateway, prod deploy/migrate/flag.
+
+## Phase 7 — Machine License API + signed entitlements
+
+### Status
+**In review** on `cursor/desktop-licensing-phase07-64b6` (not merged; flag remains false).
+
+### Schema
+- Reuses `desktop_licenses`, `desktop_devices`, `desktop_activations`, `desktop_license_events`
+- Reuses `uq_desktop_activations_one_active_per_license` (migration `033`)
+- **No migration 037** — deactivation/reset reasons live in audit `meta_json`
+
+### Machine APIs (feature-flagged)
+| Method | Path | Auth |
+|--------|------|------|
+| POST | `/api/license/activate` | Company JWT + license key |
+| POST | `/api/license/validate` | Company JWT |
+| POST | `/api/license/refresh` | Company JWT |
+| POST | `/api/license/deactivate` | Company JWT |
+| GET | `/api/license/public-key` | None (informational) |
+| POST | `/api/admin/desktop/licenses/{id}/reset-device` | Platform admin + reason |
+
+### Binding
+- 1 key = 1 user + 1 device + 1 product
+- First activate: `issued` → `active`, set `bound_device_id`
+- Same device: reaffirm
+- Other device: `409 device_bound`
+- Wall-clock `expires_at` always overrides stale issued/active
+- Phase 7 accepts **paid** entitlements only (trials → 7A)
+- Client deactivate marks activation deactivated but **preserves** `bound_device_id`
+- Admin reset clears binding; does not auto-activate replacement
+
+### Concurrent activation
+- `SELECT … FOR UPDATE` on license + partial unique active index
+- `IntegrityError` → deterministic `device_bound`
+
+### Signed entitlement (Ed25519)
+- Private key: `LICENSE_SIGNING_PRIVATE_KEY` (server-only; fail closed → `503 signing_unavailable`)
+- Token: `base64url(canonical_json).base64url(sig)`
+- Claims: `v, iss, aud, jti, license_id, activation_id, uid, fp, ent, iat, nbf, exp?, naf, st`
+- `naf = min(expires_at, iat + LICENSE_MAX_OFFLINE_DAYS)` (default **14 days**)
+- Desktop must **pin** public key in signed release; `GET /public-key` is **not** the trust root
+
+### Offline / revocation tradeoff
+A revoked/suspended license on a fully offline PC may remain usable until local `naf`.
+Mitigation: finite offline window + periodic online refresh. Instant remote kill of offline devices is not promised.
+
+### Rate limiting
+- Wires `LICENSE_API_RATE_LIMIT_PER_MINUTE` (default 30) with tighter activate buckets
+- **Limitation:** in-process sliding window — not distributed across multi-worker production.
+  Prefer edge/gateway or Redis limits as non-blocking hardening.
+
+### Error codes
+`not_authenticated`, `invalid_license`, `wrong_user`, `wrong_product`, `expired`, `revoked`,
+`suspended`, `device_bound`, `invalid_device`, `signing_unavailable`, `rate_limited`,
+`invalid_request`, `trial_not_supported`
+
+### Audit events
+`license_activated`, `license_reaffirmed`, `license_validated`, `license_refreshed`,
+`license_deactivated_client`, `license_device_reset` — never log plaintext keys, tokens, or secrets.
+
+### Fingerprint (server)
+- Expects opaque SHA-256 hex (64 chars) only
+- Future desktop: `SHA-256("AQ|" + product_code + "|" + MachineGuid)`
+- No raw MachineGuid collection on server
+
+### Production prerequisites (before enabling flag)
+1. Stable production Ed25519 private key in secret store
+2. Matching public key pinned in released desktop builds
+3. Migrations 032–036 applied
+4. Rate limits / monitoring / admin reset runbook
+5. Key rotation plan
+6. **`ENABLE_DESKTOP_LICENSING` remains false until signed off**
+
+### Out of scope (Phase 7)
+- Trials (7A)
+- QR / ASN desktop integration (Phase 8+)
+- Token denylist / `token_epoch`
+- Production deploy, migrate, secrets, flag enablement
+
+### Known non-blocking hardening
+- Distributed rate limiting
+- Dual-key rotation UX
+- Optional `token_epoch` for faster offline revoke
+- Broader HTTP multi-tenant integration tests under real Postgres concurrency

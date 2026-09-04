@@ -59,6 +59,32 @@ LICENSE_API_RATE_LIMIT_PER_MINUTE = 30
 PHASE_FOUNDATION = "1-foundation"
 PHASE_EMAIL_LICENSES = "5-email-licenses"
 PHASE_DOWNLOADS = "6-protected-downloads"
+PHASE_MACHINE = "7-machine-license"
+
+# Signed entitlement (Phase 7)
+LICENSE_ENTITLEMENT_ISSUER = "aiqualisys-license"
+LICENSE_ENTITLEMENT_SCHEMA_VERSION = 1
+LICENSE_MAX_OFFLINE_DAYS_DEFAULT = 14
+LICENSE_CLOCK_SKEW_SECONDS = 300
+
+# Machine API stable error codes
+MACHINE_ERR_NOT_AUTHENTICATED = "not_authenticated"
+MACHINE_ERR_LICENSING_DISABLED = "licensing_disabled"
+MACHINE_ERR_INVALID_LICENSE = "invalid_license"
+MACHINE_ERR_WRONG_USER = "wrong_user"
+MACHINE_ERR_WRONG_PRODUCT = "wrong_product"
+MACHINE_ERR_EXPIRED = "expired"
+MACHINE_ERR_REVOKED = "revoked"
+MACHINE_ERR_SUSPENDED = "suspended"
+MACHINE_ERR_DEVICE_BOUND = "device_bound"
+MACHINE_ERR_INVALID_DEVICE = "invalid_device"
+MACHINE_ERR_SIGNING_UNAVAILABLE = "signing_unavailable"
+MACHINE_ERR_RATE_LIMITED = "rate_limited"
+MACHINE_ERR_INVALID_REQUEST = "invalid_request"
+MACHINE_ERR_INVALID_STATUS = "invalid_status"
+MACHINE_ERR_TRIAL_NOT_SUPPORTED = "trial_not_supported"
+
+ADMIN_RESET_REASON_MIN_LEN = 8
 
 # License email delivery statuses (per order; never remints on retry)
 LICENSE_EMAIL_PENDING = "pending"

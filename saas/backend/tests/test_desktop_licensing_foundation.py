@@ -7,7 +7,7 @@ from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
 from app.config import Settings
-from app.licensing.constants import DESKTOP_PRODUCT_CODES, ENTITLEMENT_PAID, PHASE_FOUNDATION
+from app.licensing.constants import DESKTOP_PRODUCT_CODES, ENTITLEMENT_PAID
 from app.licensing.feature_flag import is_desktop_licensing_enabled, require_desktop_licensing_enabled
 from app.licensing.keys import (
     decrypt_license_key,
@@ -113,7 +113,7 @@ def test_feature_flag_on(monkeypatch):
     require_desktop_licensing_enabled()  # no raise
 
 
-def test_machine_router_stubs_when_enabled(monkeypatch):
+def test_machine_router_requires_auth_when_enabled(monkeypatch):
     from fastapi.testclient import TestClient
 
     import app.licensing.feature_flag as ff
@@ -125,10 +125,12 @@ def test_machine_router_stubs_when_enabled(monkeypatch):
     app.state.startup_status = "ok"
     client = TestClient(app)
     r = client.post("/api/license/activate", json={})
-    assert r.status_code == 501
-    assert r.json()["phase"] == PHASE_FOUNDATION
+    # Phase 7: real routes — unauthenticated → 401 (not 501 stub)
+    assert r.status_code == 401
     r2 = client.get("/api/license/public-key")
-    assert r2.status_code == 501
+    # Public key without signing secret → 503 fail-closed
+    assert r2.status_code == 503
+    assert r2.json()["detail"]["code"] == "signing_unavailable"
 
 
 def test_machine_router_hidden_when_disabled(monkeypatch):
