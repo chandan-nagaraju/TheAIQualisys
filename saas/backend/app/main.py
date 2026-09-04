@@ -23,6 +23,11 @@ from app.routers.workspace import fir_preview as legacy_fir_preview_alias, route
 from app.security import hash_password, verify_password
 from app.email_util import is_email_configured
 from app.subscription_reminder_runner import run_subscription_expiry_reminders
+# Register desktop licensing ORM metadata for create_all (tables primarily from migration 032).
+import app.licensing  # noqa: F401
+from app.licensing.router_admin import router as desktop_licensing_admin_router
+from app.licensing.router_customer import router as desktop_licensing_customer_router
+from app.licensing.router_machine import router as desktop_licensing_machine_router
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +212,10 @@ def create_app() -> FastAPI:
     app.include_router(cron.router, prefix="/api")
     app.include_router(v2_router)
     app.include_router(workspace_router)
+    # Desktop licensing (feature-flagged; 404 when ENABLE_DESKTOP_LICENSING=false).
+    app.include_router(desktop_licensing_admin_router)
+    app.include_router(desktop_licensing_customer_router)
+    app.include_router(desktop_licensing_machine_router)
     # Backward-compatible alias for older frontend bundles that call
     # /api/ap/fir-preview (missing one "p" in "app").
     app.add_api_route(
@@ -244,6 +253,7 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "enable_subscription": cfg.enable_subscription,
+            "enable_desktop_licensing": cfg.enable_desktop_licensing,
             # True when all S3 env vars are set (AWS keys, region, bucket, PUBLIC_S3_BASE_URL).
             # Use this after deploy to confirm Railway/hosting picked up secrets without opening settings.
             "s3_assets_configured": s3_assets_configured(cfg),
