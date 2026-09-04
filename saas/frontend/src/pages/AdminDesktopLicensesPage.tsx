@@ -11,6 +11,7 @@ type LicenseRow = {
   order_number?: string | null;
   order_id?: number | null;
   seat_index?: number | null;
+  entitlement_type?: string;
   status: string;
   key_masked: string;
   key_prefix: string;
@@ -96,11 +97,14 @@ export default function AdminDesktopLicensesPage() {
           <div key={lic.id} className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-white">
-                {lic.product_name || `Product #${lic.id}`} · {lic.plan_name || "Plan"} · Seat{" "}
-                {lic.seat_index ?? "—"}
+                {lic.product_name || `Product #${lic.id}`} ·{" "}
+                {(lic.entitlement_type || "paid").toLowerCase() === "trial"
+                  ? "Trial"
+                  : lic.plan_name || "Plan"}{" "}
+                · Seat {lic.seat_index ?? "—"}
               </span>
               <span className="text-xs text-slate-400">
-                {lic.status} / {lic.device_status}
+                {(lic.entitlement_type || "paid").toLowerCase()} · {lic.status} / {lic.device_status}
               </span>
             </div>
             <p className="mt-1 font-mono text-xs text-slate-400">{lic.key_masked}</p>

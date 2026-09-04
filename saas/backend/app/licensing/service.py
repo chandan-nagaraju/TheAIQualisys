@@ -21,8 +21,10 @@ from app.config import Settings
 from app.licensing.constants import (
     DESKTOP_PRODUCT_CODES,
     ENTITLEMENT_PAID,
+    ENTITLEMENT_TRIAL,
     LICENSE_STATUS_ISSUED,
     PHASE_FOUNDATION,
+    TRIAL_DURATION_DAYS,
 )
 from app.licensing.keys import (
     encrypt_license_key,
@@ -329,6 +331,61 @@ def create_paid_license_row(
             "seat_index": seat_index,
             "product_id": product_id,
             "order_id": order_id,
+        },
+    )
+    return row, material.plaintext
+
+
+def create_trial_license_row(
+    db: Session,
+    settings: Settings,
+    *,
+    product_id: int,
+    company_id: int,
+    licensed_user_id: int,
+    duration_days: int,
+    key_prefix_code: str = "AQ",
+) -> tuple[DesktopLicense, str]:
+    """
+    Transactional helper: mint one trial license (no plan/order/seat).
+
+    Returns (license_row, plaintext_key). Caller must commit and deliver plaintext
+    once (email / reveal). Does not log plaintext. Does not convert to paid.
+    """
+    days = int(duration_days) if int(duration_days) > 0 else int(TRIAL_DURATION_DAYS)
+    material = mint_license_key_material(settings, prefix=key_prefix_code)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=days)
+    row = DesktopLicense(
+        product_id=product_id,
+        plan_id=None,
+        order_id=None,
+        company_id=company_id,
+        licensed_user_id=licensed_user_id,
+        entitlement_type=ENTITLEMENT_TRIAL,
+        seat_index=None,
+        key_prefix=material.key_prefix,
+        key_last4=material.key_last4,
+        key_hash=material.key_hash,
+        key_encrypted=material.key_encrypted,
+        status=LICENSE_STATUS_ISSUED,
+        issued_at=now,
+        expires_at=expires_at,
+        created_by_admin_id=None,
+    )
+    db.add(row)
+    db.flush()
+    record_license_event(
+        db,
+        license_id=row.id,
+        actor_type="user",
+        actor_id=licensed_user_id,
+        event_type="trial_created",
+        meta={
+            "entitlement_type": ENTITLEMENT_TRIAL,
+            "product_id": product_id,
+            "expires_at": expires_at.isoformat(),
+            "duration_days": days,
         },
     )
     return row, material.plaintext

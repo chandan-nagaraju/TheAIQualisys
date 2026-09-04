@@ -123,12 +123,17 @@ def test_wall_clock_expiry_overrides_active_status():
     assert exc.value.code == "expired"
 
 
-def test_trial_entitlement_rejected_on_activate_path():
-    from app.licensing.binding import assert_license_paid_entitlement
+def test_trial_entitlement_allowed_on_activate_path():
+    from app.licensing.binding import assert_license_activatable_entitlement, assert_license_paid_entitlement
 
+    assert_license_activatable_entitlement(_license(entitlement_type=ENTITLEMENT_TRIAL))
+    assert_license_activatable_entitlement(_license(entitlement_type=ENTITLEMENT_PAID))
     with pytest.raises(LicenseBindingError) as exc:
         assert_license_paid_entitlement(_license(entitlement_type=ENTITLEMENT_TRIAL))
     assert exc.value.code == "trial_not_supported"
+    with pytest.raises(LicenseBindingError) as exc2:
+        assert_license_activatable_entitlement(_license(entitlement_type="unknown"))
+    assert exc2.value.code == "unsupported_entitlement"
 
 
 def test_signing_roundtrip_and_tamper():

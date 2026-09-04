@@ -320,10 +320,22 @@ def admin_list_licenses(
 ):
     del admin
     from app.licensing.customer_licenses import list_licenses_admin, serialize_license_public
+    from app.licensing.models import DesktopProduct
+    from sqlalchemy import select
 
+    rows = list_licenses_admin(db, limit=limit, user_id=user_id)
+    product_ids = {int(r.product_id) for r in rows if not r.order_id}
+    products = {}
+    if product_ids:
+        for p in db.execute(select(DesktopProduct).where(DesktopProduct.id.in_(product_ids))).scalars().all():
+            products[int(p.id)] = p
     return [
-        serialize_license_public(lic, order=lic.order)
-        for lic in list_licenses_admin(db, limit=limit, user_id=user_id)
+        serialize_license_public(
+            lic,
+            order=lic.order,
+            product=None if lic.order_id else products.get(int(lic.product_id)),
+        )
+        for lic in rows
     ]
 
 

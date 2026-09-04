@@ -153,7 +153,21 @@ def test_license_entitlement_rules():
     assert not license_entitles_download(_license(status=LICENSE_STATUS_REVOKED))
     assert not license_entitles_download(_license(status=LICENSE_STATUS_SUSPENDED))
     assert not license_entitles_download(_license(status=LICENSE_STATUS_EXPIRED))
-    assert not license_entitles_download(_license(entitlement_type=ENTITLEMENT_TRIAL))
+    # Phase 7A: valid trials may download
+    assert license_entitles_download(
+        _license(
+            entitlement_type=ENTITLEMENT_TRIAL,
+            status=LICENSE_STATUS_ISSUED,
+            expires_at=now + timedelta(days=7),
+        )
+    )
+    assert not license_entitles_download(
+        _license(
+            entitlement_type=ENTITLEMENT_TRIAL,
+            status=LICENSE_STATUS_ISSUED,
+            expires_at=now - timedelta(seconds=1),
+        )
+    )
     # Wall-clock expiry even if status still issued
     assert not license_entitles_download(
         _license(status=LICENSE_STATUS_ISSUED, expires_at=now - timedelta(seconds=1))

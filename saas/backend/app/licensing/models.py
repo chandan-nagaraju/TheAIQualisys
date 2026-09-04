@@ -155,6 +155,35 @@ class DesktopLicenseEmailDelivery(Base):
     order: Mapped[DesktopOrder] = relationship("DesktopOrder", back_populates="license_email_delivery")
 
 
+class DesktopTrialEmailDelivery(Base):
+    """Per-trial-license email delivery. Retry must never remint the trial key."""
+
+    __tablename__ = "desktop_trial_email_deliveries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    license_id: Mapped[int] = mapped_column(
+        ForeignKey("desktop_licenses.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("company_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    to_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    license: Mapped["DesktopLicense"] = relationship("DesktopLicense")
+
+
 class DesktopUpiSettings(Base):
     """Singleton row (id=1) for manual UPI payee instructions shown to customers."""
 

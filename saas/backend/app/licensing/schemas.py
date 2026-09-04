@@ -115,6 +115,12 @@ class DesktopCheckoutContextOut(BaseModel):
     company_name: str
 
 
+class DesktopTrialCreate(BaseModel):
+    """Phase 7A: start a 7-day desktop product trial (one ever per user+product)."""
+
+    product_code: str = Field(min_length=1, max_length=64)
+
+
 class DesktopUpiSettingsOut(BaseModel):
     upi_id: str
     payee_name: str
