@@ -31,12 +31,13 @@ def get_db_session() -> Generator[Session, None, None]:
     yield from get_db()
 
 
-def get_current_company_user(
-    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    db: Session = Depends(get_db_session),
-) -> CompanyUser:
+def _company_user_from_bearer(
+    creds: HTTPAuthorizationCredentials | None,
+    db: Session,
+) -> CompanyUser | None:
+    """Resolve a company user from Bearer credentials. None when auth header is absent."""
     if not creds or creds.scheme.lower() != "bearer":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        return None
     payload = decode_access_token(creds.credentials)
     if not payload or payload.get("typ") != "company":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
@@ -52,6 +53,24 @@ def get_current_company_user(
     if cid is not None and int(cid) != user.company_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token mismatch")
     return user
+
+
+def get_current_company_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db_session),
+) -> CompanyUser:
+    user = _company_user_from_bearer(creds, db)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return user
+
+
+def get_optional_company_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db_session),
+) -> CompanyUser | None:
+    """Optional company JWT — None when Authorization is omitted (key-only activate)."""
+    return _company_user_from_bearer(creds, db)
 
 
 def get_oauth_company_user(

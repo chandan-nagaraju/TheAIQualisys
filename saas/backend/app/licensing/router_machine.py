@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.deps import get_current_company_user, get_db_session
+from app.deps import get_current_company_user, get_db_session, get_optional_company_user
 from app.licensing.feature_flag import require_desktop_licensing_enabled
 from app.licensing.machine import (
     activate_machine_license,
@@ -57,14 +57,15 @@ def license_activate(
     body: LicenseActivateIn,
     request: Request,
     _: None = Depends(require_desktop_licensing_enabled),
-    user: CompanyUser = Depends(get_current_company_user),
+    user: CompanyUser | None = Depends(get_optional_company_user),
     db: Session = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
 ):
     ip = _client_ip(request)
     base = int(settings.license_api_rate_limit_per_minute or default_machine_limit())
     check_rate_limit(scope="license_activate_ip", key=ip, limit=min(10, base))
-    check_rate_limit(scope="license_activate_user", key=str(user.id), limit=min(10, base))
+    if user is not None:
+        check_rate_limit(scope="license_activate_user", key=str(user.id), limit=min(10, base))
     # Count attempts even for unknown keys (hash of presented key material length-safe)
     from app.licensing.keys import hash_license_key
 

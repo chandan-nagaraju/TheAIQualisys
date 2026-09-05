@@ -125,8 +125,11 @@ def test_machine_router_requires_auth_when_enabled(monkeypatch):
     app.state.startup_status = "ok"
     client = TestClient(app)
     r = client.post("/api/license/activate", json={})
-    # Phase 7: real routes — unauthenticated → 401 (not 501 stub)
-    assert r.status_code == 401
+    # activate allows key-only auth; empty body fails validation, not 401
+    assert r.status_code == 422
+    assert client.post("/api/license/validate", json={}).status_code == 401
+    assert client.post("/api/license/refresh", json={}).status_code == 401
+    assert client.post("/api/license/deactivate", json={}).status_code == 401
     r2 = client.get("/api/license/public-key")
     # Public key without signing secret → 503 fail-closed
     assert r2.status_code == 503
