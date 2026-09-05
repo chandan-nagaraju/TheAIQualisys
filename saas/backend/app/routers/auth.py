@@ -409,6 +409,9 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db_sess
         if not user:
             raise HTTPException(status_code=400, detail="Invalid reset link")
         user.password_hash = hash_password(body.new_password)
+        from app.oauth.service import revoke_on_password_change
+
+        revoke_on_password_change(db, int(user.id))
     db.delete(row)
     db.commit()
     return {"ok": True}
@@ -423,5 +426,8 @@ def change_password(
     if not verify_password(body.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     user.password_hash = hash_password(body.new_password)
+    from app.oauth.service import revoke_on_password_change
+
+    revoke_on_password_change(db, int(user.id))
     db.commit()
     return {"ok": True}

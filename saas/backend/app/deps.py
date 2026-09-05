@@ -54,6 +54,28 @@ def get_current_company_user(
     return user
 
 
+def get_oauth_company_user(
+    user: CompanyUser = Depends(get_current_company_user),
+    impersonated: bool = Depends(company_impersonated_by_admin),
+) -> CompanyUser:
+    """Company user for desktop OAuth only.
+
+    Admin-impersonated company JWTs may access the SPA for support, but must never
+    authorize, preview, consent, or revoke desktop OAuth sessions.
+    """
+    if impersonated:
+        # Imported lazily to avoid circular imports (oauth → deps).
+        from app.oauth.constants import ERR_ACCESS_DENIED
+        from app.oauth.errors import OAuthError
+
+        raise OAuthError(
+            ERR_ACCESS_DENIED,
+            description="Desktop authorization requires a direct company login",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    return user
+
+
 def get_company_for_user(user: CompanyUser, db: Session) -> Company:
     company = db.get(Company, user.company_id)
     if not company:

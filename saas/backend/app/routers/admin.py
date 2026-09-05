@@ -182,6 +182,9 @@ def block_tenant_user(
         raise HTTPException(status_code=404, detail="Tenant user not found")
     user.is_blocked = 1
     db.add(user)
+    from app.oauth.service import revoke_on_user_blocked
+
+    revoke_on_user_blocked(db, int(user.id))
     db.commit()
     return {"ok": True, "user_id": user.id, "is_blocked": True}
 

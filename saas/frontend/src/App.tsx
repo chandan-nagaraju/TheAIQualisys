@@ -17,6 +17,7 @@ import AdminUsersPage from "./pages/AdminUsersPage";
 import CompanyDashboardPage from "./pages/CompanyDashboardPage";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
+import OAuthAuthorizePage from "./pages/OAuthAuthorizePage";
 import AllModulesPricingPage from "./pages/AllModulesPricingPage";
 import ModuleProductPricingPage from "./pages/ModuleProductPricingPage";
 import ModuleWorkbenchPage from "./pages/ModuleWorkbenchPage";
@@ -83,6 +84,7 @@ export default function App() {
         <Route path="/signup/complete" element={<SignupCompletePage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/pricing" element={<PublicPricingGate />} />
