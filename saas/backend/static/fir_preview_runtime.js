@@ -96,7 +96,15 @@
         th.classList.toggle("fir-measured-inactive", col > n);
       });
       table.querySelectorAll("tbody tr").forEach(function(tr) {
-        if (firIsMilliporeRow(tr) || firIsNoCpiRow(tr)) return;
+        if (firIsNoCpiRow(tr)) return;
+        firSyncMilliporeRowLayout(tr);
+        if (firIsMilliporeRow(tr)) {
+          var mpTd = tr.querySelector("td.fir-millipore-merged");
+          if (mpTd) mpTd.classList.remove("fir-measured-inactive");
+          var mpInp = tr.querySelector("input.actual-value");
+          if (mpInp) mpInp.disabled = false;
+          return;
+        }
         const cells = tr.querySelectorAll(":scope > td");
         for (var ci = 5; ci <= 9; ci++) {
           const td = cells[ci];
@@ -302,7 +310,13 @@
   }
 
   function firIsMilliporeMethod(raw) {
-    return /\bMILLIPORE\b/i.test(String(raw || ""));
+    var u = String(raw || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toUpperCase();
+    if (!u) return false;
+    var compact = u.replace(/[\s.\-_/]/g, "");
+    return compact === "MILLIPORE" || compact.indexOf("MILLIPORE") !== -1;
   }
 
   function firParseMilliporeSpec(specStr) {
@@ -333,11 +347,34 @@
     return actual < limit;
   }
 
-  function firFormatMilliporeMessage(actual, unit) {
-    var num = Number(actual);
-    var text = Number.isInteger(num) ? String(num) : num.toFixed(2);
+  function firFormatMilliporeActualDisplay(num, unit) {
+    var text;
+    if (Number.isInteger(num)) text = String(num);
+    else text = String(num).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
     var u = String(unit || "").trim();
-    return "Millipore test achieved " + text + (u ? " " + u : "");
+    return u ? text + " " + u : text;
+  }
+
+  function firFormatMilliporeMessage(actual, unit) {
+    return "Millipore test achieved " + firFormatMilliporeActualDisplay(Number(actual), unit);
+  }
+
+  function firRemarksIndicatesPass(raw) {
+    var t = String(raw || "").trim();
+    if (!t) return false;
+    if (t.toUpperCase() === "OK") return true;
+    if (/^Millipore\s+test\s+achieved\s+.+/i.test(t) && /found\s+OK\.?$/i.test(t)) return true;
+    return false;
+  }
+
+  function firSectionBIsNoCpiOnly() {
+    var table = document.getElementById("ccp-table");
+    if (!table) return true;
+    var tbody = table.querySelector("tbody");
+    if (!tbody) return true;
+    var rows = tbody.querySelectorAll(":scope > tr");
+    if (!rows.length) return true;
+    return rows.length === 1 && rows[0].classList.contains("fir-no-cpi-row");
   }
 
   /** Autofill: strictly below limit, in lower half (≈35–50% of spec). */
@@ -374,10 +411,10 @@
     if (firstInp) firstVal = firstInp.value;
     var merged = document.createElement("td");
     merged.colSpan = 5;
-    merged.className = "fir-millipore-measured";
+    merged.className = "fir-millipore-merged";
     var inp = document.createElement("input");
     inp.type = "text";
-    inp.className = "actual-value quali-font fir-millipore-input";
+    inp.className = "actual-value quali-font millipore-actual";
     inp.value = firstVal;
     merged.appendChild(inp);
     var remarks = cells[10];
@@ -692,14 +729,20 @@
         const actualInput = '<input type="text" class="actual-value quali-font">';
         const remarksInput = '<input type="text" class="remarks-value quali-font">';
         let bHtml = '<div class="section-title">B) Customer End Complaints Parameters & Check Points</div><table class="data-table" id="ccp-table"><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
-        if (FIR_CCP_DATA.length > 0) {
-          FIR_CCP_DATA.forEach(function(r, idx) {
+        var ccpRows = (FIR_CCP_DATA || []).filter(function (r) {
+          return r && String(r.parameter || "").trim() !== "";
+        });
+        if (ccpRows.length > 0) {
+          ccpRows.forEach(function(r) {
             var snB = firRowSlNo(r, slno);
             slno = firAdvanceSlNo(r, slno);
             bHtml += `<tr><td style="width:5%;">${snB}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharCell(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
           });
         } else {
-          bHtml += `<tr class="fir-no-cpi-row"><td style="width:5%;">${slno++}</td><td colspan="10" class="fir-no-cpi-cell"><span class="fir-no-cpi-text">No CPI</span></td></tr>`;
+          bHtml +=
+            '<tr class="fir-no-cpi-row"><td style="width:5%;">' +
+            slno++ +
+            '</td><td colspan="10" class="fir-no-cpi-merged"><input type="text" class="fir-no-cpi-value" value="No CPI"></td></tr>';
         }
         bHtml += '</tbody></table>';
         const cRemarksInput = '<input type="text" class="remarks-value quali-font" value="OK">';
@@ -823,9 +866,9 @@
       let allOk = true;
       let hasRemarks = false;
       remarksInputs.forEach(function(inp) {
-        const v = (inp.value || '').trim().toUpperCase();
+        const v = (inp.value || '').trim();
         if (v !== '') hasRemarks = true;
-        if (v !== '' && v !== 'OK') allOk = false;
+        if (v !== '' && !firRemarksIndicatesPass(v)) allOk = false;
       });
       if (hasRemarks && !allOk) {
         acceptedEl.style.display = 'none';
@@ -883,7 +926,7 @@
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr = e.target.closest('tr');
           if (tr) {
-            if (firIsMilliporeRow(tr) && e.target.classList.contains('fir-millipore-input')) {
+            if (firIsMilliporeRow(tr) && e.target.classList.contains('millipore-actual')) {
               firUpdateRowRemarksFromMeasurements(tr);
             } else if (!firIsMilliporeRow(tr)) {
               firUpdateRowRemarksFromMeasurements(tr);
@@ -927,7 +970,7 @@
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr2 = e.target.closest('tr');
           if (tr2) {
-            if (firIsMilliporeRow(tr2) && e.target.classList.contains('fir-millipore-input')) {
+            if (firIsMilliporeRow(tr2) && e.target.classList.contains('millipore-actual')) {
               firUpdateRowRemarksFromMeasurements(tr2);
             } else if (!firIsMilliporeRow(tr2)) {
               firUpdateRowRemarksFromMeasurements(tr2);
@@ -1182,10 +1225,17 @@
         return;
       }
       var actualM = firParseMilliporeActual(measuredElM.value);
-      if (actualM == null || String(measuredElM.value || "").trim() === "") {
+      var rawMp = String(measuredElM.value || "").trim();
+      if (actualM == null || rawMp === "") {
         remarksElM.value = "";
+      } else if (firMilliporePasses(actualM, mp.limit)) {
+        measuredElM.value = firFormatMilliporeMessage(actualM, mp.unit);
+        remarksElM.value = "OK";
       } else {
-        remarksElM.value = firMilliporePasses(actualM, mp.limit) ? "OK" : "Not OK";
+        if (/^Millipore\s+test\s+achieved/i.test(rawMp)) {
+          measuredElM.value = firFormatMilliporeActualDisplay(actualM, mp.unit);
+        }
+        remarksElM.value = "Not OK";
       }
       updateStatusButtons();
       return;
@@ -1304,11 +1354,19 @@
   function autoFillMeasuredValues() {
     firApplyMeasuredColumnAvailability();
     firSyncAllMilliporeRowLayouts();
-    ["dimension-table", "ccp-table", "coating-table"].forEach(tableId => {
+    ["dimension-table", "coating-table"].forEach(function(tableId) {
       const table = document.getElementById(tableId);
       if (!table) return;
-      table.querySelectorAll("tbody tr").forEach(tr => fillOneRow(tr));
+      table.querySelectorAll("tbody tr").forEach(function(tr) {
+        fillOneRow(tr);
+      });
     });
+    var ccpTable = document.getElementById("ccp-table");
+    if (ccpTable && !firSectionBIsNoCpiOnly()) {
+      ccpTable.querySelectorAll("tbody tr").forEach(function(tr) {
+        if (!tr.classList.contains("fir-no-cpi-row")) fillOneRow(tr);
+      });
+    }
     firApplyMeasuredColumnAvailability();
     firRefreshQualitativeMeasuredCellsInTables();
     const materialTable = document.getElementById("material-table");

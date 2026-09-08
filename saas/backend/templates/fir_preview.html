@@ -226,19 +226,30 @@
     font-size: 25px;
     min-height: 0;
   }
-  .fir-millipore-measured input,
-  input.fir-millipore-input {
-    font-size: 25px !important;
+  td.fir-millipore-merged {
     text-align: left !important;
+  }
+  td.fir-millipore-merged input.actual-value,
+  td.fir-millipore-merged input.millipore-actual {
+    text-align: left !important;
+    font-size: 25px !important;
+    line-height: 1.15;
+  }
+  td.fir-no-cpi-merged {
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+  td.fir-no-cpi-merged input.fir-no-cpi-value,
+  .fir-no-cpi-value {
     width: 100%;
-  }
-  .fir-no-cpi-cell {
-    text-align: center;
-  }
-  .fir-no-cpi-text {
-    font-size: 25px;
+    border: none;
+    outline: none;
+    background: transparent;
+    text-align: center !important;
+    font-size: 25px !important;
     font-weight: normal;
-    text-align: center;
+    line-height: 1.15;
+    font-family: inherit;
   }
   input.actual-value,
   input.remarks-value {
@@ -274,12 +285,13 @@
   }
   .download-btn:hover { background-color: #1e7e34; }
   .autofill-btn {
-    position: fixed; bottom: 20px; right: 180px;
+    position: fixed; bottom: 20px; right: 210px;
     background-color: #17a2b8; color: white; border: none;
-    padding: 10px 14px; border-radius: 6px; cursor: pointer; font-size: 14px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 1000;
+    padding: 12px 18px; border-radius: 6px;
+    cursor: pointer; font-size: 15px; font-weight: bold;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 1000;
   }
-  .autofill-btn:hover { background-color: #138496; }
+  .autofill-btn:hover { background-color: #117a8b; }
   .status-btn { padding: 6px 12px; font-weight: bold; text-align: center; border: 1px solid #333; border-radius: 4px; }
   #status-accepted.status-btn { background: #e8e8e8; color: #333; }
   #status-accepted.status-btn.highlight { background: #e0e0e0; color: #333; border: 1px solid #333; }
