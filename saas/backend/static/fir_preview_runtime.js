@@ -1811,6 +1811,7 @@
       scale: FIR_PDF_CANVAS_SCALE,
       useCORS: true,
       logging: false,
+      backgroundColor: "#ffffff",
       scrollY: -window.scrollY,
       scrollX: -window.scrollX,
       width: box.width,

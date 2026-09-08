@@ -7,7 +7,7 @@
   <style>
   @page { size: A4 landscape; margin: 10mm; }
   body { font-family: Calibri, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; }
-  body.generating-pdf { min-width: 297mm; width: 297mm; margin: 0; padding: 0; background: #fff; }
+  body.generating-pdf { min-width: 297mm; width: 297mm; margin: 0; padding: 0; background: #fff; -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; }
 
   #reportRoot { width: 100%; max-width: 297mm; margin: 0 auto; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
   body.generating-pdf #reportRoot {
