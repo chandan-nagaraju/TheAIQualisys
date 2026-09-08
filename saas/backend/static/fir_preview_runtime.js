@@ -811,15 +811,15 @@
         }
         bHtml += '</tbody></table>';
         const cRemarksInput = '<input type="text" class="remarks-value quali-font" value="OK">';
-        let cHtml = '<table class="data-table" id="material-table"><tbody><tr class="fir-section-head-row"><td colspan="3" class="section-title">C) Material Grade</td></tr>';
+        let cHtml = '<table class="data-table" id="material-table"><thead><tr class="fir-section-head-row"><th colspan="11" class="section-title">C) Material Grade</th></tr></thead><tbody>';
         if (FIR_MATERIAL_DATA.length > 0) {
           FIR_MATERIAL_DATA.forEach(function(r) {
             var snC = firRowSlNo(r, slno);
             slno = firAdvanceSlNo(r, slno);
-            cHtml += `<tr><td style="width:5%;">${snC}</td><td style="width:85%;">${wrapCell(r.material_grade)}</td><td style="width:10%;">${cRemarksInput}</td></tr>`;
+            cHtml += `<tr><td style="width:5%;">${snC}</td><td colspan="9">${wrapCell(r.material_grade)}</td><td style="width:8%;">${cRemarksInput}</td></tr>`;
           });
         } else {
-          cHtml += `<tr><td style="width:5%;">${slno++}</td><td style="width:85%;">${wrapCell()}</td><td style="width:10%;">${cRemarksInput}</td></tr>`;
+          cHtml += `<tr><td style="width:5%;">${slno++}</td><td colspan="9">${wrapCell()}</td><td style="width:8%;">${cRemarksInput}</td></tr>`;
         }
         cHtml += '</tbody></table>';
         let dHtml = '<table class="data-table" id="coating-table"><thead><tr class="fir-section-head-row"><th colspan="11" class="section-title">D) Surface Coating</th></tr><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
@@ -1697,41 +1697,68 @@
     return pdf;
   }
 
-  function firRunPdfExport(el, fileName, mode) {
-    var opts = firBuildPdfOptions(el, fileName);
-    var worker = html2pdf().set(opts).from(el);
-    if (!firShouldFitOneLandscapePage()) {
-      if (mode === "blob") {
-        var out = null;
-        if (typeof worker.outputPdf === "function") out = worker.outputPdf("blob");
-        else if (typeof worker.output === "function") out = worker.output("blob");
-        if (!out || typeof out.then !== "function") {
-          return Promise.reject(new Error("html2pdf blob output not available in this build"));
-        }
-        return out.then(function(blob) {
-          var n = blob && blob.size ? blob.size : 0;
-          var warn = "";
-          if (n > 200 * 1024) warn = "over_200kb";
-          else if (n > 0 && n < 100 * 1024) warn = "under_100kb";
-          return { blob: blob, filename: fileName, byteSize: n, sizeWarning: warn || undefined };
-        });
+  function firCapturePdfCanvas(el) {
+    var h2cOpts = firBuildPdfOptions(el, "x").html2canvas;
+    return new Promise(function(resolve, reject) {
+      if (typeof html2canvas === "function") {
+        html2canvas(el, h2cOpts).then(resolve).catch(reject);
+        return;
       }
-      return worker.save();
+      var worker = html2pdf().set(firBuildPdfOptions(el, "x")).from(el);
+      worker.toCanvas().then(function() {
+        if (worker.prop && worker.prop.canvas) resolve(worker.prop.canvas);
+        else reject(new Error("PDF canvas capture failed"));
+      }).catch(reject);
+    });
+  }
+
+  function firSaveSingleLandscapePagePdf(canvas, fileName) {
+    var pdf = firCanvasToSingleLandscapePagePdf(canvas);
+    pdf.save(fileName);
+  }
+
+  function firBlobFromSingleLandscapePagePdf(canvas, fileName) {
+    var pdf = firCanvasToSingleLandscapePagePdf(canvas);
+    var blob = pdf.output("blob");
+    var n = blob && blob.size ? blob.size : 0;
+    var warn = "";
+    if (n > 200 * 1024) warn = "over_200kb";
+    else if (n > 0 && n < 100 * 1024) warn = "under_100kb";
+    return { blob: blob, filename: fileName, byteSize: n, sizeWarning: warn || undefined };
+  }
+
+  function firRunPdfExport(el, fileName, mode) {
+    if (firShouldFitOneLandscapePage()) {
+      return firCapturePdfCanvas(el).then(function(canvas) {
+        if (mode === "blob") return firBlobFromSingleLandscapePagePdf(canvas, fileName);
+        firSaveSingleLandscapePagePdf(canvas, fileName);
+      }).catch(function(err) {
+        console.error("firRunPdfExport single-page fallback", err);
+        var worker = html2pdf().set(firBuildPdfOptions(el, fileName)).from(el);
+        if (mode === "blob") {
+          var out = typeof worker.outputPdf === "function" ? worker.outputPdf("blob") : worker.output("blob");
+          return out;
+        }
+        return worker.save();
+      });
     }
-    return worker.toCanvas().then(function() {
-      var canvas = worker.prop && worker.prop.canvas;
-      if (!canvas) throw new Error("PDF canvas capture failed");
-      var pdf = firCanvasToSingleLandscapePagePdf(canvas);
-      if (mode === "blob") {
-        var blob = pdf.output("blob");
+    var worker = html2pdf().set(firBuildPdfOptions(el, fileName)).from(el);
+    if (mode === "blob") {
+      var out = null;
+      if (typeof worker.outputPdf === "function") out = worker.outputPdf("blob");
+      else if (typeof worker.output === "function") out = worker.output("blob");
+      if (!out || typeof out.then !== "function") {
+        return Promise.reject(new Error("html2pdf blob output not available in this build"));
+      }
+      return out.then(function(blob) {
         var n = blob && blob.size ? blob.size : 0;
         var warn = "";
         if (n > 200 * 1024) warn = "over_200kb";
         else if (n > 0 && n < 100 * 1024) warn = "under_100kb";
         return { blob: blob, filename: fileName, byteSize: n, sizeWarning: warn || undefined };
-      }
-      pdf.save(fileName);
-    });
+      });
+    }
+    return worker.save();
   }
 
   /**
