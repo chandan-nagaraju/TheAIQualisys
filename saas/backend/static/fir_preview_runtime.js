@@ -723,11 +723,11 @@
     html += `<div class='report-container'>`;
     html += `
       <table class="header-table">
-        <tr>
-          <td rowspan="2" colspan="5" class="logo-cell" id="companyCode"></td>
+        <tr class="fir-header-top-row">
+          <td colspan="5" class="logo-cell" id="companyCode"></td>
           <td colspan="7" class="header-title">FINAL INSPECTION REPORT</td>
           <td colspan="4" class="small-cell" id="docInfo"></td>
-        </tr><tr></tr>
+        </tr>
         <tr><td class="bold" colspan="2">VENDOR CODE :</td><td colspan="3"><input type="text" value="${vendorCode}"></td>
         <td class="bold" colspan="2">CUSTOMER</td><td colspan="4"><input type="text" value="${customer}"></td>
         <td class="bold" colspan="2">REPORT NO :</td><td colspan="3"><input type="text" value="${reportNo}"></td></tr>
@@ -769,7 +769,7 @@
         chunks.push(
           '<img class="fir-special-char-icon" alt="" src="' +
             firAttrUrl(imgUrl) +
-            '" style="max-height:36px;max-width:100%;object-fit:contain;display:block;margin:0 auto;" />',
+            '" style="max-height:24px;max-width:100%;object-fit:contain;display:block;margin:0 auto;" />',
         );
       } else if (tag) {
         chunks.push('<div class="fir-special-char-text">' + esc(tag) + '</div>');
@@ -881,10 +881,10 @@
     if (companyCell && globalSettings) {
       let inner = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;">';
       if (globalSettings.logo_path) {
-        inner += `<div style="width:90px;height:90px;border:1px solid #000;overflow:hidden;margin-bottom:4px;display:flex;align-items:center;justify-content:center;background:#fff;"><img class="fir-logo-img" src="${globalSettings.logo_path}" style="width:100%;height:100%;object-fit:cover;" alt=""></div>`;
+        inner += `<div class="fir-logo-box"><img class="fir-logo-img" src="${globalSettings.logo_path}" alt=""></div>`;
       }
       if (globalSettings.company_name) {
-        inner += `<div style="font-weight:bold;font-style:italic;text-align:center;">${globalSettings.company_name}</div>`;
+        inner += `<div class="fir-company-name">${globalSettings.company_name}</div>`;
       }
       inner += '</div>';
       companyCell.innerHTML = inner;

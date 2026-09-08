@@ -103,14 +103,47 @@
   .header-table .small-cell { text-align: left; }
   .header-table { table-layout: fixed; }
 
-  .header-title { font-size: 20px; font-weight: bold; text-align: center; }
+  .header-title { font-size: 16px; font-weight: bold; text-align: center; line-height: 1.15; padding: 2px 4px; }
   .logo-cell {
     font-style: italic;
     font-weight: bold;
-    font-size: 18px;
+    font-size: 12px;
     text-align: center;
+    padding: 2px 4px !important;
+    vertical-align: middle;
   }
-  .small-cell { font-size: 12px; text-align: left; padding: 3px 6px; }
+  .fir-logo-box {
+    width: 52px;
+    height: 52px;
+    border: 1px solid #000;
+    overflow: hidden;
+    margin: 0 auto 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+  }
+  .fir-logo-box .fir-logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .fir-company-name {
+    font-weight: bold;
+    font-style: italic;
+    text-align: center;
+    font-size: 10px;
+    line-height: 1.1;
+  }
+  .header-table tr.fir-header-top-row td {
+    padding: 2px 4px;
+    vertical-align: middle;
+  }
+  .small-cell { font-size: 10px; text-align: left; padding: 2px 4px; line-height: 1.2; }
+  .header-table td, .header-table th {
+    padding: 2px 3px;
+    line-height: 1.15;
+  }
   .bold { font-weight: bold; }
   .section-title {
     background: linear-gradient(180deg, #ececec 0%, #d4d4d4 100%);
@@ -282,6 +315,45 @@
   .data-table input.remarks-value {
     font-size: 25px;
     min-height: 0;
+  }
+  /* Compact parameter rows — sections A & D (fit one landscape page when Sl No <= 10) */
+  #dimension-table tbody tr > td,
+  #coating-table tbody tr > td {
+    padding: 0 1px;
+    line-height: 1.1;
+    vertical-align: middle;
+  }
+  #dimension-table input.actual-value,
+  #dimension-table input.remarks-value,
+  #coating-table input.actual-value,
+  #coating-table input.remarks-value {
+    font-size: 20px;
+    line-height: 1.1;
+    padding: 0;
+  }
+  #dimension-table td.fir-millipore-merged input.actual-value,
+  #dimension-table td.fir-millipore-merged input.millipore-actual,
+  #coating-table td.fir-millipore-merged input.actual-value {
+    font-size: 20px !important;
+    line-height: 1.1;
+  }
+  #dimension-table textarea,
+  #dimension-table .fir-pdf-text,
+  #coating-table textarea,
+  #coating-table .fir-pdf-text {
+    font-size: 11px;
+    line-height: 1.15;
+    min-height: 1.2em;
+  }
+  #dimension-table .fir-special-char-box,
+  #coating-table .fir-special-char-box {
+    min-height: 1.4em;
+    padding: 1px;
+    gap: 1px;
+  }
+  #dimension-table .fir-special-char-icon,
+  #coating-table .fir-special-char-icon {
+    max-height: 22px;
   }
   td.fir-millipore-merged {
     text-align: left !important;
