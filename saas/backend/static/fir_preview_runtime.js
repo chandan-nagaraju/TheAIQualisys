@@ -26,7 +26,7 @@
   var FIR_PDF_JPEG_QUALITY = 0.94;
   var FIR_PDF_CANVAS_SCALE = 2;
   var FIR_PDF_IMG_JPEG = 0.92;
-  /** Extra pixels so html2canvas does not clip the right/bottom table borders. */
+  /** Extra pixels reserved for onclone border reinforcement (do not pass as html2canvas width). */
   var FIR_PDF_CAPTURE_EDGE_PAD = 3;
   /** No downscale for logo/signature grayscale prep (full pixel count for sharp PDFs). */
   var FIR_PDF_IMG_MAX_EDGE = 100000;
@@ -1795,29 +1795,38 @@
     });
   }
 
-  function firMeasurePdfCaptureBox(el) {
-    el = el || document.getElementById("reportRoot");
-    if (!el) return { width: 0, height: 0 };
-    var rect = el.getBoundingClientRect();
-    var pad = typeof FIR_PDF_CAPTURE_EDGE_PAD !== "undefined" ? FIR_PDF_CAPTURE_EDGE_PAD : 3;
-    var width = Math.max(el.scrollWidth, el.offsetWidth, Math.ceil(rect.width)) + pad;
-    var height = Math.max(el.scrollHeight, el.offsetHeight, Math.ceil(rect.height)) + pad;
-    return { width: width, height: height };
+  function firGetPdfCaptureEl(root) {
+    root = root || document.getElementById("reportRoot");
+    if (!root) return document.body;
+    return root.querySelector(".report-container") || root;
+  }
+
+  function firPrepareScrollForPdfCapture() {
+    window.scrollTo(0, 0);
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
   }
 
   function firBuildHtml2CanvasOptions(el) {
-    var box = firMeasurePdfCaptureBox(el);
+    el = el || firGetPdfCaptureEl();
     return {
       scale: FIR_PDF_CANVAS_SCALE,
       useCORS: true,
       logging: false,
       backgroundColor: "#ffffff",
-      scrollY: -window.scrollY,
-      scrollX: -window.scrollX,
-      width: box.width,
-      height: box.height,
-      windowWidth: Math.max(document.documentElement.clientWidth, box.width),
-      windowHeight: Math.max(document.documentElement.clientHeight, box.height),
+      scrollY: 0,
+      scrollX: 0,
+      windowHeight: el.scrollHeight,
+      windowWidth: el.scrollWidth,
+      onclone: function(clonedDoc) {
+        var container = clonedDoc.querySelector(".report-container");
+        if (container) {
+          container.style.borderRight = "2px solid #000";
+        }
+        clonedDoc.querySelectorAll(".header-table, .data-table").forEach(function(table) {
+          table.style.borderRight = "2px solid #333";
+        });
+      },
     };
   }
 
@@ -1845,6 +1854,7 @@
 
   function firPrepareDomForPdfCapture(root) {
     root = root || document.getElementById("reportRoot");
+    firPrepareScrollForPdfCapture();
     firPrepareTextareasForPdf(root);
     return new Promise(function(res) {
       requestAnimationFrame(function() {
@@ -1908,7 +1918,8 @@
     const autofillBtn = document.getElementById("autofillMeasuredBtn");
     btn.style.display = "none";
     if (autofillBtn) autofillBtn.style.display = "none";
-    const el = document.getElementById('reportRoot') || document.body;
+    const root = document.getElementById('reportRoot') || document.body;
+    const el = firGetPdfCaptureEl(root);
 
     firBeginPdfCaptureUi();
     const partInput = [...document.querySelectorAll('input[type="text"]')].find(i => i.closest('td')?.previousElementSibling?.textContent?.includes("PART"));
@@ -1916,16 +1927,16 @@
     const fileName = `${(invoiceInput?.value || 'Invoice').replace(/\W+/g,'_')}_${(partInput?.value || 'Part').replace(/\W+/g,'_')}_FIR.pdf`;
 
     function restorePdfUi() {
-      firRestoreDomAfterPdfCapture(el);
+      firRestoreDomAfterPdfCapture(root);
       firEndPdfCaptureUi();
       btn.style.display = "block";
       if (autofillBtn) autofillBtn.style.display = "block";
     }
 
     firWaitForAssets(el).then(function() {
-      return firPrepareImagesForPdf(el);
+      return firPrepareImagesForPdf(root);
     }).then(function() {
-      return firPrepareDomForPdfCapture(el);
+      return firPrepareDomForPdfCapture(root);
     }).then(function() {
       return firRunPdfExport(el, fileName, "save");
     }).then(restorePdfUi).catch(function() {
@@ -1954,7 +1965,8 @@
       var autofillBtnEl = document.getElementById("autofillMeasuredBtn");
       if (btn) btn.style.display = "none";
       if (autofillBtnEl) autofillBtnEl.style.display = "none";
-      var el = document.getElementById('reportRoot') || document.body;
+      var root = document.getElementById('reportRoot') || document.body;
+      var el = firGetPdfCaptureEl(root);
       firBeginPdfCaptureUi();
       var textInputs = Array.prototype.slice.call(document.querySelectorAll('input[type="text"]'));
       var partInput = textInputs.find(function(i) {
@@ -1974,10 +1986,10 @@
         if (autofillBtnEl) autofillBtnEl.style.display = "block";
       }
 
-      firWaitForAssets(el).then(function() {
-        return firPrepareImagesForPdf(el);
+      firWaitForAssets(root).then(function() {
+        return firPrepareImagesForPdf(root);
       }).then(function() {
-        return firPrepareDomForPdfCapture(el);
+        return firPrepareDomForPdfCapture(root);
       }).then(function() {
         return firRunPdfExport(el, fileName, "blob").then(function(result) {
             restoreUi();
