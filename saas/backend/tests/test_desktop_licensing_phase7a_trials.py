@@ -377,6 +377,9 @@ def test_trial_download_entitled_and_expired_not():
     assert license_entitles_download(
         _license(status=LICENSE_STATUS_ISSUED, expires_at=now + timedelta(days=3))
     )
+    assert license_entitles_download(
+        _license(status=LICENSE_STATUS_ISSUED, expires_at=None, activated_at=None)
+    )
     assert not license_entitles_download(
         _license(status=LICENSE_STATUS_ISSUED, expires_at=now - timedelta(seconds=1))
     )
@@ -502,6 +505,10 @@ def test_trial_to_paid_creates_separate_key():
     )
     assert trial.entitlement_type == ENTITLEMENT_TRIAL
     assert paid.entitlement_type == ENTITLEMENT_PAID
+    assert trial.expires_at is None
+    assert trial.activated_at is None
+    assert trial.status == LICENSE_STATUS_ISSUED
+    assert paid.expires_at is not None
     assert trial.key_hash != paid.key_hash
     assert trial_pt != paid_pt
     assert trial.order_id is None
@@ -735,3 +742,162 @@ def test_admin_reset_works_for_trial_row_shape():
     from app.licensing.constants import ADMIN_RESET_REASON_MIN_LEN
 
     assert ADMIN_RESET_REASON_MIN_LEN >= 8
+
+
+# --- Activation-based trial timing ---
+
+
+def _mock_activation_db(lic: DesktopLicense, product: DesktopProduct) -> MagicMock:
+    db = MagicMock()
+    lock = MagicMock()
+    lock.scalar_one.return_value = lic
+    db.execute.return_value = lock
+    db.get.return_value = product
+    return db
+
+
+def test_trial_first_activation_starts_seven_day_period():
+    lic = _license(expires_at=None, activated_at=None, status=LICENSE_STATUS_ISSUED)
+    product = _product(trial_duration_days=7)
+    device = DesktopDevice(fingerprint_hash=_fp())
+    device.id = 55
+    db = _mock_activation_db(lic, product)
+    fixed_now = datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    with patch("app.licensing.binding.get_or_create_device", return_value=device), patch(
+        "app.licensing.binding.get_active_activation", return_value=None
+    ), patch("app.licensing.binding.get_activation_for_license_device", return_value=None), patch(
+        "app.licensing.binding._utc_now", return_value=fixed_now
+    ):
+        result = activate_license_on_device(
+            db,
+            license_row=lic,
+            website_user_id=7,
+            product_id=1,
+            fingerprint_hash=_fp(),
+        )
+
+    assert result.created_new_activation is True
+    assert lic.activated_at == fixed_now
+    assert lic.expires_at == fixed_now + timedelta(days=7)
+    assert lic.status == LICENSE_STATUS_ACTIVE
+
+
+def test_trial_reaffirm_does_not_extend_expiry():
+    started = datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+    original_exp = started + timedelta(days=7)
+    lic = _license(
+        status=LICENSE_STATUS_ACTIVE,
+        expires_at=original_exp,
+        activated_at=started,
+        bound_device_id=55,
+    )
+    device = DesktopDevice(fingerprint_hash=_fp())
+    device.id = 55
+    active = DesktopActivation(
+        license_id=lic.id,
+        user_id=7,
+        device_id=55,
+        status=ACTIVATION_STATUS_ACTIVE,
+    )
+    active.id = 9
+    product = _product(trial_duration_days=7)
+    db = _mock_activation_db(lic, product)
+    later = started + timedelta(days=3)
+
+    with patch("app.licensing.binding.get_or_create_device", return_value=device), patch(
+        "app.licensing.binding.get_active_activation", return_value=active
+    ), patch("app.licensing.binding._utc_now", return_value=later):
+        result = activate_license_on_device(
+            db,
+            license_row=lic,
+            website_user_id=7,
+            product_id=1,
+            fingerprint_hash=_fp(),
+        )
+
+    assert result.created_new_activation is False
+    assert lic.expires_at == original_exp
+    assert lic.activated_at == started
+
+
+def test_trial_expired_remains_expired_on_activate():
+    started = datetime(2026, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
+    expired_at = started + timedelta(days=7)
+    lic = _license(
+        status=LICENSE_STATUS_ACTIVE,
+        expires_at=expired_at,
+        activated_at=started,
+        bound_device_id=55,
+    )
+    device = DesktopDevice(fingerprint_hash=_fp())
+    device.id = 55
+    product = _product()
+    db = _mock_activation_db(lic, product)
+    attempt_at = expired_at + timedelta(hours=1)
+
+    with patch("app.licensing.binding.get_or_create_device", return_value=device), patch(
+        "app.licensing.binding.get_active_activation", return_value=None
+    ), patch("app.licensing.binding.get_activation_for_license_device", return_value=None), patch(
+        "app.licensing.binding._utc_now", return_value=attempt_at
+    ):
+        with pytest.raises(LicenseBindingError) as exc:
+            activate_license_on_device(
+                db,
+                license_row=lic,
+                website_user_id=7,
+                product_id=1,
+                fingerprint_hash=_fp(),
+            )
+    assert exc.value.code == "expired"
+
+
+def test_paid_license_activation_does_not_use_trial_timing():
+    """Paid mint still sets expires_at at issue; activation must not rewrite it."""
+    settings = _fernet_settings()
+    db = MagicMock()
+    added: list = []
+
+    def add(obj):
+        added.append(obj)
+        if isinstance(obj, DesktopLicense) and getattr(obj, "id", None) is None:
+            obj.id = 2000 + len([x for x in added if isinstance(x, DesktopLicense)])
+
+    db.add.side_effect = add
+    db.flush = MagicMock()
+
+    paid, _ = create_paid_license_row(
+        db,
+        settings,
+        product_id=1,
+        plan_id=2,
+        order_id=50,
+        company_id=3,
+        licensed_user_id=7,
+        seat_index=1,
+        duration_days=365,
+    )
+    assert paid.entitlement_type == ENTITLEMENT_PAID
+    original_exp = paid.expires_at
+    assert original_exp is not None
+
+    product = _product()
+    device = DesktopDevice(fingerprint_hash=_fp("paid-device"))
+    device.id = 88
+    db_paid = _mock_activation_db(paid, product)
+    activation_now = datetime(2026, 7, 1, 9, 0, 0, tzinfo=timezone.utc)
+
+    with patch("app.licensing.binding.get_or_create_device", return_value=device), patch(
+        "app.licensing.binding.get_active_activation", return_value=None
+    ), patch("app.licensing.binding.get_activation_for_license_device", return_value=None), patch(
+        "app.licensing.binding._utc_now", return_value=activation_now
+    ):
+        activate_license_on_device(
+            db_paid,
+            license_row=paid,
+            website_user_id=7,
+            product_id=1,
+            fingerprint_hash=_fp("paid-device"),
+        )
+
+    assert paid.expires_at == original_exp
