@@ -1642,15 +1642,96 @@
     });
   }
 
-  /** Dimension row count — used to decide single-page landscape PDF when < 10. */
   function firDimensionParameterCount() {
     if (FIR_SPEC_DATA.length > 0) return FIR_SPEC_DATA.length;
     if (noOfParamsParam && noOfParamsParam > 0) return noOfParamsParam;
     return totalRows;
   }
 
+  /** Total Sl No rows across sections A–D (incl. No CPI / empty section placeholders). */
+  function firTotalSerialNumberCount() {
+    var count = firDimensionParameterCount();
+    var ccpRows = (FIR_CCP_DATA || []).filter(firIsRealCcpRow);
+    count += ccpRows.length > 0 ? ccpRows.length : 1;
+    count += FIR_MATERIAL_DATA.length > 0 ? FIR_MATERIAL_DATA.length : 1;
+    count += FIR_COATING_DATA.length > 0 ? FIR_COATING_DATA.length : 1;
+    return count;
+  }
+
   function firShouldFitOneLandscapePage() {
-    return firDimensionParameterCount() > 0 && firDimensionParameterCount() < 10;
+    return firTotalSerialNumberCount() > 0 && firTotalSerialNumberCount() <= 10;
+  }
+
+  function firGetJsPdfConstructor() {
+    if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    if (window.jsPDF) return window.jsPDF;
+    return null;
+  }
+
+  function firCanvasPxToMm(canvasPx) {
+    return canvasPx * 25.4 / (96 * FIR_PDF_CANVAS_SCALE);
+  }
+
+  /** Uniform scale: fit full report canvas onto one landscape A4 page (no DOM zoom). */
+  function firCanvasToSingleLandscapePagePdf(canvas) {
+    var JsPDF = firGetJsPdfConstructor();
+    if (!JsPDF) throw new Error("jsPDF not loaded");
+    var pdf = new JsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    var pageW = 297;
+    var pageH = 210;
+    var imgWmm = firCanvasPxToMm(canvas.width);
+    var imgHmm = firCanvasPxToMm(canvas.height);
+    var fit = Math.min(pageW / imgWmm, pageH / imgHmm);
+    var drawW = imgWmm * fit;
+    var drawH = imgHmm * fit;
+    var x = (pageW - drawW) / 2;
+    var y = (pageH - drawH) / 2;
+    pdf.addImage(
+      canvas.toDataURL("image/jpeg", FIR_PDF_JPEG_QUALITY),
+      "JPEG",
+      x,
+      y,
+      drawW,
+      drawH
+    );
+    return pdf;
+  }
+
+  function firRunPdfExport(el, fileName, mode) {
+    var opts = firBuildPdfOptions(el, fileName);
+    var worker = html2pdf().set(opts).from(el);
+    if (!firShouldFitOneLandscapePage()) {
+      if (mode === "blob") {
+        var out = null;
+        if (typeof worker.outputPdf === "function") out = worker.outputPdf("blob");
+        else if (typeof worker.output === "function") out = worker.output("blob");
+        if (!out || typeof out.then !== "function") {
+          return Promise.reject(new Error("html2pdf blob output not available in this build"));
+        }
+        return out.then(function(blob) {
+          var n = blob && blob.size ? blob.size : 0;
+          var warn = "";
+          if (n > 200 * 1024) warn = "over_200kb";
+          else if (n > 0 && n < 100 * 1024) warn = "under_100kb";
+          return { blob: blob, filename: fileName, byteSize: n, sizeWarning: warn || undefined };
+        });
+      }
+      return worker.save();
+    }
+    return worker.toCanvas().then(function() {
+      var canvas = worker.prop && worker.prop.canvas;
+      if (!canvas) throw new Error("PDF canvas capture failed");
+      var pdf = firCanvasToSingleLandscapePagePdf(canvas);
+      if (mode === "blob") {
+        var blob = pdf.output("blob");
+        var n = blob && blob.size ? blob.size : 0;
+        var warn = "";
+        if (n > 200 * 1024) warn = "over_200kb";
+        else if (n > 0 && n < 100 * 1024) warn = "under_100kb";
+        return { blob: blob, filename: fileName, byteSize: n, sizeWarning: warn || undefined };
+      }
+      pdf.save(fileName);
+    });
   }
 
   /**
@@ -1787,7 +1868,7 @@
     }).then(function() {
       return firPrepareDomForPdfCapture(el);
     }).then(function() {
-      return html2pdf().set(firBuildPdfOptions(el, fileName)).from(el).save();
+      return firRunPdfExport(el, fileName, "save");
     }).then(restorePdfUi).catch(function() {
       restorePdfUi();
     });
@@ -1839,38 +1920,13 @@
       }).then(function() {
         return firPrepareDomForPdfCapture(el);
       }).then(function() {
-        var worker = html2pdf().set(firBuildPdfOptions(el, fileName)).from(el);
-
-        var out = null;
-        if (typeof worker.outputPdf === 'function') {
-          out = worker.outputPdf('blob');
-        } else if (typeof worker.output === 'function') {
-          out = worker.output('blob');
-        }
-        if (out && typeof out.then === 'function') {
-          out.then(function(blob) {
+        return firRunPdfExport(el, fileName, "blob").then(function(result) {
             restoreUi();
-            var n = blob && blob.size ? blob.size : 0;
-            var warn = "";
-            if (n > 200 * 1024) {
-              warn = "over_200kb";
-            } else if (n > 0 && n < 100 * 1024) {
-              warn = "under_100kb";
-            }
-            resolve({
-              blob: blob,
-              filename: fileName,
-              byteSize: n,
-              sizeWarning: warn || undefined
-            });
+            resolve(result);
           }).catch(function(err) {
             restoreUi();
             reject(err);
           });
-        } else {
-          restoreUi();
-          reject(new Error('html2pdf blob output not available in this build'));
-        }
       }).catch(function(err) {
         restoreUi();
         reject(err);
