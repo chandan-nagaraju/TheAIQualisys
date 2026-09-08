@@ -808,6 +808,7 @@ type LicenseRow = {
   device_status: string;
   is_activated: boolean;
   issued_at?: string | null;
+  activated_at?: string | null;
   expires_at?: string | null;
   email_status?: string | null;
 };
@@ -994,8 +995,16 @@ export function SoftwareLicensesPage() {
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
                         Issued {lic.issued_at ? new Date(lic.issued_at).toLocaleDateString() : "—"}
+                        {lic.activated_at ? (
+                          <>
+                            {" · "}
+                            Activated {new Date(lic.activated_at).toLocaleDateString()}
+                          </>
+                        ) : null}
                         {" · "}
-                        Expires {lic.expires_at ? new Date(lic.expires_at).toLocaleDateString() : "—"}
+                        {isTrial && !lic.expires_at && !lic.activated_at
+                          ? "Trial period starts on first desktop activation"
+                          : `Expires ${lic.expires_at ? new Date(lic.expires_at).toLocaleDateString() : "—"}`}
                       </p>
                       <button
                         type="button"

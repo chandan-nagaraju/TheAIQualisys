@@ -281,7 +281,11 @@ def build_trial_email_body(
     my_licenses_url: str,
 ) -> tuple[str, str]:
     name = (customer_name or "").strip() or "Customer"
-    exp = license_row.expires_at.date().isoformat() if license_row.expires_at else "n/a"
+    exp = (
+        license_row.expires_at.date().isoformat()
+        if license_row.expires_at
+        else "starts when you activate the desktop app"
+    )
     masked = masked_key_from_parts(license_row.key_prefix, license_row.key_last4)
     subject = f"Your {product.name} 7-day trial is ready"
     body = "\n".join(
