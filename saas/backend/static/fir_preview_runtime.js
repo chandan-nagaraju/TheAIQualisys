@@ -322,11 +322,13 @@
   function firParseMilliporeSpec(specStr) {
     var s = String(specStr || "").trim();
     if (!s) return null;
-    var m = s.match(/(\d+(?:\.\d+)?)\s*([A-Za-zµμ%]+)?/);
-    if (!m) return null;
-    var limit = parseFloat(m[1]);
+    var numMatch = s.match(/-?\d+(?:\.\d+)?/);
+    if (!numMatch) return null;
+    var limit = parseFloat(numMatch[0]);
     if (isNaN(limit) || limit <= 0) return null;
-    var unit = (m[2] || "").trim().toUpperCase() || "";
+    var after = s.slice(s.indexOf(numMatch[0]) + numMatch[0].length).trim();
+    var unitMatch = after.match(/^([A-Za-zµμ%][A-Za-z0-9µμ.%/\-]*)/);
+    var unit = unitMatch ? unitMatch[1] : "";
     return { limit: limit, unit: unit };
   }
 
@@ -431,6 +433,8 @@
     var val = "";
     var inp = merged.querySelector("input");
     if (inp) val = inp.value;
+    var numOnly = firParseMilliporeActual(val);
+    var restore = numOnly != null ? String(numOnly) : String(val || "").replace(/^Millipore\s+test\s+achieved\s+/i, "").trim();
     var remarks = cells[6];
     merged.remove();
     for (var i = 0; i < 5; i++) {
@@ -438,7 +442,9 @@
       var input = document.createElement("input");
       input.type = "text";
       input.className = "actual-value quali-font";
-      if (i === 0) input.value = val;
+      if (i === 0) {
+        input.value = restore && !/^Millipore/i.test(restore) ? restore : (numOnly != null ? String(numOnly) : "");
+      }
       td.appendChild(input);
       tr.insertBefore(td, remarks);
     }
@@ -742,7 +748,7 @@
           bHtml +=
             '<tr class="fir-no-cpi-row"><td style="width:5%;">' +
             slno++ +
-            '</td><td colspan="10" class="fir-no-cpi-merged"><input type="text" class="fir-no-cpi-value" value="No CPI"></td></tr>';
+            '</td><td colspan="10" class="fir-no-cpi-merged"><span class="fir-no-cpi-value quali-font">No CPI</span></td></tr>';
         }
         bHtml += '</tbody></table>';
         const cRemarksInput = '<input type="text" class="remarks-value quali-font" value="OK">';
