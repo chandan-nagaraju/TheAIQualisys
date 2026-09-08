@@ -380,6 +380,29 @@
     return rows.length === 1 && rows[0].classList.contains("fir-no-cpi-row");
   }
 
+  /** Part master may store "NO CPI" as a parameter row — treat as empty Section B. */
+  function firIsNoCpiPlaceholderParameter(raw) {
+    var p = String(raw || "").trim().replace(/\s+/g, " ").toUpperCase();
+    if (!p) return false;
+    var compact = p.replace(/[\s.\-_/]/g, "");
+    return (
+      compact === "NOCPI" ||
+      compact === "NOCCP" ||
+      compact === "NCCP" ||
+      p === "NO CPI" ||
+      p === "NO CCP" ||
+      p === "N CPI"
+    );
+  }
+
+  function firIsRealCcpRow(r) {
+    if (!r) return false;
+    var param = String(r.parameter || "").trim();
+    if (!param) return false;
+    if (firIsNoCpiPlaceholderParameter(param)) return false;
+    return true;
+  }
+
   /** Autofill: strictly below limit, in lower half (≈35–50% of spec). */
   function firRandomMilliporeValue(limit) {
     var lo = limit * 0.35;
@@ -736,9 +759,7 @@
         const actualInput = '<input type="text" class="actual-value quali-font">';
         const remarksInput = '<input type="text" class="remarks-value quali-font">';
         let bHtml = '<div class="section-title">B) Customer End Complaints Parameters & Check Points</div><table class="data-table" id="ccp-table"><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
-        var ccpRows = (FIR_CCP_DATA || []).filter(function (r) {
-          return r && String(r.parameter || "").trim() !== "";
-        });
+        var ccpRows = (FIR_CCP_DATA || []).filter(firIsRealCcpRow);
         if (ccpRows.length > 0) {
           ccpRows.forEach(function(r) {
             var snB = firRowSlNo(r, slno);
