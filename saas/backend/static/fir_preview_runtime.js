@@ -23,9 +23,11 @@
     return b == null ? "" : String(b);
   }
   /** html2pdf raster tuning — same for single download and inspection-page batch ZIP (full quality). */
-  var FIR_PDF_JPEG_QUALITY = 0.72;
-  var FIR_PDF_CANVAS_SCALE = 1.12;
-  var FIR_PDF_IMG_JPEG = 0.72;
+  var FIR_PDF_JPEG_QUALITY = 0.94;
+  var FIR_PDF_CANVAS_SCALE = 2;
+  var FIR_PDF_IMG_JPEG = 0.92;
+  /** Extra pixels so html2canvas does not clip the right/bottom table borders. */
+  var FIR_PDF_CAPTURE_EDGE_PAD = 3;
   /** No downscale for logo/signature grayscale prep (full pixel count for sharp PDFs). */
   var FIR_PDF_IMG_MAX_EDGE = 100000;
 
@@ -1687,8 +1689,8 @@
     var x = (pageW - drawW) / 2;
     var y = (pageH - drawH) / 2;
     pdf.addImage(
-      canvas.toDataURL("image/jpeg", FIR_PDF_JPEG_QUALITY),
-      "JPEG",
+      canvas.toDataURL("image/png"),
+      "PNG",
       x,
       y,
       drawW,
@@ -1793,19 +1795,37 @@
     });
   }
 
+  function firMeasurePdfCaptureBox(el) {
+    el = el || document.getElementById("reportRoot");
+    if (!el) return { width: 0, height: 0 };
+    var rect = el.getBoundingClientRect();
+    var pad = typeof FIR_PDF_CAPTURE_EDGE_PAD !== "undefined" ? FIR_PDF_CAPTURE_EDGE_PAD : 3;
+    var width = Math.max(el.scrollWidth, el.offsetWidth, Math.ceil(rect.width)) + pad;
+    var height = Math.max(el.scrollHeight, el.offsetHeight, Math.ceil(rect.height)) + pad;
+    return { width: width, height: height };
+  }
+
+  function firBuildHtml2CanvasOptions(el) {
+    var box = firMeasurePdfCaptureBox(el);
+    return {
+      scale: FIR_PDF_CANVAS_SCALE,
+      useCORS: true,
+      logging: false,
+      scrollY: -window.scrollY,
+      scrollX: -window.scrollX,
+      width: box.width,
+      height: box.height,
+      windowWidth: Math.max(document.documentElement.clientWidth, box.width),
+      windowHeight: Math.max(document.documentElement.clientHeight, box.height),
+    };
+  }
+
   function firBuildPdfOptions(el, fileName) {
     return {
       margin: 0,
       filename: fileName,
       image: { type: "jpeg", quality: FIR_PDF_JPEG_QUALITY },
-      html2canvas: {
-        scale: FIR_PDF_CANVAS_SCALE,
-        useCORS: true,
-        logging: false,
-        scrollY: 0,
-        scrollX: 0,
-        windowHeight: el.scrollHeight,
-      },
+      html2canvas: firBuildHtml2CanvasOptions(el),
       jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
       pagebreak: { mode: ["css"] },
     };

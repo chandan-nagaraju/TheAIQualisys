@@ -52,13 +52,29 @@
   body.generating-pdf .report-container {
     overflow: visible;
     border: 1px solid #000;
+    border-right: 2px solid #000;
     box-shadow: none;
     width: 100%;
     max-width: 100%;
     margin: 0;
     padding: 4px 5px;
     transform: none;
+    filter: none;
     box-sizing: border-box;
+  }
+  body.generating-pdf .report-container::after {
+    display: none;
+  }
+  body.generating-pdf .header-table,
+  body.generating-pdf .data-table {
+    border-right: 2px solid #333 !important;
+  }
+  body.generating-pdf .header-table tr > :last-child,
+  body.generating-pdf .data-table tr > :last-child {
+    border-right: 2px solid #333 !important;
+  }
+  body.generating-pdf .signatures-section table table {
+    border-right: 1px solid #333 !important;
   }
 
   .header-table, .data-table {
