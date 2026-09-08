@@ -7,7 +7,7 @@
   <style>
   @page { size: A4 landscape; margin: 10mm; }
   body { font-family: Calibri, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; }
-  body.generating-pdf { min-width: 297mm; width: 297mm; margin: 0; background: #fff; }
+  body.generating-pdf { min-width: 297mm; width: 297mm; margin: 0; padding: 0; background: #fff; }
 
   #reportRoot { width: 100%; max-width: 297mm; margin: 0 auto; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
   body.generating-pdf #reportRoot {
@@ -120,6 +120,21 @@
     padding: 3px 5px;
     border: 1px solid #000;
     line-height: 1.3;
+  }
+  .data-table > caption.section-title {
+    caption-side: top;
+    width: 100%;
+    box-sizing: border-box;
+    border-bottom: none;
+    margin: 0;
+    padding: 4px 6px;
+    line-height: 1.35;
+  }
+  body.generating-pdf .data-table > caption.section-title {
+    display: table-caption;
+    position: static;
+    background: #dedede;
+    background-image: none;
   }
   /* Table subheads — neutral B&W (no blue) */
   .fir-col-head, .fir-col-head-num {

@@ -740,9 +740,8 @@
         <tr><td class="bold" colspan="2">DRAW.REV NO :</td><td colspan="14"><input type="text" value="${drawRev}"></td></tr>
       </table>`;
 
-    html += `<div class="section-title">A) Dimension Parameters</div>`;
     html += `
-      <table class="data-table" id="dimension-table"><thead>
+      <table class="data-table" id="dimension-table"><caption class="section-title">A) Dimension Parameters</caption><thead>
         <tr><th rowspan="2" style="width:5%;">Sl No</th>
         <th rowspan="2" style="width:15%;">Parameter</th>
         <th rowspan="2" style="width:15%;">Specification</th>
@@ -795,7 +794,7 @@
     {
         const actualInput = '<input type="text" class="actual-value quali-font">';
         const remarksInput = '<input type="text" class="remarks-value quali-font">';
-        let bHtml = '<div class="section-title">B) Customer End Complaints Parameters & Check Points</div><table class="data-table" id="ccp-table"><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
+        let bHtml = '<table class="data-table" id="ccp-table"><caption class="section-title">B) Customer End Complaints Parameters & Check Points</caption><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         var ccpRows = (FIR_CCP_DATA || []).filter(firIsRealCcpRow);
         if (ccpRows.length > 0) {
           ccpRows.forEach(function(r) {
@@ -811,7 +810,7 @@
         }
         bHtml += '</tbody></table>';
         const cRemarksInput = '<input type="text" class="remarks-value quali-font" value="OK">';
-        let cHtml = '<div class="section-title">C) Material Grade</div><table class="data-table" id="material-table"><tbody>';
+        let cHtml = '<table class="data-table" id="material-table"><caption class="section-title">C) Material Grade</caption><tbody>';
         if (FIR_MATERIAL_DATA.length > 0) {
           FIR_MATERIAL_DATA.forEach(function(r) {
             var snC = firRowSlNo(r, slno);
@@ -822,7 +821,7 @@
           cHtml += `<tr><td style="width:5%;">${slno++}</td><td style="width:85%;">${wrapCell()}</td><td style="width:10%;">${cRemarksInput}</td></tr>`;
         }
         cHtml += '</tbody></table>';
-        let dHtml = '<div class="section-title">D) Surface Coating</div><table class="data-table" id="coating-table"><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
+        let dHtml = '<table class="data-table" id="coating-table"><caption class="section-title">D) Surface Coating</caption><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         if (FIR_COATING_DATA.length > 0) {
           FIR_COATING_DATA.forEach(function(r) {
             var snD = firRowSlNo(r, slno);
@@ -1685,71 +1684,92 @@
     });
   }
 
-  /** Shrink report uniformly to fit one landscape A4 page when parameter count < 10. Uses zoom (layout-aware) instead of transform to avoid clipping Sl No / logo / labels in PDF. */
+  /** Mark one-page PDF mode (page-break only). Zoom breaks html2canvas text layout. */
   function firApplyOnePagePdfScale(root) {
-    root = root || document.getElementById("reportRoot");
-    if (!root || !firShouldFitOneLandscapePage()) return;
-    var container = root.querySelector(".report-container");
-    if (!container) return;
-
-    var pxPerMm = 96 / 25.4;
-    var maxH = 210 * pxPerMm - 6;
-    var maxW = 297 * pxPerMm - 6;
-    var naturalH = container.offsetHeight || container.scrollHeight;
-    var naturalW = container.offsetWidth || root.offsetWidth;
-    if (!naturalH || !naturalW) return;
-
-    var scale = Math.min(maxH / naturalH, maxW / naturalW, 1);
-    if (scale >= 0.995) return;
-    scale = scale * 0.98;
-
+    if (!firShouldFitOneLandscapePage()) return;
     document.body.classList.add("fir-fit-one-page");
-    container.dataset.firPdfOrigZoom = container.style.zoom || "";
-    container.style.zoom = String(scale);
-    root.dataset.firPdfScale = String(scale);
   }
 
   function firRestoreOnePagePdfLayout(root) {
-    root = root || document.getElementById("reportRoot");
     document.body.classList.remove("fir-fit-one-page");
-    if (!root) return;
-    var container = root.querySelector(".report-container");
-    if (container) {
-      container.style.zoom = container.dataset.firPdfOrigZoom || "";
-      container.removeAttribute("data-fir-pdf-orig-zoom");
+    if (root) root.removeAttribute("data-fir-pdf-scale");
+  }
+
+  function firPdfPageWidthPx() {
+    return Math.round(297 * (96 / 25.4));
+  }
+
+  function firPdfPageHeightPx() {
+    return Math.round(210 * (96 / 25.4));
+  }
+
+  function firPreparePdfFullBleed(root) {
+    root = root || document.getElementById("reportRoot");
+    var container = root && root.querySelector(".report-container");
+    if (!container) return;
+    var pageW = firPdfPageWidthPx();
+    container.dataset.firPdfOrigWidth = container.style.width || "";
+    container.dataset.firPdfOrigMaxWidth = container.style.maxWidth || "";
+    container.style.width = pageW + "px";
+    container.style.maxWidth = pageW + "px";
+    if (root) {
+      root.dataset.firPdfOrigWidth = root.style.width || "";
+      root.dataset.firPdfOrigMaxWidth = root.style.maxWidth || "";
+      root.style.width = pageW + "px";
+      root.style.maxWidth = pageW + "px";
     }
-    root.removeAttribute("data-fir-pdf-scale");
   }
 
-  /** Compensate html2canvas scale when the report is uniformly shrunk so text stays sharp. */
-  function firPdfHtml2canvasScale(root) {
-    var fit = root && root.dataset.firPdfScale ? parseFloat(root.dataset.firPdfScale) : 1;
-    if (!(fit > 0 && fit < 1)) return FIR_PDF_CANVAS_SCALE;
-    return Math.min(3, FIR_PDF_CANVAS_SCALE / fit);
+  function firRestorePdfFullBleed(root) {
+    root = root || document.getElementById("reportRoot");
+    var container = root && root.querySelector(".report-container");
+    if (container) {
+      container.style.width = container.dataset.firPdfOrigWidth || "";
+      container.style.maxWidth = container.dataset.firPdfOrigMaxWidth || "";
+      container.removeAttribute("data-fir-pdf-orig-width");
+      container.removeAttribute("data-fir-pdf-orig-max-width");
+    }
+    if (root) {
+      root.style.width = root.dataset.firPdfOrigWidth || "";
+      root.style.maxWidth = root.dataset.firPdfOrigMaxWidth || "";
+      root.removeAttribute("data-fir-pdf-orig-width");
+      root.removeAttribute("data-fir-pdf-orig-max-width");
+    }
   }
 
-  function firBuildPdfOptions(el, fileName) {
-    var canvasScale = firPdfHtml2canvasScale(el);
-    var jpegQuality = el && el.dataset.firPdfScale ? Math.min(0.88, FIR_PDF_JPEG_QUALITY + 0.12) : FIR_PDF_JPEG_QUALITY;
+  function firPdfCaptureElement(root) {
+    root = root || document.getElementById("reportRoot");
+    if (!root) return root;
+    return root.querySelector(".report-container") || root;
+  }
+
+  function firBuildPdfOptions(captureEl, fileName, root) {
+    var pageW = firPdfPageWidthPx();
+    var pageH = firPdfPageHeightPx();
+    var onePage = root && document.body.classList.contains("fir-fit-one-page");
     return {
       margin: 0,
       filename: fileName,
-      image: { type: "jpeg", quality: jpegQuality },
+      image: { type: "jpeg", quality: FIR_PDF_JPEG_QUALITY },
       html2canvas: {
-        scale: canvasScale,
+        scale: FIR_PDF_CANVAS_SCALE,
         useCORS: true,
         logging: false,
         scrollY: 0,
         scrollX: 0,
-        windowHeight: el.scrollHeight,
+        width: pageW,
+        windowWidth: pageW,
+        height: captureEl.scrollHeight,
+        windowHeight: Math.max(captureEl.scrollHeight, pageH),
       },
       jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
-      pagebreak: { mode: el && el.dataset.firPdfScale ? ["avoid-all"] : ["css"] },
+      pagebreak: { mode: onePage ? ["avoid-all"] : ["css"] },
     };
   }
 
   function firPrepareDomForPdfCapture(root) {
     root = root || document.getElementById("reportRoot");
+    firPreparePdfFullBleed(root);
     firPrepareTextareasForPdf(root);
     firApplyOnePagePdfScale(root);
     return new Promise(function(res) {
@@ -1763,6 +1783,7 @@
     root = root || document.getElementById("reportRoot");
     firRestoreTextareasAfterPdf(root);
     firRestoreOnePagePdfLayout(root);
+    firRestorePdfFullBleed(root);
     firRestoreImagesAfterPdf(root);
   }
 
@@ -1834,7 +1855,8 @@
     }).then(function() {
       return firPrepareDomForPdfCapture(el);
     }).then(function() {
-      return html2pdf().set(firBuildPdfOptions(el, fileName)).from(el).save();
+      var captureEl = firPdfCaptureElement(el);
+      return html2pdf().set(firBuildPdfOptions(captureEl, fileName, el)).from(captureEl).save();
     }).then(restorePdfUi).catch(function() {
       restorePdfUi();
     });
@@ -1886,7 +1908,8 @@
       }).then(function() {
         return firPrepareDomForPdfCapture(el);
       }).then(function() {
-        var worker = html2pdf().set(firBuildPdfOptions(el, fileName)).from(el);
+        var captureEl = firPdfCaptureElement(el);
+        var worker = html2pdf().set(firBuildPdfOptions(captureEl, fileName, el)).from(captureEl);
 
         var out = null;
         if (typeof worker.outputPdf === 'function') {
