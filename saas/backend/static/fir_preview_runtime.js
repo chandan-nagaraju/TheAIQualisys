@@ -309,7 +309,7 @@
     );
   }
 
-  function firIsMilliporeMethod(raw) {
+  function firTextIsMillipore(raw) {
     var u = String(raw || "")
       .trim()
       .replace(/\s+/g, " ")
@@ -317,6 +317,19 @@
     if (!u) return false;
     var compact = u.replace(/[\s.\-_/]/g, "");
     return compact === "MILLIPORE" || compact.indexOf("MILLIPORE") !== -1;
+  }
+
+  function firIsMilliporeMethod(raw) {
+    return firTextIsMillipore(raw);
+  }
+
+  function firIsMilliporeParameter(raw) {
+    return firTextIsMillipore(raw);
+  }
+
+  /** Millipore row when MOI or Parameter names it (e.g. Parameter MILLIPORE + Method WEIGHT MACHIN). */
+  function firRowIsMillipore(paramRaw, methodRaw) {
+    return firIsMilliporeParameter(paramRaw) || firIsMilliporeMethod(methodRaw);
   }
 
   function firParseMilliporeSpec(specStr) {
@@ -432,16 +445,19 @@
     if (!tr || firIsMilliporeRow(tr)) return;
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length !== 11) return;
-    var firstVal = "";
-    var firstInp = cells[5].querySelector("input.actual-value") || cells[5].querySelector('input[type="text"]');
-    if (firstInp) firstVal = firstInp.value;
+    var keepVal = "";
+    for (var ci = 5; ci <= 9; ci++) {
+      var cellInp = cells[ci].querySelector("input.actual-value") || cells[ci].querySelector('input[type="text"]');
+      var v = cellInp ? String(cellInp.value || "").trim() : "";
+      if (v && !keepVal) keepVal = v;
+    }
     var merged = document.createElement("td");
     merged.colSpan = 5;
     merged.className = "fir-millipore-merged";
     var inp = document.createElement("input");
     inp.type = "text";
     inp.className = "actual-value quali-font millipore-actual";
-    inp.value = firstVal;
+    inp.value = keepVal;
     merged.appendChild(inp);
     var remarks = cells[10];
     for (var ci = 9; ci >= 5; ci--) cells[ci].remove();
@@ -479,9 +495,11 @@
     if (!tr || firIsNoCpiRow(tr)) return;
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 5) return;
+    var paramEl = cells[1].querySelector("textarea") || cells[1].querySelector("input");
     var methodEl = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
+    var param = paramEl ? String(paramEl.value || "").trim() : "";
     var method = methodEl ? String(methodEl.value || "").trim() : "";
-    if (firIsMilliporeMethod(method)) {
+    if (firRowIsMillipore(param, method)) {
       firApplyMilliporeRowLayout(tr);
     } else {
       firUnmergeMilliporeRow(tr);
@@ -530,6 +548,7 @@
     var method = String(methodRaw || "").trim();
     var spec = String(specRaw || "").trim();
     var param = String(paramRaw || "").trim();
+    if (firRowIsMillipore(param, method)) return false;
     if (firIsOkOnlyInspectionMethod(method)) return true;
     if (firIsQrCodeParameter(param) || firIsQrScannerMethod(method)) return true;
     if (firGdtParameterUsesQualitativeMeasured(param, method)) return true;
@@ -552,7 +571,7 @@
     var method = String(methodRaw || "").trim();
     var ctx = { param: param, spec: spec, method: method };
 
-    if (firIsMilliporeMethod(method)) {
+    if (firRowIsMillipore(param, method)) {
       var mp = firParseMilliporeSpec(spec);
       if (mp) {
         return Object.assign({ mode: "millipore", limit: mp.limit, unit: mp.unit }, ctx);
@@ -864,6 +883,9 @@
     /* Column enable/disable only on first paint — do not pre-fill TPG/Visual OK until user clicks Autofill. */
     firApplyMeasuredColumnAvailability();
     firSyncAllMilliporeRowLayouts();
+    document.querySelectorAll("tr.fir-millipore-row").forEach(function(tr) {
+      firUpdateRowRemarksFromMeasurements(tr);
+    });
     var firSampleEl = document.getElementById("firSampleSizeInput");
     if (firSampleEl) {
       firSampleEl.addEventListener("input", firOnSampleSizeOrColumnsChanged);
@@ -949,7 +971,10 @@
         }
         if (e.target && e.target.tagName === 'TEXTAREA') {
           var trTa = e.target.closest('tr');
-          if (trTa) firUpdateRowRemarksFromMeasurements(trTa);
+          if (trTa) {
+            firSyncMilliporeRowLayout(trTa);
+            firUpdateRowRemarksFromMeasurements(trTa);
+          }
         }
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr = e.target.closest('tr');
@@ -993,7 +1018,10 @@
         }
         if (e.target && e.target.tagName === 'TEXTAREA') {
           var trTa2 = e.target.closest('tr');
-          if (trTa2) firUpdateRowRemarksFromMeasurements(trTa2);
+          if (trTa2) {
+            firSyncMilliporeRowLayout(trTa2);
+            firUpdateRowRemarksFromMeasurements(trTa2);
+          }
         }
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr2 = e.target.closest('tr');
