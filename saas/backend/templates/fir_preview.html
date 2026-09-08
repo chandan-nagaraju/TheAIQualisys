@@ -7,10 +7,16 @@
   <style>
   @page { size: A4 landscape; margin: 10mm; }
   body { font-family: Calibri, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; }
-  body.generating-pdf { min-width: 297mm; width: 297mm; margin: 0 auto; background: #fff; }
+  body.generating-pdf { min-width: 297mm; width: 297mm; margin: 0; background: #fff; }
 
   #reportRoot { width: 100%; max-width: 297mm; margin: 0 auto; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
-  body.generating-pdf #reportRoot { width: 297mm !important; min-width: 297mm; max-width: 297mm; margin: 0 auto; }
+  body.generating-pdf #reportRoot {
+    width: 297mm !important;
+    min-width: 297mm;
+    max-width: 297mm;
+    margin: 0;
+    align-items: stretch;
+  }
 
   .report-container {
     position: relative;
@@ -43,7 +49,17 @@
     mix-blend-mode: multiply;
     opacity: 0.85;
   }
-  body.generating-pdf .report-container { overflow: visible; border: 1px solid #000; box-shadow: none; max-width: 270mm; transform: none; }
+  body.generating-pdf .report-container {
+    overflow: visible;
+    border: 1px solid #000;
+    box-shadow: none;
+    width: 100%;
+    max-width: 297mm;
+    margin: 0;
+    padding: 4px 5px;
+    transform: none;
+    box-sizing: border-box;
+  }
 
   .header-table, .data-table {
     border-collapse: collapse;
@@ -340,8 +356,8 @@
     .report-container { box-shadow: none; border: none; overflow: visible; transform: none; }
     .data-table thead { display: table-header-group; }
     .signatures-section { page-break-inside: avoid; }
-    #reportRoot { width: 297mm; margin: 0 auto; }
-    .report-container { max-width: 270mm; margin: 0 auto; }
+    #reportRoot { width: 297mm; margin: 0; }
+    .report-container { max-width: 297mm; width: 100%; margin: 0; }
   }
   </style>
 </head>

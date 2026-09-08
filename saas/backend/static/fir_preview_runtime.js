@@ -1693,8 +1693,8 @@
     if (!container) return;
 
     var pxPerMm = 96 / 25.4;
-    var maxH = 210 * pxPerMm - 8;
-    var maxW = 270 * pxPerMm;
+    var maxH = 210 * pxPerMm - 6;
+    var maxW = 297 * pxPerMm - 6;
     var naturalH = container.offsetHeight || container.scrollHeight;
     var naturalW = container.offsetWidth || root.offsetWidth;
     if (!naturalH || !naturalW) return;
