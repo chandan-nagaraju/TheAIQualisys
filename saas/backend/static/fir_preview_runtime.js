@@ -1182,12 +1182,26 @@
     return 0.01;
   }
 
+  function firRoundToDecimals(value, decimals) {
+    var n = Number(value);
+    if (isNaN(n)) return null;
+    var mul = Math.pow(10, decimals);
+    return Math.round(n * mul) / mul;
+  }
+
+  /** Dimensional measured cells: at most 2 decimal places (avoids 6.4499999 float noise). */
+  function firFormatTwoDecimalMeasured(value) {
+    var n = firRoundToDecimals(value, 2);
+    if (n == null || isNaN(n)) return String(value);
+    if (Number.isInteger(n)) return String(n);
+    return n.toFixed(2);
+  }
+
   function firFormatLimitMeasured(value, resolutionStep) {
     var step = resolutionStep || 0.01;
     var mul = Math.round(1 / step);
     var snapped = Math.round(Number(value) * mul) / mul;
-    if (step >= 0.01) return snapped.toFixed(2);
-    return snapped.toFixed(3);
+    return firFormatTwoDecimalMeasured(snapped);
   }
 
   function randomInRange(min, max, step) {
@@ -1212,13 +1226,15 @@
       var nSteps = Math.max(1, Math.round((max - min) * mul) + 1);
       var pick = Math.floor(Math.random() * nSteps);
       v = Math.round((min + pick * step) * mul) / mul;
+      v = firRoundToDecimals(v, 2);
     } else {
       v = min + Math.random() * (max - min);
-      v = Number(v.toFixed(2));
+      v = firRoundToDecimals(v, 2);
     }
     if (v < min) v = min;
     if (v > max) v = max;
     if (step === 0.1) v = Number(Number(v).toFixed(1));
+    else if (step !== 0.5) v = firRoundToDecimals(v, 2);
     return v;
   }
 
@@ -1260,7 +1276,7 @@
     if (range.limitFromZero && range.limitResolution) {
       return firFormatLimitMeasured(value, range.limitResolution);
     }
-    return String(value);
+    return firFormatTwoDecimalMeasured(value);
   }
 
   /** Recompute Remarks from spec + filled measured cells (active sample columns only). */
