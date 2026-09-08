@@ -1685,31 +1685,80 @@
     });
   }
 
-  /** Shrink report to fit one landscape A4 page (210mm tall) when parameter count < 10. */
+  /** Shrink report uniformly (same X and Y) to fit one landscape A4 page when parameter count < 10. */
   function firApplyOnePagePdfScale(root) {
     root = root || document.getElementById("reportRoot");
     if (!root || !firShouldFitOneLandscapePage()) return;
+    var container = root.querySelector(".report-container");
+    if (!container) return;
     document.body.classList.add("fir-fit-one-page");
+
     var pxPerMm = 96 / 25.4;
-    var maxPx = 210 * pxPerMm - 6;
-    var h = root.scrollHeight;
-    if (h > maxPx && h > 0) {
-      var scale = maxPx / h;
-      root.style.transform = "scale(" + scale + ")";
-      root.style.transformOrigin = "top center";
-      root.style.height = Math.ceil(h * scale) + "px";
-      root.dataset.firPdfScale = String(scale);
-    }
+    var maxH = 210 * pxPerMm - 4;
+    var maxW = 270 * pxPerMm;
+    var naturalH = container.offsetHeight || container.scrollHeight;
+    var naturalW = container.offsetWidth || root.offsetWidth;
+    if (!naturalH || !naturalW) return;
+
+    var scale = Math.min(maxH / naturalH, maxW / naturalW, 1);
+    if (scale >= 0.995) return;
+
+    container.dataset.firPdfOrigTransform = container.style.transform || "";
+    container.style.transform = "scale(" + scale + ")";
+    container.style.transformOrigin = "top left";
+
+    root.style.width = Math.ceil(naturalW * scale) + "px";
+    root.style.height = Math.ceil(naturalH * scale) + "px";
+    root.style.overflow = "hidden";
+    root.style.margin = "0 auto";
+    root.dataset.firPdfScale = String(scale);
   }
 
   function firRestoreOnePagePdfLayout(root) {
     root = root || document.getElementById("reportRoot");
     document.body.classList.remove("fir-fit-one-page");
     if (!root) return;
-    root.style.transform = "";
-    root.style.transformOrigin = "";
+    var container = root.querySelector(".report-container");
+    if (container) {
+      container.style.transform = container.dataset.firPdfOrigTransform || "";
+      container.style.transformOrigin = "";
+      container.removeAttribute("data-fir-pdf-orig-transform");
+    }
+    root.style.width = "";
     root.style.height = "";
+    root.style.overflow = "";
+    root.style.margin = "";
     root.removeAttribute("data-fir-pdf-scale");
+  }
+
+  /** Compensate html2canvas scale when the report is uniformly shrunk so text stays sharp. */
+  function firPdfHtml2canvasScale(root) {
+    var fit = root && root.dataset.firPdfScale ? parseFloat(root.dataset.firPdfScale) : 1;
+    if (!(fit > 0 && fit < 1)) return FIR_PDF_CANVAS_SCALE;
+    return Math.min(3, FIR_PDF_CANVAS_SCALE / fit);
+  }
+
+  function firBuildPdfOptions(el, fileName) {
+    var canvasScale = firPdfHtml2canvasScale(el);
+    var jpegQuality = el && el.dataset.firPdfScale ? Math.min(0.88, FIR_PDF_JPEG_QUALITY + 0.12) : FIR_PDF_JPEG_QUALITY;
+    return {
+      margin: 0,
+      filename: fileName,
+      image: { type: "jpeg", quality: jpegQuality },
+      html2canvas: {
+        scale: canvasScale,
+        useCORS: true,
+        logging: false,
+        scrollY: 0,
+        scrollX: 0,
+        width: el.offsetWidth || undefined,
+        height: el.offsetHeight || undefined,
+        windowWidth: el.offsetWidth || undefined,
+        windowHeight: el.offsetHeight || undefined,
+      },
+      jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
+      pagebreak: { mode: el && el.dataset.firPdfScale ? ["avoid-all"] : ["css"] },
+    };
   }
 
   function firPrepareDomForPdfCapture(root) {
@@ -1798,21 +1847,7 @@
     }).then(function() {
       return firPrepareDomForPdfCapture(el);
     }).then(function() {
-      return html2pdf().set({
-        margin: 0,
-        filename: fileName,
-        image: { type: 'jpeg', quality: FIR_PDF_JPEG_QUALITY },
-        html2canvas: {
-          scale: FIR_PDF_CANVAS_SCALE,
-          useCORS: true,
-          logging: false,
-          scrollY: 0,
-          scrollX: 0,
-          windowHeight: el.scrollHeight,
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-        pagebreak: { mode: ['css'] }
-      }).from(el).save();
+      return html2pdf().set(firBuildPdfOptions(el, fileName)).from(el).save();
     }).then(restorePdfUi).catch(function() {
       restorePdfUi();
     });
@@ -1864,21 +1899,7 @@
       }).then(function() {
         return firPrepareDomForPdfCapture(el);
       }).then(function() {
-        var worker = html2pdf().set({
-          margin: 0,
-          filename: fileName,
-          image: { type: 'jpeg', quality: FIR_PDF_JPEG_QUALITY },
-          html2canvas: {
-            scale: FIR_PDF_CANVAS_SCALE,
-            useCORS: true,
-            logging: false,
-            scrollY: 0,
-            scrollX: 0,
-            windowHeight: el.scrollHeight,
-          },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-          pagebreak: { mode: ['css'] }
-        }).from(el);
+        var worker = html2pdf().set(firBuildPdfOptions(el, fileName)).from(el);
 
         var out = null;
         if (typeof worker.outputPdf === 'function') {

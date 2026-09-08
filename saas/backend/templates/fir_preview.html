@@ -165,57 +165,23 @@
     font-size: 15px;
   }
 
-  /* Fewer than 10 dimension parameters: compact layout to fit one landscape A4 page */
+  /* Fewer than 10 dimension parameters: uniform scale applied in JS — keep normal cell sizing */
+  body.generating-pdf.fir-fit-one-page {
+    min-width: 297mm;
+    width: 297mm;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+  }
   body.generating-pdf.fir-fit-one-page #reportRoot {
-    width: 297mm !important;
-    max-width: 297mm !important;
+    max-width: none !important;
+    width: auto !important;
+    min-width: 0 !important;
     overflow: hidden;
+    flex: 0 0 auto;
   }
   body.generating-pdf.fir-fit-one-page .report-container {
-    padding: 3px 5px;
-    max-width: 285mm;
-  }
-  body.generating-pdf.fir-fit-one-page .header-table,
-  body.generating-pdf.fir-fit-one-page .data-table {
-    font-size: 9px;
-  }
-  body.generating-pdf.fir-fit-one-page .header-title {
-    font-size: 15px;
-  }
-  body.generating-pdf.fir-fit-one-page .section-title {
-    padding: 2px 3px;
-    font-size: 9px;
-    line-height: 1.2;
-  }
-  body.generating-pdf.fir-fit-one-page .data-table td,
-  body.generating-pdf.fir-fit-one-page .data-table th {
-    padding: 0 1px;
-    line-height: 1.15;
-  }
-  body.generating-pdf.fir-fit-one-page .data-table input.actual-value,
-  body.generating-pdf.fir-fit-one-page .data-table input.remarks-value {
-    font-size: 18px !important;
-    line-height: 1.1;
-  }
-  body.generating-pdf.fir-fit-one-page td.fir-millipore-merged input.actual-value,
-  body.generating-pdf.fir-fit-one-page td.fir-millipore-merged input.millipore-actual,
-  body.generating-pdf.fir-fit-one-page .fir-no-cpi-merged .fir-no-cpi-value {
-    font-size: 18px !important;
-  }
-  body.generating-pdf.fir-fit-one-page .data-table textarea,
-  body.generating-pdf.fir-fit-one-page .data-table .fir-pdf-text {
-    font-size: 10px;
-    line-height: 1.15;
-  }
-  body.generating-pdf.fir-fit-one-page .data-table .fir-pdf-text.method-input {
-    font-size: 12px;
-  }
-  body.generating-pdf.fir-fit-one-page .signatures-section tr {
-    height: 40px !important;
-  }
-  body.generating-pdf.fir-fit-one-page .signature-preview {
-    height: 32px;
-    margin-top: 2px;
+    margin: 0;
   }
   body.generating-pdf.fir-fit-one-page .data-table tbody tr {
     page-break-inside: auto;
