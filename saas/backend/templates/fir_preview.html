@@ -54,7 +54,7 @@
     border: 1px solid #000;
     box-shadow: none;
     width: 100%;
-    max-width: 297mm;
+    max-width: 100%;
     margin: 0;
     padding: 4px 5px;
     transform: none;
@@ -117,22 +117,20 @@
     color: #000;
     font-weight: bold;
     text-align: center;
-    padding: 3px 5px;
+    padding: 4px 6px;
     border: 1px solid #000;
-    line-height: 1.3;
+    line-height: 1.35;
   }
-  .data-table > caption.section-title {
-    caption-side: top;
-    width: 100%;
-    box-sizing: border-box;
-    border-bottom: none;
-    margin: 0;
+  .data-table tr.fir-section-head-row th.section-title,
+  .data-table tr.fir-section-head-row td.section-title {
+    text-align: center;
+    vertical-align: middle;
+    font-weight: bold;
     padding: 4px 6px;
     line-height: 1.35;
   }
-  body.generating-pdf .data-table > caption.section-title {
-    display: table-caption;
-    position: static;
+  body.generating-pdf .data-table tr.fir-section-head-row th.section-title,
+  body.generating-pdf .data-table tr.fir-section-head-row td.section-title {
     background: #dedede;
     background-image: none;
   }
@@ -196,13 +194,7 @@
     font-size: 15px;
   }
 
-  /* Fewer than 10 dimension parameters: uniform zoom applied in JS — do not override report width (clips logo / Sl No) */
-  body.generating-pdf.fir-fit-one-page .data-table tbody tr {
-    page-break-inside: auto;
-  }
-  body.generating-pdf.fir-fit-one-page .signatures-section {
-    page-break-inside: auto;
-  }
+  /* PDF capture: textarea wrap only — no zoom/scale (breaks layout) */
 
   input[type="text"] {
     width: 100%;

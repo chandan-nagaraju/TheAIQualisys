@@ -741,7 +741,8 @@
       </table>`;
 
     html += `
-      <table class="data-table" id="dimension-table"><caption class="section-title">A) Dimension Parameters</caption><thead>
+      <table class="data-table" id="dimension-table"><thead>
+        <tr class="fir-section-head-row"><th colspan="11" class="section-title">A) Dimension Parameters</th></tr>
         <tr><th rowspan="2" style="width:5%;">Sl No</th>
         <th rowspan="2" style="width:15%;">Parameter</th>
         <th rowspan="2" style="width:15%;">Specification</th>
@@ -794,7 +795,7 @@
     {
         const actualInput = '<input type="text" class="actual-value quali-font">';
         const remarksInput = '<input type="text" class="remarks-value quali-font">';
-        let bHtml = '<table class="data-table" id="ccp-table"><caption class="section-title">B) Customer End Complaints Parameters & Check Points</caption><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
+        let bHtml = '<table class="data-table" id="ccp-table"><thead><tr class="fir-section-head-row"><th colspan="11" class="section-title">B) Customer End Complaints Parameters & Check Points</th></tr><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         var ccpRows = (FIR_CCP_DATA || []).filter(firIsRealCcpRow);
         if (ccpRows.length > 0) {
           ccpRows.forEach(function(r) {
@@ -810,7 +811,7 @@
         }
         bHtml += '</tbody></table>';
         const cRemarksInput = '<input type="text" class="remarks-value quali-font" value="OK">';
-        let cHtml = '<table class="data-table" id="material-table"><caption class="section-title">C) Material Grade</caption><tbody>';
+        let cHtml = '<table class="data-table" id="material-table"><tbody><tr class="fir-section-head-row"><td colspan="3" class="section-title">C) Material Grade</td></tr>';
         if (FIR_MATERIAL_DATA.length > 0) {
           FIR_MATERIAL_DATA.forEach(function(r) {
             var snC = firRowSlNo(r, slno);
@@ -821,7 +822,7 @@
           cHtml += `<tr><td style="width:5%;">${slno++}</td><td style="width:85%;">${wrapCell()}</td><td style="width:10%;">${cRemarksInput}</td></tr>`;
         }
         cHtml += '</tbody></table>';
-        let dHtml = '<table class="data-table" id="coating-table"><caption class="section-title">D) Surface Coating</caption><thead><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
+        let dHtml = '<table class="data-table" id="coating-table"><thead><tr class="fir-section-head-row"><th colspan="11" class="section-title">D) Surface Coating</th></tr><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         if (FIR_COATING_DATA.length > 0) {
           FIR_COATING_DATA.forEach(function(r) {
             var snD = firRowSlNo(r, slno);
@@ -1684,69 +1685,7 @@
     });
   }
 
-  /** Mark one-page PDF mode (page-break only). Zoom breaks html2canvas text layout. */
-  function firApplyOnePagePdfScale(root) {
-    if (!firShouldFitOneLandscapePage()) return;
-    document.body.classList.add("fir-fit-one-page");
-  }
-
-  function firRestoreOnePagePdfLayout(root) {
-    document.body.classList.remove("fir-fit-one-page");
-    if (root) root.removeAttribute("data-fir-pdf-scale");
-  }
-
-  function firPdfPageWidthPx() {
-    return Math.round(297 * (96 / 25.4));
-  }
-
-  function firPdfPageHeightPx() {
-    return Math.round(210 * (96 / 25.4));
-  }
-
-  function firPreparePdfFullBleed(root) {
-    root = root || document.getElementById("reportRoot");
-    var container = root && root.querySelector(".report-container");
-    if (!container) return;
-    var pageW = firPdfPageWidthPx();
-    container.dataset.firPdfOrigWidth = container.style.width || "";
-    container.dataset.firPdfOrigMaxWidth = container.style.maxWidth || "";
-    container.style.width = pageW + "px";
-    container.style.maxWidth = pageW + "px";
-    if (root) {
-      root.dataset.firPdfOrigWidth = root.style.width || "";
-      root.dataset.firPdfOrigMaxWidth = root.style.maxWidth || "";
-      root.style.width = pageW + "px";
-      root.style.maxWidth = pageW + "px";
-    }
-  }
-
-  function firRestorePdfFullBleed(root) {
-    root = root || document.getElementById("reportRoot");
-    var container = root && root.querySelector(".report-container");
-    if (container) {
-      container.style.width = container.dataset.firPdfOrigWidth || "";
-      container.style.maxWidth = container.dataset.firPdfOrigMaxWidth || "";
-      container.removeAttribute("data-fir-pdf-orig-width");
-      container.removeAttribute("data-fir-pdf-orig-max-width");
-    }
-    if (root) {
-      root.style.width = root.dataset.firPdfOrigWidth || "";
-      root.style.maxWidth = root.dataset.firPdfOrigMaxWidth || "";
-      root.removeAttribute("data-fir-pdf-orig-width");
-      root.removeAttribute("data-fir-pdf-orig-max-width");
-    }
-  }
-
-  function firPdfCaptureElement(root) {
-    root = root || document.getElementById("reportRoot");
-    if (!root) return root;
-    return root.querySelector(".report-container") || root;
-  }
-
-  function firBuildPdfOptions(captureEl, fileName, root) {
-    var pageW = firPdfPageWidthPx();
-    var pageH = firPdfPageHeightPx();
-    var onePage = root && document.body.classList.contains("fir-fit-one-page");
+  function firBuildPdfOptions(el, fileName) {
     return {
       margin: 0,
       filename: fileName,
@@ -1757,21 +1696,16 @@
         logging: false,
         scrollY: 0,
         scrollX: 0,
-        width: pageW,
-        windowWidth: pageW,
-        height: captureEl.scrollHeight,
-        windowHeight: Math.max(captureEl.scrollHeight, pageH),
+        windowHeight: el.scrollHeight,
       },
       jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
-      pagebreak: { mode: onePage ? ["avoid-all"] : ["css"] },
+      pagebreak: { mode: ["css"] },
     };
   }
 
   function firPrepareDomForPdfCapture(root) {
     root = root || document.getElementById("reportRoot");
-    firPreparePdfFullBleed(root);
     firPrepareTextareasForPdf(root);
-    firApplyOnePagePdfScale(root);
     return new Promise(function(res) {
       requestAnimationFrame(function() {
         requestAnimationFrame(res);
@@ -1782,8 +1716,6 @@
   function firRestoreDomAfterPdfCapture(root) {
     root = root || document.getElementById("reportRoot");
     firRestoreTextareasAfterPdf(root);
-    firRestoreOnePagePdfLayout(root);
-    firRestorePdfFullBleed(root);
     firRestoreImagesAfterPdf(root);
   }
 
@@ -1855,8 +1787,7 @@
     }).then(function() {
       return firPrepareDomForPdfCapture(el);
     }).then(function() {
-      var captureEl = firPdfCaptureElement(el);
-      return html2pdf().set(firBuildPdfOptions(captureEl, fileName, el)).from(captureEl).save();
+      return html2pdf().set(firBuildPdfOptions(el, fileName)).from(el).save();
     }).then(restorePdfUi).catch(function() {
       restorePdfUi();
     });
@@ -1908,8 +1839,7 @@
       }).then(function() {
         return firPrepareDomForPdfCapture(el);
       }).then(function() {
-        var captureEl = firPdfCaptureElement(el);
-        var worker = html2pdf().set(firBuildPdfOptions(captureEl, fileName, el)).from(captureEl);
+        var worker = html2pdf().set(firBuildPdfOptions(el, fileName)).from(el);
 
         var out = null;
         if (typeof worker.outputPdf === 'function') {
