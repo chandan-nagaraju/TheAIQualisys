@@ -660,6 +660,19 @@
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  /** Excel-like wrap: grow textarea height to fit wrapped Parameter / Specification text. */
+  function firAutosizeTextarea(el) {
+    if (!el || el.tagName !== "TEXTAREA") return;
+    el.style.height = "auto";
+    el.style.height = Math.max(el.scrollHeight, 18) + "px";
+  }
+
+  function firAutosizeAllTextareas(root) {
+    root = root || document.getElementById("reportRoot");
+    if (!root) return;
+    root.querySelectorAll("textarea").forEach(firAutosizeTextarea);
+  }
+
   function firAttrUrl(u) {
     if (u == null || u === undefined || u === '') return '';
     return String(u).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
@@ -738,7 +751,7 @@
 
     const actualInput = '<input type="text" class="actual-value quali-font">';
     const remarksInput = '<input type="text" class="remarks-value quali-font">';
-    const wrapCell = (val) => `<textarea rows="1">${esc(val || '')}</textarea>`;
+    const wrapCell = (val) => `<textarea rows="1" class="fir-wrap-cell">${esc(val || '')}</textarea>`;
     const shortInput = (val) => `<input type="text" value="${esc(val || '')}">`;
     const methodInput = (val) => `<input type="text" class="method-input" value="${esc(val || '')}">`;
     /** Part-master special_char only: no dropdown/edit on FIR preview. Icon if C/S/I + image in settings; else plain text. */
@@ -886,6 +899,10 @@
     document.querySelectorAll("tr.fir-millipore-row").forEach(function(tr) {
       firUpdateRowRemarksFromMeasurements(tr);
     });
+    firAutosizeAllTextareas(root);
+    requestAnimationFrame(function() {
+      firAutosizeAllTextareas(root);
+    });
     var firSampleEl = document.getElementById("firSampleSizeInput");
     if (firSampleEl) {
       firSampleEl.addEventListener("input", firOnSampleSizeOrColumnsChanged);
@@ -970,6 +987,7 @@
           }
         }
         if (e.target && e.target.tagName === 'TEXTAREA') {
+          firAutosizeTextarea(e.target);
           var trTa = e.target.closest('tr');
           if (trTa) {
             firSyncMilliporeRowLayout(trTa);
@@ -1017,6 +1035,7 @@
           }
         }
         if (e.target && e.target.tagName === 'TEXTAREA') {
+          firAutosizeTextarea(e.target);
           var trTa2 = e.target.closest('tr');
           if (trTa2) {
             firSyncMilliporeRowLayout(trTa2);
@@ -1350,6 +1369,14 @@
       if (!inp || inp.disabled) continue;
       var raw = (inp.value || "").trim();
       if (raw === "") { allOk = false; break; }
+      var parsedNum = parseFloat(String(raw).replace(/[^\d.-]/g, ""));
+      if (!isNaN(parsedNum) && !/^R/i.test(raw) && raw.indexOf("\u00B0") === -1) {
+        var fmt = formatMeasuredValue(parsedNum, range);
+        if (fmt !== raw) {
+          inp.value = fmt;
+          raw = fmt;
+        }
+      }
       if (!isWithinSpec(raw, min, max)) allOk = false;
     }
     remarksEl.value = allOk ? "OK" : "Not OK";
@@ -1594,6 +1621,7 @@
         })
       );
     }).then(function() {
+      firAutosizeAllTextareas(root);
       return new Promise(function(res) {
         requestAnimationFrame(function() {
           requestAnimationFrame(res);

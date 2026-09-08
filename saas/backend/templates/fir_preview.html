@@ -206,7 +206,13 @@
   .data-table textarea {
     resize: none; border: none; outline: none; font: inherit; font-size: 12px; text-align: center;
     background: none; overflow: hidden; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
-    line-height: 1.25; padding: 0 1px; min-height: 1.4em;
+    word-break: break-word;
+    line-height: 1.25; padding: 0 1px; min-height: 1.4em; height: auto;
+  }
+  .data-table td.fir-spec-cell,
+  .data-table td.fir-param-cell {
+    vertical-align: middle;
+    overflow: visible;
   }
   .header-table textarea:focus, .data-table textarea:focus { background: #e6f0ff; border: 1px solid #007bff; }
 
