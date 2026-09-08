@@ -496,7 +496,7 @@
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 5) return;
     var paramEl = cells[1].querySelector("textarea") || cells[1].querySelector("input");
-    var methodEl = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
+    var methodEl = firQueryMethodInput(cells[4]);
     var param = paramEl ? String(paramEl.value || "").trim() : "";
     var method = methodEl ? String(methodEl.value || "").trim() : "";
     if (firRowIsMillipore(param, method)) {
@@ -630,7 +630,7 @@
       if (firIsNoCpiRow(tr) || firIsMilliporeRow(tr)) return;
       var cells = tr.querySelectorAll(":scope > td");
       if (cells.length < 11) return;
-      var mel = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
+      var mel = firQueryMethodInput(cells[4]);
       var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
       if (!mel) return;
       var specRaw = specEl ? (specEl.value || "").trim() : "";
@@ -671,6 +671,11 @@
     root = root || document.getElementById("reportRoot");
     if (!root) return;
     root.querySelectorAll("textarea").forEach(firAutosizeTextarea);
+  }
+
+  function firQueryMethodInput(container) {
+    if (!container) return null;
+    return container.querySelector("textarea.method-input, input.method-input");
   }
 
   function firAttrUrl(u) {
@@ -729,7 +734,7 @@
         <tr><td class="bold" colspan="2">PART NO :</td><td colspan="3"><input type="text" value="${partName}"></td>
         <td class="bold" colspan="2">LOT QTY :</td><td colspan="4"><input type="text" value="${lotQty}"></td>
         <td class="bold" colspan="2">INVOICE NO :</td><td colspan="3"><input type="text" value="${invoiceNo}"></td></tr>
-        <tr><td class="bold" colspan="2">DESCRIPTION :</td><td colspan="3"><input type="text" value="${description}"></td>
+        <tr><td class="bold" colspan="2">DESCRIPTION :</td><td colspan="3"><textarea rows="1" class="fir-wrap-cell">${esc(description)}</textarea></td>
         <td class="bold" colspan="2">SAMPLE SIZE :</td><td colspan="4"><input type="text" id="firSampleSizeInput" value="${sampleSize}"></td>
         <td class="bold" colspan="2">DATE :</td><td colspan="3"><input type="text" value="${reportDate}"></td></tr>
         <tr><td class="bold" colspan="2">DRAW.REV NO :</td><td colspan="14"><input type="text" value="${drawRev}"></td></tr>
@@ -753,7 +758,7 @@
     const remarksInput = '<input type="text" class="remarks-value quali-font">';
     const wrapCell = (val) => `<textarea rows="1" class="fir-wrap-cell">${esc(val || '')}</textarea>`;
     const shortInput = (val) => `<input type="text" value="${esc(val || '')}">`;
-    const methodInput = (val) => `<input type="text" class="method-input" value="${esc(val || '')}">`;
+    const methodInput = (val) => `<textarea rows="1" class="method-input fir-wrap-cell">${esc(val || '')}</textarea>`;
     /** Part-master special_char only: no dropdown/edit on FIR preview. Icon if C/S/I + image in settings; else plain text. */
     const specialCharCell = (val) => {
       var raw = (val == null || val === undefined) ? '' : String(val).trim();
@@ -1305,7 +1310,7 @@
       var mCells = tr.querySelectorAll(":scope > td");
       if (mCells.length < 7) return;
       var specElM = mCells[2].querySelector("textarea") || mCells[2].querySelector("input");
-      var methodElM = mCells[4].querySelector("input.method-input") || mCells[4].querySelector("input");
+      var methodElM = firQueryMethodInput(mCells[4]);
       var remarksElM = mCells[6].querySelector("input.remarks-value") || mCells[6].querySelector("input");
       var measuredElM = mCells[5].querySelector("input.actual-value") || mCells[5].querySelector("input");
       if (!specElM || !methodElM || !remarksElM || !measuredElM) return;
@@ -1334,7 +1339,7 @@
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
     var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
-    var methodEl = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
+    var methodEl = firQueryMethodInput(cells[4]);
     var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
     if (!specEl || !methodEl || !remarksEl) return;
     var methodRaw = (methodEl.value || "").trim();
@@ -1391,7 +1396,7 @@
       var mCells = tr.querySelectorAll(":scope > td");
       if (mCells.length < 7) return;
       var specElMp = mCells[2].querySelector("textarea") || mCells[2].querySelector("input");
-      var methodElMp = mCells[4].querySelector("input.method-input") || mCells[4].querySelector("input");
+      var methodElMp = firQueryMethodInput(mCells[4]);
       var remarksElMp = mCells[6].querySelector("input.remarks-value") || mCells[6].querySelector("input");
       var measuredElMp = mCells[5].querySelector("input.actual-value") || mCells[5].querySelector("input");
       if (!specElMp || !methodElMp || !remarksElMp || !measuredElMp) return;
@@ -1410,7 +1415,7 @@
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
     var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
-    var methodEl = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
+    var methodEl = firQueryMethodInput(cells[4]);
     var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
     if (!specEl || !methodEl || !remarksEl) return;
     var actualInputs = [];
