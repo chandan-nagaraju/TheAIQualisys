@@ -156,6 +156,8 @@ def test_signing_roundtrip_and_tamper():
         expected_fp=_fp(),
         expected_license_id=1,
     )
+    assert claims["typ"] == "TAQ_LICENSE_V1"
+    assert verified["typ"] == "TAQ_LICENSE_V1"
     assert verified["jti"] == claims["jti"]
     assert verified["naf"] <= claims["iat"] + 14 * 86400 + 5
 
@@ -190,6 +192,24 @@ def test_signing_roundtrip_and_tamper():
         verify_entitlement_token(
             token, public_key_pem=material.public_key_pem, expected_fp=_fp("other")
         )
+
+
+def test_entitlement_token_rejects_wrong_typ():
+    settings = _settings()
+    material = load_signing_key_material(settings)
+    claims = build_entitlement_claims(
+        product_code="QR_CODE",
+        license_id=1,
+        activation_id=9,
+        licensed_user_id=7,
+        fingerprint_hash=_fp(),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=10),
+        max_offline_days=14,
+    )
+    claims["typ"] = "OTHER_TYPE"
+    token = sign_entitlement(settings, claims)
+    with pytest.raises(ValueError, match="token type"):
+        verify_entitlement_token(token, public_key_pem=material.public_key_pem)
 
 
 def test_naf_enforced_and_null_exp():

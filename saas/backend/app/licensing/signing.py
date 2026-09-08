@@ -25,6 +25,7 @@ from app.licensing.constants import (
     ENTITLEMENT_PAID,
     LICENSE_ENTITLEMENT_ISSUER,
     LICENSE_ENTITLEMENT_SCHEMA_VERSION,
+    LICENSE_ENTITLEMENT_TOKEN_TYPE,
 )
 
 _PEM_BEGIN = "-----BEGIN"
@@ -138,6 +139,7 @@ def build_entitlement_claims(
         if exp < naf_dt:
             naf_dt = exp
     claims: dict[str, Any] = {
+        "typ": LICENSE_ENTITLEMENT_TOKEN_TYPE,
         "v": LICENSE_ENTITLEMENT_SCHEMA_VERSION,
         "iss": LICENSE_ENTITLEMENT_ISSUER,
         "aud": (product_code or "").strip().upper(),
@@ -190,6 +192,8 @@ def verify_entitlement_token(
     claims = json.loads(payload_bytes.decode("utf-8"))
     if not isinstance(claims, dict):
         raise ValueError("Invalid entitlement payload")
+    if claims.get("typ") != LICENSE_ENTITLEMENT_TOKEN_TYPE:
+        raise ValueError("Invalid entitlement token type")
     if int(claims.get("v") or 0) != LICENSE_ENTITLEMENT_SCHEMA_VERSION:
         raise ValueError("Unsupported entitlement version")
     if claims.get("iss") != LICENSE_ENTITLEMENT_ISSUER:
