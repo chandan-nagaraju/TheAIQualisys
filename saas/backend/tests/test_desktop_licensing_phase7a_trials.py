@@ -403,6 +403,7 @@ def test_trial_entitlement_ed25519_and_naf_clamped():
         expires_at=exp,
         max_offline_days=14,
     )
+    assert claims["typ"] == "TAQ_LICENSE_V1"
     assert claims["ent"] == "trial"
     assert claims["exp"] == int(exp.timestamp())
     assert claims["naf"] <= claims["exp"]
