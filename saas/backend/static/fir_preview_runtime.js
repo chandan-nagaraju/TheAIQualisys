@@ -1796,9 +1796,7 @@
   }
 
   function firGetPdfCaptureEl(root) {
-    root = root || document.getElementById("reportRoot");
-    if (!root) return document.body;
-    return root.querySelector(".report-container") || root;
+    return root || document.getElementById("reportRoot") || document.body;
   }
 
   function firPrepareScrollForPdfCapture() {
@@ -1817,10 +1815,24 @@
       scrollY: 0,
       scrollX: 0,
       windowHeight: el.scrollHeight,
-      windowWidth: el.scrollWidth,
       onclone: function(clonedDoc) {
+        clonedDoc.documentElement.scrollTop = 0;
+        clonedDoc.body.scrollTop = 0;
+        clonedDoc.body.style.margin = "0";
+        clonedDoc.body.style.padding = "0";
+        clonedDoc.body.style.background = "#fff";
+        var root = clonedDoc.getElementById("reportRoot");
+        if (root) {
+          root.style.margin = "0";
+          root.style.left = "0";
+          root.style.top = "0";
+          root.style.width = "297mm";
+          root.style.maxWidth = "297mm";
+        }
         var container = clonedDoc.querySelector(".report-container");
         if (container) {
+          container.style.margin = "0";
+          container.style.border = "1px solid #000";
           container.style.borderRight = "2px solid #000";
         }
         clonedDoc.querySelectorAll(".header-table, .data-table").forEach(function(table) {
@@ -1933,7 +1945,7 @@
       if (autofillBtn) autofillBtn.style.display = "block";
     }
 
-    firWaitForAssets(el).then(function() {
+    firWaitForAssets(root).then(function() {
       return firPrepareImagesForPdf(root);
     }).then(function() {
       return firPrepareDomForPdfCapture(root);
@@ -1980,7 +1992,7 @@
       var fileName = ((invoiceInput && invoiceInput.value) || 'Invoice').replace(/\W+/g,'_') + '_' + ((partInput && partInput.value) || 'Part').replace(/\W+/g,'_') + '_FIR.pdf';
 
       function restoreUi() {
-        firRestoreDomAfterPdfCapture(el);
+        firRestoreDomAfterPdfCapture(root);
         firEndPdfCaptureUi();
         if (btn) btn.style.display = "block";
         if (autofillBtnEl) autofillBtnEl.style.display = "block";
