@@ -316,45 +316,6 @@
     font-size: 25px;
     min-height: 0;
   }
-  /* Compact parameter rows — sections A & D (fit one landscape page when Sl No <= 10) */
-  #dimension-table tbody tr > td,
-  #coating-table tbody tr > td {
-    padding: 0 1px;
-    line-height: 1.1;
-    vertical-align: middle;
-  }
-  #dimension-table input.actual-value,
-  #dimension-table input.remarks-value,
-  #coating-table input.actual-value,
-  #coating-table input.remarks-value {
-    font-size: 20px;
-    line-height: 1.1;
-    padding: 0;
-  }
-  #dimension-table td.fir-millipore-merged input.actual-value,
-  #dimension-table td.fir-millipore-merged input.millipore-actual,
-  #coating-table td.fir-millipore-merged input.actual-value {
-    font-size: 20px !important;
-    line-height: 1.1;
-  }
-  #dimension-table textarea,
-  #dimension-table .fir-pdf-text,
-  #coating-table textarea,
-  #coating-table .fir-pdf-text {
-    font-size: 11px;
-    line-height: 1.15;
-    min-height: 1.2em;
-  }
-  #dimension-table .fir-special-char-box,
-  #coating-table .fir-special-char-box {
-    min-height: 1.4em;
-    padding: 1px;
-    gap: 1px;
-  }
-  #dimension-table .fir-special-char-icon,
-  #coating-table .fir-special-char-icon {
-    max-height: 22px;
-  }
   td.fir-millipore-merged {
     text-align: left !important;
   }
@@ -380,6 +341,117 @@
   input.actual-value,
   input.remarks-value {
     min-height: 0;
+  }
+
+  /* PDF-only compact layout when total Sl No <= 10 (fit one landscape A4 page) */
+  body.generating-pdf.fir-fit-one-page .report-container {
+    padding: 2px 4px;
+  }
+  body.generating-pdf.fir-fit-one-page .header-table tr.fir-header-top-row td,
+  body.generating-pdf.fir-fit-one-page .header-table .logo-cell {
+    padding: 1px 2px !important;
+    line-height: 1.05;
+  }
+  body.generating-pdf.fir-fit-one-page .fir-logo-box {
+    width: 28px;
+    height: 28px;
+    margin: 0 auto 1px;
+  }
+  body.generating-pdf.fir-fit-one-page .fir-company-name {
+    font-size: 7px;
+    line-height: 1;
+  }
+  body.generating-pdf.fir-fit-one-page .header-title {
+    font-size: 13px;
+    line-height: 1.05;
+    padding: 1px 2px;
+  }
+  body.generating-pdf.fir-fit-one-page .small-cell {
+    font-size: 8px;
+    line-height: 1.1;
+    padding: 1px 2px;
+  }
+  body.generating-pdf.fir-fit-one-page .header-table td,
+  body.generating-pdf.fir-fit-one-page .header-table th {
+    padding: 1px 2px;
+    line-height: 1.1;
+  }
+  body.generating-pdf.fir-fit-one-page .header-table textarea,
+  body.generating-pdf.fir-fit-one-page .header-table .fir-pdf-text {
+    font-size: 10px;
+    line-height: 1.1;
+    min-height: 1.1em;
+  }
+  body.generating-pdf.fir-fit-one-page .data-table tr.fir-section-head-row th.section-title,
+  body.generating-pdf.fir-fit-one-page .data-table tr.fir-section-head-row td.section-title {
+    padding: 2px 4px;
+    line-height: 1.15;
+  }
+  body.generating-pdf.fir-fit-one-page .data-table .fir-col-head,
+  body.generating-pdf.fir-fit-one-page .data-table .fir-col-head-num {
+    padding: 1px 2px !important;
+    line-height: 1.1;
+  }
+  body.generating-pdf.fir-fit-one-page #dimension-table tbody tr > td,
+  body.generating-pdf.fir-fit-one-page #coating-table tbody tr > td {
+    padding: 0 1px;
+    line-height: 1.05;
+    vertical-align: middle;
+  }
+  body.generating-pdf.fir-fit-one-page #dimension-table input.actual-value,
+  body.generating-pdf.fir-fit-one-page #dimension-table input.remarks-value,
+  body.generating-pdf.fir-fit-one-page #coating-table input.actual-value,
+  body.generating-pdf.fir-fit-one-page #coating-table input.remarks-value {
+    font-size: 16px;
+    line-height: 1.05;
+    padding: 0;
+  }
+  body.generating-pdf.fir-fit-one-page #dimension-table td.fir-millipore-merged input.actual-value,
+  body.generating-pdf.fir-fit-one-page #dimension-table td.fir-millipore-merged input.millipore-actual,
+  body.generating-pdf.fir-fit-one-page #coating-table td.fir-millipore-merged input.actual-value {
+    font-size: 16px !important;
+    line-height: 1.05;
+  }
+  body.generating-pdf.fir-fit-one-page #dimension-table textarea,
+  body.generating-pdf.fir-fit-one-page #dimension-table .fir-pdf-text,
+  body.generating-pdf.fir-fit-one-page #coating-table textarea,
+  body.generating-pdf.fir-fit-one-page #coating-table .fir-pdf-text {
+    font-size: 10px;
+    line-height: 1.1;
+    min-height: 1.05em;
+  }
+  body.generating-pdf.fir-fit-one-page #dimension-table .fir-pdf-text.method-input,
+  body.generating-pdf.fir-fit-one-page #coating-table .fir-pdf-text.method-input {
+    font-size: 10px;
+  }
+  body.generating-pdf.fir-fit-one-page #dimension-table .fir-special-char-box,
+  body.generating-pdf.fir-fit-one-page #coating-table .fir-special-char-box {
+    min-height: 1.1em;
+    padding: 0 1px;
+    gap: 0;
+  }
+  body.generating-pdf.fir-fit-one-page #dimension-table .fir-special-char-icon,
+  body.generating-pdf.fir-fit-one-page #coating-table .fir-special-char-icon {
+    max-height: 16px;
+  }
+  body.generating-pdf.fir-fit-one-page #ccp-table tbody tr > td,
+  body.generating-pdf.fir-fit-one-page #material-table tbody tr > td {
+    padding: 0 1px;
+    line-height: 1.1;
+  }
+  body.generating-pdf.fir-fit-one-page .fir-no-cpi-merged .fir-no-cpi-value {
+    font-size: 16px !important;
+    line-height: 1.05;
+  }
+  body.generating-pdf.fir-fit-one-page .signatures-section tr[style*="height"] {
+    height: 42px !important;
+  }
+  body.generating-pdf.fir-fit-one-page .signature-preview {
+    height: 34px;
+    margin-top: 2px;
+  }
+  body.generating-pdf.fir-fit-one-page .signature-cell {
+    padding: 2px;
   }
 
   button.upload-btn {

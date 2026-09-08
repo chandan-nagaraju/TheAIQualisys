@@ -1811,6 +1811,17 @@
     };
   }
 
+  function firBeginPdfCaptureUi() {
+    document.body.classList.add("generating-pdf");
+    if (firShouldFitOneLandscapePage()) {
+      document.body.classList.add("fir-fit-one-page");
+    }
+  }
+
+  function firEndPdfCaptureUi() {
+    document.body.classList.remove("generating-pdf", "fir-fit-one-page");
+  }
+
   function firPrepareDomForPdfCapture(root) {
     root = root || document.getElementById("reportRoot");
     firPrepareTextareasForPdf(root);
@@ -1878,14 +1889,14 @@
     if (autofillBtn) autofillBtn.style.display = "none";
     const el = document.getElementById('reportRoot') || document.body;
 
-    document.body.classList.add('generating-pdf');
+    firBeginPdfCaptureUi();
     const partInput = [...document.querySelectorAll('input[type="text"]')].find(i => i.closest('td')?.previousElementSibling?.textContent?.includes("PART"));
     const invoiceInput = [...document.querySelectorAll('input[type="text"]')].find(i => i.closest('td')?.previousElementSibling?.textContent?.includes("INVOICE"));
     const fileName = `${(invoiceInput?.value || 'Invoice').replace(/\W+/g,'_')}_${(partInput?.value || 'Part').replace(/\W+/g,'_')}_FIR.pdf`;
 
     function restorePdfUi() {
       firRestoreDomAfterPdfCapture(el);
-      document.body.classList.remove('generating-pdf');
+      firEndPdfCaptureUi();
       btn.style.display = "block";
       if (autofillBtn) autofillBtn.style.display = "block";
     }
@@ -1923,7 +1934,7 @@
       if (btn) btn.style.display = "none";
       if (autofillBtnEl) autofillBtnEl.style.display = "none";
       var el = document.getElementById('reportRoot') || document.body;
-      document.body.classList.add('generating-pdf');
+      firBeginPdfCaptureUi();
       var textInputs = Array.prototype.slice.call(document.querySelectorAll('input[type="text"]'));
       var partInput = textInputs.find(function(i) {
         var td = i.closest('td');
@@ -1937,7 +1948,7 @@
 
       function restoreUi() {
         firRestoreDomAfterPdfCapture(el);
-        document.body.classList.remove('generating-pdf');
+        firEndPdfCaptureUi();
         if (btn) btn.style.display = "block";
         if (autofillBtnEl) autofillBtnEl.style.display = "block";
       }
