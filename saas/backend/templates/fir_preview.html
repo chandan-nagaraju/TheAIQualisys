@@ -182,6 +182,7 @@
   }
   body.generating-pdf.fir-fit-one-page .report-container {
     margin: 0;
+    overflow: hidden;
   }
   body.generating-pdf.fir-fit-one-page .data-table tbody tr {
     page-break-inside: auto;
@@ -346,6 +347,66 @@
   #status-rejected.status-btn { background: #e8e8e8; color: #333; }
   #status-rejected.status-btn.highlight { background: #dc3545; color: #fff; border: 1px solid #333; }
   .signatures-section td.status-btn { border: 1px solid #333; box-sizing: border-box; }
+  .signatures-section tr.fir-signature-row {
+    height: 58px;
+  }
+  .signatures-section tr.fir-signature-row > td {
+    height: 58px;
+    vertical-align: middle;
+    box-sizing: border-box;
+  }
+  .signatures-section .fir-sampling-plan-label {
+    width: 10%;
+    vertical-align: middle;
+    text-align: center;
+  }
+  .signatures-section .fir-sampling-plan-cell {
+    width: 22%;
+    padding: 2px;
+    vertical-align: top;
+    text-align: left;
+  }
+  .signatures-section .fir-sampling-inner {
+    width: 100%;
+    height: 100%;
+    border-collapse: collapse;
+    border: 1px solid #333;
+    table-layout: fixed;
+  }
+  .signatures-section .fir-sampling-inner td {
+    border: 1px solid #333;
+    padding: 2px 4px;
+    vertical-align: middle;
+    font-size: 11px;
+    line-height: 1.2;
+  }
+  .signatures-section .fir-sampling-inner .fir-sampling-label {
+    width: 55%;
+  }
+  .signatures-section .fir-signature-spacer {
+    background: transparent;
+    border-left: none;
+    border-right: none;
+  }
+  body.generating-pdf .signatures-section tr.fir-signature-row,
+  body.generating-pdf .signatures-section tr.fir-signature-row > td {
+    height: 58px !important;
+    max-height: 58px !important;
+    overflow: hidden;
+  }
+  body.generating-pdf .signatures-section .fir-sampling-plan-label,
+  body.generating-pdf .signatures-section .fir-sampling-plan-cell {
+    height: 116px !important;
+    max-height: 116px !important;
+  }
+  body.generating-pdf .signature-cell {
+    padding: 4px !important;
+  }
+  body.generating-pdf .signature-preview {
+    height: 42px;
+    max-height: 42px;
+    margin-top: 2px;
+  }
 
   /* Embedded in inspection results iframes: parent page drives autofill / ZIP */
   html.fir-embedded .download-btn,
