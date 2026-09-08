@@ -1062,6 +1062,27 @@
   } catch (err) { console.error('status/root init', err); }
 
   // --- Parse specification → min/max for autofill and remarks (explicit tolerance only; bare value = 0…limit) ---
+  function firDecimalPlacesFromString(str) {
+    var s = String(str == null ? "" : str).trim();
+    var dot = s.indexOf(".");
+    if (dot === -1) return 0;
+    return s.length - dot - 1;
+  }
+
+  /** Avoid 6.35+0.1 → 6.449999… so boundary values like 6.45 still pass. */
+  function firSnapToleranceBounds(nominal, tol, min, max) {
+    var prec = Math.max(
+      firDecimalPlacesFromString(nominal),
+      firDecimalPlacesFromString(tol),
+      2
+    );
+    return {
+      min: firRoundToDecimals(min, prec),
+      max: firRoundToDecimals(max, prec),
+      precision: prec,
+    };
+  }
+
   function parseSpec(specStr) {
     const s = (specStr || "").trim();
     if (!s) return null;
@@ -1158,23 +1179,45 @@
     if (isNaN(nominal)) return null;
     let min = nominal, max = nominal;
     var limitFromZero = false;
+    var comparePrecision = 2;
     const plusMinus = s.match(/±\s*([0-9.]+)/i);
+    const plusMinusAscii = s.match(/\+\s*\/\s*-\s*([0-9.]+)/);
     const plusOnly = s.match(/\+\s*([0-9.]+)/);
-    const minusOnly = s.match(/-(\s*[0-9.]+)/);
+    const minusOnly = plusMinusAscii ? null : s.match(/-(\s*[0-9.]+)/);
     if (plusMinus) {
       const tol = parseFloat(plusMinus[1]);
-      if (!isNaN(tol)) { min = nominal - tol; max = nominal + tol; }
+      if (!isNaN(tol)) {
+        var snappedPm = firSnapToleranceBounds(nominal, tol, nominal - tol, nominal + tol);
+        min = snappedPm.min;
+        max = snappedPm.max;
+        comparePrecision = snappedPm.precision;
+      }
+    } else if (plusMinusAscii) {
+      const tol = parseFloat(plusMinusAscii[1]);
+      if (!isNaN(tol)) {
+        var snappedPa = firSnapToleranceBounds(nominal, tol, nominal - tol, nominal + tol);
+        min = snappedPa.min;
+        max = snappedPa.max;
+        comparePrecision = snappedPa.precision;
+      }
     } else if (plusOnly && minusOnly) {
       const upper = parseFloat(plusOnly[1]);
       const lower = parseFloat(minusOnly[1].trim());
-      if (!isNaN(upper)) max = nominal + upper;
-      if (!isNaN(lower)) min = nominal - lower;
+      if (!isNaN(upper)) max = firRoundToDecimals(nominal + upper, Math.max(firDecimalPlacesFromString(nominal), firDecimalPlacesFromString(plusOnly[1]), 2));
+      if (!isNaN(lower)) min = firRoundToDecimals(nominal - lower, Math.max(firDecimalPlacesFromString(nominal), firDecimalPlacesFromString(minusOnly[1]), 2));
+      comparePrecision = Math.max(firDecimalPlacesFromString(min), firDecimalPlacesFromString(max), 2);
     } else if (plusOnly) {
       const upper = parseFloat(plusOnly[1]);
-      if (!isNaN(upper)) max = nominal + upper;
+      if (!isNaN(upper)) {
+        max = firRoundToDecimals(nominal + upper, Math.max(firDecimalPlacesFromString(nominal), firDecimalPlacesFromString(plusOnly[1]), 2));
+        comparePrecision = Math.max(firDecimalPlacesFromString(nominal), firDecimalPlacesFromString(plusOnly[1]), 2);
+      }
     } else if (minusOnly) {
       const lower = parseFloat(minusOnly[1].trim());
-      if (!isNaN(lower)) min = nominal - lower;
+      if (!isNaN(lower)) {
+        min = firRoundToDecimals(nominal - lower, Math.max(firDecimalPlacesFromString(nominal), firDecimalPlacesFromString(minusOnly[1]), 2));
+        comparePrecision = Math.max(firDecimalPlacesFromString(nominal), firDecimalPlacesFromString(minusOnly[1]), 2);
+      }
     } else if (isRadius) {
       // Plain R## in spec (no ± shown): default bands — < R5 → ±0.5, R5 and above → ±1
       const tol = nominal < 5 ? 0.5 : 1;
@@ -1186,7 +1229,7 @@
       max = Math.max(0, nominal);
       limitFromZero = true;
     }
-    return { min, max, nominal, step: isRadius ? 0.5 : null, isRadius, isAngle, limitFromZero };
+    return { min, max, nominal, step: isRadius ? 0.5 : null, isRadius, isAngle, limitFromZero, precision: comparePrecision };
   }
 
   /**
@@ -1262,10 +1305,14 @@
     return v;
   }
 
-  function isWithinSpec(value, min, max) {
+  function isWithinSpec(value, min, max, precision) {
     const n = parseFloat(String(value).replace(/[^\d.-]/g, ""));
     if (isNaN(n)) return false;
-    return n >= min && n <= max;
+    var p = precision != null ? precision : Math.max(firDecimalPlacesFromString(min), firDecimalPlacesFromString(max), 2);
+    var nv = firRoundToDecimals(n, p);
+    var nmin = firRoundToDecimals(min, p);
+    var nmax = firRoundToDecimals(max, p);
+    return nv >= nmin && nv <= nmax;
   }
 
   /** DFT / thickness in microns — parameter + spec + method (DFT METER). */
@@ -1366,6 +1413,7 @@
     }
     var nActive = firGetMeasuredColumnCount();
     var min = range.min, max = range.max;
+    var precision = range.precision != null ? range.precision : 2;
     var allOk = true;
     for (var ci = 5; ci < 5 + nActive && ci <= 9; ci++) {
       var td = cells[ci];
@@ -1382,7 +1430,7 @@
           raw = fmt;
         }
       }
-      if (!isWithinSpec(raw, min, max)) allOk = false;
+      if (!isWithinSpec(raw, min, max, precision)) allOk = false;
     }
     remarksEl.value = allOk ? "OK" : "Not OK";
     updateStatusButtons();
@@ -1594,7 +1642,7 @@
     });
   }
 
-  /** Dimension row count — used to decide single-page landscape PDF when &lt; 10. */
+  /** Dimension row count — used to decide single-page landscape PDF when < 10. */
   function firDimensionParameterCount() {
     if (FIR_SPEC_DATA.length > 0) return FIR_SPEC_DATA.length;
     if (noOfParamsParam && noOfParamsParam > 0) return noOfParamsParam;
@@ -1637,7 +1685,7 @@
     });
   }
 
-  /** Shrink report to fit one landscape A4 page (210mm tall) when parameter count &lt; 10. */
+  /** Shrink report to fit one landscape A4 page (210mm tall) when parameter count < 10. */
   function firApplyOnePagePdfScale(root) {
     root = root || document.getElementById("reportRoot");
     if (!root || !firShouldFitOneLandscapePage()) return;
