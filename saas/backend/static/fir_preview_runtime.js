@@ -837,26 +837,25 @@
     }
 
     html += `
-        <table class="data-table signatures-section" style="margin-top:0; table-layout:fixed;">
-          <tr class="fir-signature-row">
+        <table class="data-table signatures-section" style="margin-top:0;">
+          <tr style="height:58px;">
             <td class="bold">Inspector Name & Sign:</td>
             <td class="signature-cell"><div class="signature-container">
               <img id="signaturePreview" class="signature-preview"></div></td>
             <td class="section-title">Status of Inspection:</td><td id="status-accepted" class="status-btn" colspan="2">Accepted</td><td id="status-rejected" class="status-btn" style="display:none;" colspan="2">Rejected</td>
-            <td class="section-title">AL SQE Verification</td><td><input type="text"></td>
-            <td class="section-title fir-sampling-plan-label" rowspan="2">Sampling Plan</td>
-            <td class="fir-sampling-plan-cell" rowspan="2" colspan="2">
-              <table class="fir-sampling-inner">
-                <tr><td class="section-title fir-sampling-label">Customer Complaint Parameter</td><td>100% Inspection</td></tr>
-                <tr><td class="section-title fir-sampling-label">Dimension Parameter</td><td>Minimum 5 Nos</td></tr>
-                <tr><td class="section-title fir-sampling-label">Visual Check</td><td>100% Inspection</td></tr>
-              </table>
-            </td></tr>
-          <tr class="fir-signature-row">
+            <td class="section-title">AL SQE Verification</td><td><input type="text"></td></tr>
+          <tr style="height:58px;">
             <td class="bold">Quality Head Name & Sign:</td>
             <td class="signature-cell"><div class="signature-container">
               <img id="qSignaturePreview" class="signature-preview"></div></td>
-            <td colspan="5" class="fir-signature-spacer">&nbsp;</td>
+            <td class="section-title" rowspan="3">Sampling Plan</td>
+            <td colspan="6" rowspan="3" style="text-align:left; vertical-align:top; padding:2px; width:100%;">
+              <table style="width:100%; border-collapse:collapse; border:1px solid #333;">
+                <tr><td class="section-title fir-sampling-label">Customer Complaint Parameter</td><td style="width:50%;">100% Inspection</td></tr>
+                <tr><td class="section-title fir-sampling-label">Dimension Parameter</td><td style="width:50%;">Minimum 5 Nos</td></tr>
+                <tr><td class="section-title fir-sampling-label">Visual Check</td><td style="width:50%;">100% Inspection</td></tr>
+              </table>
+            </td>
           </tr>
         </table>`;
     html += `</div>`;
@@ -1686,34 +1685,27 @@
     });
   }
 
-  /** Shrink report uniformly (same X and Y) to fit one landscape A4 page when parameter count < 10. */
+  /** Shrink report uniformly to fit one landscape A4 page when parameter count < 10. Uses zoom (layout-aware) instead of transform to avoid clipping Sl No / logo / labels in PDF. */
   function firApplyOnePagePdfScale(root) {
     root = root || document.getElementById("reportRoot");
     if (!root || !firShouldFitOneLandscapePage()) return;
     var container = root.querySelector(".report-container");
     if (!container) return;
-    document.body.classList.add("fir-fit-one-page");
 
     var pxPerMm = 96 / 25.4;
-    var maxH = 210 * pxPerMm - 4;
+    var maxH = 210 * pxPerMm - 8;
     var maxW = 270 * pxPerMm;
     var naturalH = container.offsetHeight || container.scrollHeight;
     var naturalW = container.offsetWidth || root.offsetWidth;
     if (!naturalH || !naturalW) return;
 
-    var scale = Math.min(maxH / naturalH, maxW / naturalW, 1) * 0.985;
+    var scale = Math.min(maxH / naturalH, maxW / naturalW, 1);
     if (scale >= 0.995) return;
+    scale = scale * 0.98;
 
-    container.dataset.firPdfOrigTransform = container.style.transform || "";
-    container.dataset.firPdfOrigMarginBottom = container.style.marginBottom || "";
-    container.style.transform = "scale(" + scale + ")";
-    container.style.transformOrigin = "top left";
-    container.style.marginBottom = (-(naturalH * (1 - scale))) + "px";
-
-    root.style.width = Math.ceil(naturalW * scale) + "px";
-    root.style.height = Math.ceil(naturalH * scale) + "px";
-    root.style.overflow = "hidden";
-    root.style.margin = "0 auto";
+    document.body.classList.add("fir-fit-one-page");
+    container.dataset.firPdfOrigZoom = container.style.zoom || "";
+    container.style.zoom = String(scale);
     root.dataset.firPdfScale = String(scale);
   }
 
@@ -1723,16 +1715,9 @@
     if (!root) return;
     var container = root.querySelector(".report-container");
     if (container) {
-      container.style.transform = container.dataset.firPdfOrigTransform || "";
-      container.style.transformOrigin = "";
-      container.style.marginBottom = container.dataset.firPdfOrigMarginBottom || "";
-      container.removeAttribute("data-fir-pdf-orig-transform");
-      container.removeAttribute("data-fir-pdf-orig-margin-bottom");
+      container.style.zoom = container.dataset.firPdfOrigZoom || "";
+      container.removeAttribute("data-fir-pdf-orig-zoom");
     }
-    root.style.width = "";
-    root.style.height = "";
-    root.style.overflow = "";
-    root.style.margin = "";
     root.removeAttribute("data-fir-pdf-scale");
   }
 
@@ -1756,10 +1741,7 @@
         logging: false,
         scrollY: 0,
         scrollX: 0,
-        width: el.offsetWidth || undefined,
-        height: el.offsetHeight || undefined,
-        windowWidth: el.offsetWidth || undefined,
-        windowHeight: el.offsetHeight || undefined,
+        windowHeight: el.scrollHeight,
       },
       jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
       pagebreak: { mode: el && el.dataset.firPdfScale ? ["avoid-all"] : ["css"] },
