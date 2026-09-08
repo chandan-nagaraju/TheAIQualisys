@@ -96,6 +96,7 @@
         th.classList.toggle("fir-measured-inactive", col > n);
       });
       table.querySelectorAll("tbody tr").forEach(function(tr) {
+        if (firIsMilliporeRow(tr) || firIsNoCpiRow(tr)) return;
         const cells = tr.querySelectorAll(":scope > td");
         for (var ci = 5; ci <= 9; ci++) {
           const td = cells[ci];
@@ -221,7 +222,7 @@
   function firIsDimensionalMeasuringMethod(raw) {
     var u = String(raw || "").trim().toUpperCase();
     if (!u) return false;
-    if (/^DVC$|^DHG$|^DHI$|^DMM$|^MM$|^CMM$|^BP$|^B\.P\.?$|^RG$|^R\.G\.?$|^VHG$|^HG$|^V\.?H\.?G\.?$/.test(u)) return true;
+    if (/^DVC$|^DHG$|^DHI$|^DMM$|^MM$|^BP$|^B\.P\.?$|^RG$|^R\.G\.?$|^VHG$|^HG$|^V\.?H\.?G\.?$/.test(u)) return true;
     if (/RADIUS\s*(GAU|GAGE)/.test(u)) return true;
     if (/VERNIER|CALIPER|CALLIPER|VENIRE/.test(u)) return true;
     if (/HEIGHT\s*GAU|HIEGHT\s*GAU|HEIGHT\s*GAGE|HIEGHT/.test(u)) return true;
@@ -245,6 +246,189 @@
       return true;
     }
     return /\bGAUG(E)?\b/.test(u) || u.indexOf("GAUGE") !== -1 || u.indexOf("GAUG") !== -1;
+  }
+
+  function firNormMethodText(raw) {
+    return String(raw || "").trim().replace(/\s+/g, " ").toUpperCase();
+  }
+
+  /** CMM + Fixture in one method string (any truncation with both tokens). */
+  function firIsCmmFixtureComboMethod(raw) {
+    var m = firNormMethodText(raw);
+    return m.indexOf("CMM") !== -1 && m.indexOf("FIXTURE") !== -1;
+  }
+
+  function firIsCmmMethod(raw) {
+    var m = firNormMethodText(raw);
+    if (firIsCmmFixtureComboMethod(raw)) return false;
+    if (m === "CMM") return true;
+    if (/^CMM\b/.test(m)) return true;
+    if (/COORDINATE\s*MEASURING/.test(m)) return true;
+    return false;
+  }
+
+  function firIsInspectionFixtureMethod(raw) {
+    var m = firNormMethodText(raw);
+    if (firIsCmmFixtureComboMethod(raw)) return false;
+    if (m.indexOf("INSPECTION FIXTURE") !== -1) return true;
+    if (m.indexOf("INSP FIXTURE") !== -1) return true;
+    if (m.indexOf("FIXTURE") !== -1 && m.indexOf("CMM") === -1) return true;
+    return false;
+  }
+
+  function firIsWetLeakTestMethod(raw) {
+    return /WET\s*LEAK/.test(firNormMethodText(raw));
+  }
+
+  function firIsDryLeakTestMethod(raw) {
+    return /DRY\s*LEAK/.test(firNormMethodText(raw));
+  }
+
+  function firIsHighPressureLeakTestMethod(raw) {
+    return /HIGH\s*PRESSURE\s*LEAK/.test(firNormMethodText(raw));
+  }
+
+  /** OK-only shop methods from MOI table (CMM, fixtures, leak tests). */
+  function firIsOkOnlyInspectionMethod(raw) {
+    if (!String(raw || "").trim()) return false;
+    return (
+      firIsCmmFixtureComboMethod(raw) ||
+      firIsCmmMethod(raw) ||
+      firIsInspectionFixtureMethod(raw) ||
+      firIsWetLeakTestMethod(raw) ||
+      firIsDryLeakTestMethod(raw) ||
+      firIsHighPressureLeakTestMethod(raw)
+    );
+  }
+
+  function firIsMilliporeMethod(raw) {
+    return /\bMILLIPORE\b/i.test(String(raw || ""));
+  }
+
+  function firParseMilliporeSpec(specStr) {
+    var s = String(specStr || "").trim();
+    if (!s) return null;
+    var m = s.match(/(\d+(?:\.\d+)?)\s*([A-Za-zµμ%]+)?/);
+    if (!m) return null;
+    var limit = parseFloat(m[1]);
+    if (isNaN(limit) || limit <= 0) return null;
+    var unit = (m[2] || "").trim().toUpperCase() || "";
+    return { limit: limit, unit: unit };
+  }
+
+  function firParseMilliporeActual(raw) {
+    var s = String(raw || "").trim();
+    if (!s) return null;
+    var achieved = s.match(/achieved\s+(\d+(?:\.\d+)?)/i);
+    if (achieved) {
+      var n = parseFloat(achieved[1]);
+      return isNaN(n) ? null : n;
+    }
+    var direct = parseFloat(s.replace(/[^\d.]/g, ""));
+    return isNaN(direct) ? null : direct;
+  }
+
+  function firMilliporePasses(actual, limit) {
+    if (actual == null || isNaN(actual) || limit == null || isNaN(limit)) return false;
+    return actual < limit;
+  }
+
+  function firFormatMilliporeMessage(actual, unit) {
+    var num = Number(actual);
+    var text = Number.isInteger(num) ? String(num) : num.toFixed(2);
+    var u = String(unit || "").trim();
+    return "Millipore test achieved " + text + (u ? " " + u : "");
+  }
+
+  /** Autofill: strictly below limit, in lower half (≈35–50% of spec). */
+  function firRandomMilliporeValue(limit) {
+    var lo = limit * 0.35;
+    var hi = Math.min(limit * 0.5, limit - 0.01);
+    if (hi <= lo) hi = lo;
+    var v = lo + Math.random() * (hi - lo);
+    v = Math.round(v * 100) / 100;
+    if (v >= limit) v = Math.max(lo, Math.round((limit - 0.01) * 100) / 100);
+    return v;
+  }
+
+  function firIsMilliporeRow(tr) {
+    return !!(tr && tr.classList && tr.classList.contains("fir-millipore-row"));
+  }
+
+  function firIsNoCpiRow(tr) {
+    return !!(tr && tr.classList && tr.classList.contains("fir-no-cpi-row"));
+  }
+
+  function firRowTextFromCell(cell) {
+    if (!cell) return "";
+    var el = cell.querySelector("textarea") || cell.querySelector("input");
+    return el ? String(el.value || "").trim() : String(cell.textContent || "").trim();
+  }
+
+  function firApplyMilliporeRowLayout(tr) {
+    if (!tr || firIsMilliporeRow(tr)) return;
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length !== 11) return;
+    var firstVal = "";
+    var firstInp = cells[5].querySelector("input.actual-value") || cells[5].querySelector('input[type="text"]');
+    if (firstInp) firstVal = firstInp.value;
+    var merged = document.createElement("td");
+    merged.colSpan = 5;
+    merged.className = "fir-millipore-measured";
+    var inp = document.createElement("input");
+    inp.type = "text";
+    inp.className = "actual-value quali-font fir-millipore-input";
+    inp.value = firstVal;
+    merged.appendChild(inp);
+    var remarks = cells[10];
+    for (var ci = 9; ci >= 5; ci--) cells[ci].remove();
+    tr.insertBefore(merged, remarks);
+    tr.classList.add("fir-millipore-row");
+  }
+
+  function firUnmergeMilliporeRow(tr) {
+    if (!tr || !firIsMilliporeRow(tr)) return;
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length !== 7) return;
+    var merged = cells[5];
+    var val = "";
+    var inp = merged.querySelector("input");
+    if (inp) val = inp.value;
+    var remarks = cells[6];
+    merged.remove();
+    for (var i = 0; i < 5; i++) {
+      var td = document.createElement("td");
+      var input = document.createElement("input");
+      input.type = "text";
+      input.className = "actual-value quali-font";
+      if (i === 0) input.value = val;
+      td.appendChild(input);
+      tr.insertBefore(td, remarks);
+    }
+    tr.classList.remove("fir-millipore-row");
+  }
+
+  function firSyncMilliporeRowLayout(tr) {
+    if (!tr || firIsNoCpiRow(tr)) return;
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length < 5) return;
+    var methodEl = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
+    var method = methodEl ? String(methodEl.value || "").trim() : "";
+    if (firIsMilliporeMethod(method)) {
+      firApplyMilliporeRowLayout(tr);
+    } else {
+      firUnmergeMilliporeRow(tr);
+    }
+  }
+
+  function firSyncAllMilliporeRowLayouts() {
+    ["dimension-table", "ccp-table", "coating-table"].forEach(function(tableId) {
+      var table = document.getElementById(tableId);
+      if (!table) return;
+      table.querySelectorAll("tbody tr").forEach(function(tr) {
+        firSyncMilliporeRowLayout(tr);
+      });
+    });
   }
 
   function firIsQualitativeMeasuredMethod(raw) {
@@ -279,6 +463,7 @@
     var method = String(methodRaw || "").trim();
     var spec = String(specRaw || "").trim();
     var param = String(paramRaw || "").trim();
+    if (firIsOkOnlyInspectionMethod(method)) return true;
     if (firIsQrCodeParameter(param) || firIsQrScannerMethod(method)) return true;
     if (firGdtParameterUsesQualitativeMeasured(param, method)) return true;
     if (firIsFeelerGaugeMethod(method) || firIsParallelGaugeMethod(method) || firIsPerpendicularGaugeMethod(method)) return true;
@@ -299,6 +484,13 @@
     var spec = String(specRaw || "").trim();
     var method = String(methodRaw || "").trim();
     var ctx = { param: param, spec: spec, method: method };
+
+    if (firIsMilliporeMethod(method)) {
+      var mp = firParseMilliporeSpec(spec);
+      if (mp) {
+        return Object.assign({ mode: "millipore", limit: mp.limit, unit: mp.unit }, ctx);
+      }
+    }
 
     if (firRowUsesQualitativeMeasured(param, spec, method)) {
       return Object.assign({ mode: "qualitative" }, ctx);
@@ -324,6 +516,7 @@
   }
 
   function firFillQualitativeMeasuredRow(tr) {
+    if (firIsNoCpiRow(tr) || firIsMilliporeRow(tr)) return;
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
     var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
@@ -348,6 +541,7 @@
     var root = document.getElementById("reportRoot");
     if (!root) return;
     root.querySelectorAll("#dimension-table tbody tr, #ccp-table tbody tr, #coating-table tbody tr").forEach(function(tr) {
+      if (firIsNoCpiRow(tr) || firIsMilliporeRow(tr)) return;
       var cells = tr.querySelectorAll(":scope > td");
       if (cells.length < 11) return;
       var mel = cells[4].querySelector("input.method-input") || cells[4].querySelector("input");
@@ -504,6 +698,8 @@
             slno = firAdvanceSlNo(r, slno);
             bHtml += `<tr><td style="width:5%;">${snB}</td><td>${wrapCell(r.parameter)}</td><td>${wrapCell(r.specification)}</td><td>${specialCharCell(r.special_char)}</td><td>${methodInput(r.method_of_inspection)}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${actualInput}</td><td>${remarksInput}</td></tr>`;
           });
+        } else {
+          bHtml += `<tr class="fir-no-cpi-row"><td style="width:5%;">${slno++}</td><td colspan="10" class="fir-no-cpi-cell"><span class="fir-no-cpi-text">No CPI</span></td></tr>`;
         }
         bHtml += '</tbody></table>';
         const cRemarksInput = '<input type="text" class="remarks-value quali-font" value="OK">';
@@ -596,6 +792,7 @@
     }
     /* Column enable/disable only on first paint — do not pre-fill TPG/Visual OK until user clicks Autofill. */
     firApplyMeasuredColumnAvailability();
+    firSyncAllMilliporeRowLayouts();
     var firSampleEl = document.getElementById("firSampleSizeInput");
     if (firSampleEl) {
       firSampleEl.addEventListener("input", firOnSampleSizeOrColumnsChanged);
@@ -655,7 +852,12 @@
         if (e.target && e.target.classList && e.target.classList.contains('method-input')) {
           var trM = e.target.closest('tr');
           if (trM) {
+            firSyncMilliporeRowLayout(trM);
             var cellsM = trM.querySelectorAll(":scope > td");
+            if (firIsMilliporeRow(trM)) {
+              firUpdateRowRemarksFromMeasurements(trM);
+              return;
+            }
             var paramElM = cellsM[1] ? (cellsM[1].querySelector("textarea") || cellsM[1].querySelector("input")) : null;
             var specElM = cellsM[2] ? (cellsM[2].querySelector("textarea") || cellsM[2].querySelector("input")) : null;
             var paramM = paramElM ? (paramElM.value || "").trim() : "";
@@ -680,7 +882,13 @@
         }
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr = e.target.closest('tr');
-          if (tr) firUpdateRowRemarksFromMeasurements(tr);
+          if (tr) {
+            if (firIsMilliporeRow(tr) && e.target.classList.contains('fir-millipore-input')) {
+              firUpdateRowRemarksFromMeasurements(tr);
+            } else if (!firIsMilliporeRow(tr)) {
+              firUpdateRowRemarksFromMeasurements(tr);
+            }
+          }
         }
       });
       rootEl.addEventListener('change', function(e) {
@@ -688,7 +896,12 @@
         if (e.target && e.target.classList && e.target.classList.contains('method-input')) {
           var trM2 = e.target.closest('tr');
           if (trM2) {
+            firSyncMilliporeRowLayout(trM2);
             var cellsM2 = trM2.querySelectorAll(":scope > td");
+            if (firIsMilliporeRow(trM2)) {
+              firUpdateRowRemarksFromMeasurements(trM2);
+              return;
+            }
             var paramElM2 = cellsM2[1] ? (cellsM2[1].querySelector("textarea") || cellsM2[1].querySelector("input")) : null;
             var specElM2 = cellsM2[2] ? (cellsM2[2].querySelector("textarea") || cellsM2[2].querySelector("input")) : null;
             var paramM2 = paramElM2 ? (paramElM2.value || "").trim() : "";
@@ -713,7 +926,13 @@
         }
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr2 = e.target.closest('tr');
-          if (tr2) firUpdateRowRemarksFromMeasurements(tr2);
+          if (tr2) {
+            if (firIsMilliporeRow(tr2) && e.target.classList.contains('fir-millipore-input')) {
+              firUpdateRowRemarksFromMeasurements(tr2);
+            } else if (!firIsMilliporeRow(tr2)) {
+              firUpdateRowRemarksFromMeasurements(tr2);
+            }
+          }
         }
       });
     }
@@ -947,7 +1166,30 @@
 
   /** Recompute Remarks from spec + filled measured cells (active sample columns only). */
   function firUpdateRowRemarksFromMeasurements(tr) {
-    if (!tr) return;
+    if (!tr || firIsNoCpiRow(tr)) return;
+    if (firIsMilliporeRow(tr)) {
+      var mCells = tr.querySelectorAll(":scope > td");
+      if (mCells.length < 7) return;
+      var specElM = mCells[2].querySelector("textarea") || mCells[2].querySelector("input");
+      var methodElM = mCells[4].querySelector("input.method-input") || mCells[4].querySelector("input");
+      var remarksElM = mCells[6].querySelector("input.remarks-value") || mCells[6].querySelector("input");
+      var measuredElM = mCells[5].querySelector("input.actual-value") || mCells[5].querySelector("input");
+      if (!specElM || !methodElM || !remarksElM || !measuredElM) return;
+      var mp = firParseMilliporeSpec((specElM.value || "").trim());
+      if (!mp) {
+        remarksElM.value = "";
+        updateStatusButtons();
+        return;
+      }
+      var actualM = firParseMilliporeActual(measuredElM.value);
+      if (actualM == null || String(measuredElM.value || "").trim() === "") {
+        remarksElM.value = "";
+      } else {
+        remarksElM.value = firMilliporePasses(actualM, mp.limit) ? "OK" : "Not OK";
+      }
+      updateStatusButtons();
+      return;
+    }
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
     var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
@@ -994,6 +1236,28 @@
 
   /** Sl No | Parameter | Specification | Special char | Method | 5× actual | Remarks (11 cells) */
   function fillOneRow(tr) {
+    if (firIsNoCpiRow(tr)) return;
+    firSyncMilliporeRowLayout(tr);
+    if (firIsMilliporeRow(tr)) {
+      var mCells = tr.querySelectorAll(":scope > td");
+      if (mCells.length < 7) return;
+      var specElMp = mCells[2].querySelector("textarea") || mCells[2].querySelector("input");
+      var methodElMp = mCells[4].querySelector("input.method-input") || mCells[4].querySelector("input");
+      var remarksElMp = mCells[6].querySelector("input.remarks-value") || mCells[6].querySelector("input");
+      var measuredElMp = mCells[5].querySelector("input.actual-value") || mCells[5].querySelector("input");
+      if (!specElMp || !methodElMp || !remarksElMp || !measuredElMp) return;
+      var resolvedMp = firResolveRowMeasuredContext(
+        firRowTextFromCell(mCells[1]),
+        (specElMp.value || "").trim(),
+        (methodElMp.value || "").trim()
+      );
+      if (resolvedMp.mode !== "millipore") return;
+      var sampleVal = firRandomMilliporeValue(resolvedMp.limit);
+      measuredElMp.value = firFormatMilliporeMessage(sampleVal, resolvedMp.unit);
+      remarksElMp.value = firMilliporePasses(sampleVal, resolvedMp.limit) ? "OK" : "Not OK";
+      updateStatusButtons();
+      return;
+    }
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
     var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
@@ -1039,6 +1303,7 @@
 
   function autoFillMeasuredValues() {
     firApplyMeasuredColumnAvailability();
+    firSyncAllMilliporeRowLayouts();
     ["dimension-table", "ccp-table", "coating-table"].forEach(tableId => {
       const table = document.getElementById(tableId);
       if (!table) return;
