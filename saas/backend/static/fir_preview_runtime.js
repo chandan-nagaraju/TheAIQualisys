@@ -350,10 +350,11 @@
   }
 
   function firFormatMilliporeActualDisplay(num, unit) {
-    var text;
-    if (Number.isInteger(num)) text = String(num);
-    else text = String(num).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0+$/, "");
+    var n = Number(num);
+    if (isNaN(n)) return "";
+    var text = Number.isInteger(n) ? String(n) : n.toFixed(2);
     var u = String(unit || "").trim();
+    if (u) u = u.toUpperCase();
     return u ? text + " " + u : text;
   }
 
