@@ -1594,6 +1594,94 @@
     });
   }
 
+  /** Dimension row count — used to decide single-page landscape PDF when &lt; 10. */
+  function firDimensionParameterCount() {
+    if (FIR_SPEC_DATA.length > 0) return FIR_SPEC_DATA.length;
+    if (noOfParamsParam && noOfParamsParam > 0) return noOfParamsParam;
+    return totalRows;
+  }
+
+  function firShouldFitOneLandscapePage() {
+    return firDimensionParameterCount() > 0 && firDimensionParameterCount() < 10;
+  }
+
+  /**
+   * html2canvas clips textarea content even after autosize — swap to static divs for PDF capture.
+   */
+  function firPrepareTextareasForPdf(root) {
+    root = root || document.getElementById("reportRoot");
+    if (!root) return;
+    firAutosizeAllTextareas(root);
+    root.querySelectorAll("textarea").forEach(function(ta) {
+      if (ta.dataset.firPdfHidden) return;
+      var div = document.createElement("div");
+      div.className = (ta.className || "") + " fir-pdf-text";
+      if (ta.classList.contains("method-input")) div.classList.add("method-input");
+      div.textContent = ta.value;
+      div.setAttribute("data-fir-pdf-replaced", "1");
+      ta.dataset.firPdfHidden = "1";
+      ta.style.display = "none";
+      ta.parentNode.insertBefore(div, ta.nextSibling);
+    });
+  }
+
+  function firRestoreTextareasAfterPdf(root) {
+    root = root || document.getElementById("reportRoot");
+    if (!root) return;
+    root.querySelectorAll("[data-fir-pdf-replaced]").forEach(function(div) {
+      div.remove();
+    });
+    root.querySelectorAll("textarea[data-fir-pdf-hidden]").forEach(function(ta) {
+      ta.style.display = "";
+      ta.removeAttribute("data-fir-pdf-hidden");
+    });
+  }
+
+  /** Shrink report to fit one landscape A4 page (210mm tall) when parameter count &lt; 10. */
+  function firApplyOnePagePdfScale(root) {
+    root = root || document.getElementById("reportRoot");
+    if (!root || !firShouldFitOneLandscapePage()) return;
+    document.body.classList.add("fir-fit-one-page");
+    var pxPerMm = 96 / 25.4;
+    var maxPx = 210 * pxPerMm - 6;
+    var h = root.scrollHeight;
+    if (h > maxPx && h > 0) {
+      var scale = maxPx / h;
+      root.style.transform = "scale(" + scale + ")";
+      root.style.transformOrigin = "top center";
+      root.style.height = Math.ceil(h * scale) + "px";
+      root.dataset.firPdfScale = String(scale);
+    }
+  }
+
+  function firRestoreOnePagePdfLayout(root) {
+    root = root || document.getElementById("reportRoot");
+    document.body.classList.remove("fir-fit-one-page");
+    if (!root) return;
+    root.style.transform = "";
+    root.style.transformOrigin = "";
+    root.style.height = "";
+    root.removeAttribute("data-fir-pdf-scale");
+  }
+
+  function firPrepareDomForPdfCapture(root) {
+    root = root || document.getElementById("reportRoot");
+    firPrepareTextareasForPdf(root);
+    firApplyOnePagePdfScale(root);
+    return new Promise(function(res) {
+      requestAnimationFrame(function() {
+        requestAnimationFrame(res);
+      });
+    });
+  }
+
+  function firRestoreDomAfterPdfCapture(root) {
+    root = root || document.getElementById("reportRoot");
+    firRestoreTextareasAfterPdf(root);
+    firRestoreOnePagePdfLayout(root);
+    firRestoreImagesAfterPdf(root);
+  }
+
   /** Wait for Quali/custom fonts + logo/signature images before html2canvas capture */
   function firWaitForAssets(root) {
     root = root || document.getElementById("reportRoot");
@@ -1651,7 +1739,7 @@
     const fileName = `${(invoiceInput?.value || 'Invoice').replace(/\W+/g,'_')}_${(partInput?.value || 'Part').replace(/\W+/g,'_')}_FIR.pdf`;
 
     function restorePdfUi() {
-      firRestoreImagesAfterPdf(el);
+      firRestoreDomAfterPdfCapture(el);
       document.body.classList.remove('generating-pdf');
       btn.style.display = "block";
       if (autofillBtn) autofillBtn.style.display = "block";
@@ -1659,6 +1747,8 @@
 
     firWaitForAssets(el).then(function() {
       return firPrepareImagesForPdf(el);
+    }).then(function() {
+      return firPrepareDomForPdfCapture(el);
     }).then(function() {
       return html2pdf().set({
         margin: 0,
@@ -1715,7 +1805,7 @@
       var fileName = ((invoiceInput && invoiceInput.value) || 'Invoice').replace(/\W+/g,'_') + '_' + ((partInput && partInput.value) || 'Part').replace(/\W+/g,'_') + '_FIR.pdf';
 
       function restoreUi() {
-        firRestoreImagesAfterPdf(el);
+        firRestoreDomAfterPdfCapture(el);
         document.body.classList.remove('generating-pdf');
         if (btn) btn.style.display = "block";
         if (autofillBtnEl) autofillBtnEl.style.display = "block";
@@ -1723,6 +1813,8 @@
 
       firWaitForAssets(el).then(function() {
         return firPrepareImagesForPdf(el);
+      }).then(function() {
+        return firPrepareDomForPdfCapture(el);
       }).then(function() {
         var worker = html2pdf().set({
           margin: 0,
