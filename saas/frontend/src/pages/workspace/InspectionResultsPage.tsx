@@ -531,14 +531,23 @@ export default function InspectionResultsPage() {
                 if (timeoutId !== undefined) window.clearTimeout(timeoutId);
                 window.removeEventListener("message", handler);
                 if (!d.ok) reject(new Error(d.error || "PDF generation failed"));
-                else if (!d.blob) reject(new Error("No PDF blob returned"));
-                else
-                  resolve({
-                    blob: d.blob as Blob,
-                    filename: String(d.filename || `FIR_${i + 1}.pdf`),
-                    byteSize: d.byteSize,
-                    sizeWarning: d.sizeWarning,
-                  });
+                else {
+                  const blobFromBytes =
+                    d.pdfBytes instanceof ArrayBuffer
+                      ? new Blob([d.pdfBytes], { type: "application/pdf" })
+                      : d.pdfBytes
+                        ? new Blob([d.pdfBytes as BlobPart], { type: "application/pdf" })
+                        : null;
+                  const blob = d.blob instanceof Blob ? d.blob : blobFromBytes;
+                  if (!blob) reject(new Error("No PDF blob returned"));
+                  else
+                    resolve({
+                      blob,
+                      filename: String(d.filename || `FIR_${i + 1}.pdf`),
+                      byteSize: d.byteSize || blob.size,
+                      sizeWarning: d.sizeWarning,
+                    });
+                }
               };
               window.addEventListener("message", handler);
               timeoutId = window.setTimeout(() => {

@@ -1719,14 +1719,39 @@
     pdf.save(fileName);
   }
 
-  function firBlobFromSingleLandscapePagePdf(canvas, fileName) {
-    var pdf = firCanvasToSingleLandscapePagePdf(canvas);
-    var blob = pdf.output("blob");
-    var n = blob && blob.size ? blob.size : 0;
+  function firWrapPdfBlobResult(blob, fileName) {
+    if (!blob || typeof blob.size !== "number") {
+      throw new Error("html2pdf blob output not available in this build");
+    }
+    var n = blob.size || 0;
     var warn = "";
     if (n > 200 * 1024) warn = "over_200kb";
     else if (n > 0 && n < 100 * 1024) warn = "under_100kb";
     return { blob: blob, filename: fileName, byteSize: n, sizeWarning: warn || undefined };
+  }
+
+  function firBlobFromSingleLandscapePagePdf(canvas, fileName) {
+    var pdf = firCanvasToSingleLandscapePagePdf(canvas);
+    return firWrapPdfBlobResult(pdf.output("blob"), fileName);
+  }
+
+  function firHtml2PdfBlob(el, fileName) {
+    var worker = html2pdf().set(firBuildPdfOptions(el, fileName)).from(el);
+    var out = null;
+    if (typeof worker.outputPdf === "function") out = worker.outputPdf("blob");
+    else if (typeof worker.output === "function") out = worker.output("blob");
+    if (!out || typeof out.then !== "function") {
+      return Promise.reject(new Error("html2pdf blob output not available in this build"));
+    }
+    return out.then(function(blob) {
+      return firWrapPdfBlobResult(blob, fileName);
+    });
+  }
+
+  function firNormalizePdfBlobResult(result, fileName) {
+    if (result && result.blob && typeof result.blob.size === "number") return result;
+    if (result instanceof Blob) return firWrapPdfBlobResult(result, fileName);
+    throw new Error("No PDF blob returned");
   }
 
   function firRunPdfExport(el, fileName, mode) {
@@ -1736,31 +1761,12 @@
         firSaveSingleLandscapePagePdf(canvas, fileName);
       }).catch(function(err) {
         console.error("firRunPdfExport single-page fallback", err);
-        var worker = html2pdf().set(firBuildPdfOptions(el, fileName)).from(el);
-        if (mode === "blob") {
-          var out = typeof worker.outputPdf === "function" ? worker.outputPdf("blob") : worker.output("blob");
-          return out;
-        }
-        return worker.save();
+        if (mode === "blob") return firHtml2PdfBlob(el, fileName);
+        return html2pdf().set(firBuildPdfOptions(el, fileName)).from(el).save();
       });
     }
-    var worker = html2pdf().set(firBuildPdfOptions(el, fileName)).from(el);
-    if (mode === "blob") {
-      var out = null;
-      if (typeof worker.outputPdf === "function") out = worker.outputPdf("blob");
-      else if (typeof worker.output === "function") out = worker.output("blob");
-      if (!out || typeof out.then !== "function") {
-        return Promise.reject(new Error("html2pdf blob output not available in this build"));
-      }
-      return out.then(function(blob) {
-        var n = blob && blob.size ? blob.size : 0;
-        var warn = "";
-        if (n > 200 * 1024) warn = "over_200kb";
-        else if (n > 0 && n < 100 * 1024) warn = "under_100kb";
-        return { blob: blob, filename: fileName, byteSize: n, sizeWarning: warn || undefined };
-      });
-    }
-    return worker.save();
+    if (mode === "blob") return firHtml2PdfBlob(el, fileName);
+    return html2pdf().set(firBuildPdfOptions(el, fileName)).from(el).save();
   }
 
   /**
@@ -2005,7 +2011,7 @@
       }).then(function() {
         return firRunPdfExport(el, fileName, "blob").then(function(result) {
             restoreUi();
-            resolve(result);
+            resolve(firNormalizePdfBlobResult(result, fileName));
           }).catch(function(err) {
             restoreUi();
             reject(err);
@@ -2091,7 +2097,10 @@
           window.FIR_PREVIEW_API
             .generatePdfBlob()
             .then(function (result) {
-              if (reply)
+              var payload = firNormalizePdfBlobResult(result, (result && result.filename) || "FIR.pdf");
+              var blob = payload.blob;
+              var sendBytes = function (bytes) {
+                if (!reply) return;
                 reply.postMessage(
                   {
                     source: "fir-saas-fir-preview",
@@ -2099,13 +2108,23 @@
                     frameIndex: frameIndex,
                     requestId: reqId,
                     ok: true,
-                    filename: result.filename,
-                    byteSize: result.byteSize,
-                    sizeWarning: result.sizeWarning,
-                    blob: result.blob,
+                    filename: payload.filename,
+                    byteSize: payload.byteSize,
+                    sizeWarning: payload.sizeWarning,
+                    pdfBytes: bytes,
                   },
                   "*"
                 );
+              };
+              if (blob && typeof blob.arrayBuffer === "function") {
+                return blob.arrayBuffer().then(sendBytes);
+              }
+              return new Promise(function (res, rej) {
+                var reader = new FileReader();
+                reader.onload = function () { res(reader.result); };
+                reader.onerror = function () { rej(new Error("Failed to read PDF blob")); };
+                reader.readAsArrayBuffer(blob);
+              }).then(sendBytes);
             })
             .catch(finishErr);
         };
