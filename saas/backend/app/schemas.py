@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from app.part_field_validation import sanitize_part_master_alnum_upper
+from app.part_field_validation import sanitize_part_master_alnum_upper, sanitize_part_master_description
 
 
 class RequestSignupVerificationBody(BaseModel):
@@ -144,7 +144,7 @@ class PartCreateV2(BaseModel):
     def _description_alnum_upper(cls, v: object) -> str | None:
         if v is None:
             return None
-        s = sanitize_part_master_alnum_upper(v if isinstance(v, str) else str(v))
+        s = sanitize_part_master_description(v if isinstance(v, str) else str(v))
         return s if s else None
 
     @field_validator("part_no")

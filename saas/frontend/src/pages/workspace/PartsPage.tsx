@@ -9,7 +9,7 @@ import {
   setWorkspaceCustomerId,
 } from "../../api";
 import PartMasterExcelReview, { type PartMasterBundle } from "../../components/PartMasterExcelReview";
-import { sanitizePartNoUpper as sanitizePartMasterAlnumUpper } from "../../utils/partFields";
+import { sanitizePartNoUpper as sanitizePartMasterAlnumUpper, sanitizePartMasterDescription } from "../../utils/partFields";
 
 type Row = {
   part_id: number;
@@ -282,7 +282,7 @@ export default function PartsPage() {
     setOriginalDrawingRev(r.drawing_rev ?? null);
     setPartNo(sanitizePartMasterAlnumUpper(r.part_no));
     setDrawingRev(r.drawing_rev ?? "");
-    setDescription(sanitizePartMasterAlnumUpper(r.description ?? ""));
+    setDescription(sanitizePartMasterDescription(r.description ?? ""));
     setRevisionReason("");
     setPendingPdf(null);
     setErr(null);
@@ -516,16 +516,15 @@ export default function PartsPage() {
             />
           </div>
           <div className="md:col-span-2">
-            <label className="text-xs text-slate-500">Description — A–Z and 0–9 only (optional)</label>
+            <label className="text-xs text-slate-500">Description (optional)</label>
             <input
               className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm uppercase"
               value={description}
-              onChange={(e) => setDescription(sanitizePartMasterAlnumUpper(e.target.value))}
+              onChange={(e) => setDescription(sanitizePartMasterDescription(e.target.value))}
               inputMode="text"
               autoCapitalize="characters"
               spellCheck={false}
-              pattern="[A-Z0-9]*"
-              title="Letters A–Z and digits 0–9 only"
+              title="Letters, digits, spaces, and punctuation such as - / ( )"
             />
           </div>
           <div className="md:col-span-2">

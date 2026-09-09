@@ -53,7 +53,7 @@ from app.fir_part_excel import (
     build_part_master_template_xlsx,
     parse_parts_excel_to_bundle_dict,
 )
-from app.part_field_validation import sanitize_part_master_alnum_upper
+from app.part_field_validation import sanitize_part_master_alnum_upper, sanitize_part_master_description
 from app.part_master_coating_spec import normalize_plating_thickness_specification
 from app.part_master_moi import normalize_part_master_moi, preserve_user_part_master_moi
 from app.subscription_logic import (
@@ -861,7 +861,7 @@ def upsert_part(body: PartUpsert, ws: WsContext = Depends(get_ws)):
     part_no = sanitize_part_master_alnum_upper(body.part_no)
     if not part_no:
         raise HTTPException(status_code=400, detail="part_no must contain only A–Z and 0–9, at least one character")
-    description = sanitize_part_master_alnum_upper(body.description) if body.description is not None else None
+    description = sanitize_part_master_description(body.description) if body.description is not None else None
     description = description if description else None
 
     cust = _get_customer_for_part_upsert(ws, body.customer_id)
@@ -1393,7 +1393,7 @@ class PartMasterPartBlock(BaseModel):
     def _description_sanitize(cls, v: object) -> str | None:
         if v is None:
             return None
-        s = sanitize_part_master_alnum_upper(v if isinstance(v, str) else str(v))
+        s = sanitize_part_master_description(v if isinstance(v, str) else str(v))
         return s if s else None
 
     @field_validator("part_no")
