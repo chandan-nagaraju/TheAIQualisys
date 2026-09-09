@@ -150,7 +150,8 @@ async function prepareIframeForPdfCapture(f: HTMLIFrameElement | null, viewportT
   f.style.zIndex = "240";
   f.style.pointerEvents = "none";
   /* Outer opacity only (user must not see the lifted preview); capture uses the iframe’s internal DOM. */
-  f.style.opacity = "0";
+  /* Keep a trace of opacity so the iframe still paints; html2canvas fails at opacity:0. */
+  f.style.opacity = "0.02";
   f.style.boxShadow = "none";
 
   await new Promise<void>((resolve) => {
@@ -201,6 +202,34 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
       URL.revokeObjectURL(url);
     }, revokeMs);
   });
+}
+
+function blobFromPdfMessage(d: {
+  blob?: unknown;
+  pdfBytes?: unknown;
+  pdfBase64?: unknown;
+}): Blob | null {
+  if (d.blob instanceof Blob && d.blob.size > 0) return d.blob;
+  if (typeof d.pdfBase64 === "string" && d.pdfBase64.length > 0) {
+    try {
+      const bin = atob(d.pdfBase64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      if (bytes.length) return new Blob([bytes], { type: "application/pdf" });
+    } catch {
+      /* fall through */
+    }
+  }
+  const raw = d.pdfBytes;
+  if (raw instanceof ArrayBuffer && raw.byteLength > 0) {
+    return new Blob([raw], { type: "application/pdf" });
+  }
+  if (ArrayBuffer.isView(raw) && raw.byteLength > 0) {
+    return new Blob([raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength)], {
+      type: "application/pdf",
+    });
+  }
+  return null;
 }
 
 function firIframeTargetOrigin(iframe: HTMLIFrameElement | null): string {
@@ -532,13 +561,7 @@ export default function InspectionResultsPage() {
                 window.removeEventListener("message", handler);
                 if (!d.ok) reject(new Error(d.error || "PDF generation failed"));
                 else {
-                  const blobFromBytes =
-                    d.pdfBytes instanceof ArrayBuffer
-                      ? new Blob([d.pdfBytes], { type: "application/pdf" })
-                      : d.pdfBytes
-                        ? new Blob([d.pdfBytes as BlobPart], { type: "application/pdf" })
-                        : null;
-                  const blob = d.blob instanceof Blob ? d.blob : blobFromBytes;
+                  const blob = blobFromPdfMessage(d);
                   if (!blob) reject(new Error("No PDF blob returned"));
                   else
                     resolve({
