@@ -704,7 +704,7 @@
   function firRowSlNo(row, counter) {
     if (row && row.sl_no != null && row.sl_no !== "") {
       var n = parseInt(row.sl_no, 10);
-      if (!isNaN(n) && n > 0) return n;
+      if (!isNaN(n) && n >= counter) return n;
     }
     return counter;
   }
@@ -739,7 +739,7 @@
         <tr><td class="bold" colspan="2">DESCRIPTION :</td><td colspan="3"><textarea rows="1" class="fir-wrap-cell">${esc(description)}</textarea></td>
         <td class="bold" colspan="2">SAMPLE SIZE :</td><td colspan="4"><input type="text" id="firSampleSizeInput" value="${sampleSize}"></td>
         <td class="bold" colspan="2">DATE :</td><td colspan="3"><input type="text" value="${reportDate}"></td></tr>
-        <tr><td class="bold" colspan="2">DRAW.REV NO :</td><td colspan="14"><input type="text" value="${drawRev}"></td></tr>
+        <tr><td class="bold" colspan="2">DRAW.REV NO :</td><td colspan="14" class="fir-draw-rev-cell"><input type="text" class="fir-draw-rev-input" value="${drawRev}"></td></tr>
       </table>`;
 
     html += `
