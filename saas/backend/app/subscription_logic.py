@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.dates import format_date_english
-from app.models import Company, FirReportEvent, InvoiceV2, SubscriptionStatus
+from app.models import Company, FirReportEvent, FirUploadLog, InvoiceV2, SubscriptionStatus
 from app.pricing_catalog import invoice_cap_for_plan
 
 FIR_WORKSPACE_FORBIDDEN_CODE = "FIR_WORKSPACE_FORBIDDEN"
@@ -62,6 +62,22 @@ def count_fir_reports_total(db: Session, company_id: int) -> int:
     """All-time FIR intelligence row count for this tenant (``fir_events`` for ``company_id``)."""
     q = select(func.count()).select_from(FirReportEvent).where(FirReportEvent.company_id == company_id)
     return int(db.execute(q).scalar_one())
+
+
+def next_fir_report_no(db: Session, company_id: int) -> int:
+    """Next sequential REPORT NO for this tenant (never resets daily).
+
+    Counts PDFs recorded on ZIP download (``fir_upload_logs.reports_generated``).
+    Falls back to intelligence row count if logs are empty so existing tenants
+    do not restart at 1.
+    """
+    logged = db.execute(
+        select(func.coalesce(func.sum(FirUploadLog.reports_generated), 0)).where(
+            FirUploadLog.company_id == company_id
+        )
+    ).scalar_one()
+    events = count_fir_reports_total(db, company_id)
+    return max(int(logged or 0), int(events or 0)) + 1
 
 
 def top_fir_part_report_counts(

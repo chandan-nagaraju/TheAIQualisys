@@ -64,6 +64,7 @@ from app.subscription_logic import (
     count_combined_usage_this_month,
     count_fir_reports_this_month,
     count_invoices_this_month,
+    next_fir_report_no,
     plan_invoice_limit,
 )
 from app.models import (
@@ -1730,6 +1731,7 @@ def inspection_enrich(body: EnrichBody, ws: WsContext = Depends(get_ws)):
         "rows": enriched,
         "customer": customer,
         "current_date": datetime.now(timezone.utc).date().isoformat(),
+        "next_report_no": next_fir_report_no(ws.db, ws.company.id),
     }
 
 
@@ -1816,6 +1818,7 @@ def inspection_record_reports(body: EnrichBody, ws: WsContext = Depends(get_ws))
         "usage_this_month": combined,
         "usage_limit": plan_invoice_limit(ws.db, ws.company.plan_type),
         "recorded": summary.new_records,
+        "next_report_no": next_fir_report_no(ws.db, ws.company.id),
     }
 
 

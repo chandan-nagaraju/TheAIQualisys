@@ -16,7 +16,7 @@ type Row = Record<string, unknown> & {
   num_params?: number;
 };
 
-type EnrichRes = { rows: Row[]; customer: { vendor_code: string; name: string } | null; current_date: string };
+type EnrichRes = { rows: Row[]; customer: { vendor_code: string; name: string } | null; current_date: string; next_report_no?: number };
 
 type FirQuota = {
   allowed_for_n: boolean;
@@ -43,6 +43,7 @@ type RecordReportsRes = {
   duplicate_intelligence_records: number;
   fir_reports_generated: number;
   recorded: number;
+  next_report_no?: number;
   invoices_this_month: number;
   fir_reports_this_month: number;
   usage_this_month: number;
@@ -242,7 +243,12 @@ function firIframeTargetOrigin(iframe: HTMLIFrameElement | null): string {
 }
 
 
-function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: string): Record<string, string> {
+function previewParamsForRow(
+  r: Row,
+  cust: EnrichRes["customer"],
+  currentDate: string,
+  reportNo: number | string,
+): Record<string, string> {
   const partName = String(r["Part Number"] ?? "").trim();
   const description = String(r["Description"] ?? "").trim() || "-";
   const drawRev = String(r.draw_rev ?? "");
@@ -262,7 +268,7 @@ function previewParamsForRow(r: Row, cust: EnrichRes["customer"], currentDate: s
     noOfParams,
     vendorCode,
     customer: customerName,
-    reportNo: "1",
+    reportNo: String(reportNo || "1"),
     reportDate: reportDateForFIR(String(r["Date"] ?? ""), currentDate),
   };
 }
@@ -334,9 +340,10 @@ export default function InspectionResultsPage() {
 
   const previewUrls = useMemo(() => {
     if (!data?.rows.length) return [];
+    const start = Math.max(1, Number(data.next_report_no) || 1);
     return data.rows.map((r, i) =>
       firPreviewUrl({
-        ...previewParamsForRow(r, data.customer, data.current_date),
+        ...previewParamsForRow(r, data.customer, data.current_date, start + i),
         previewFrameIndex: String(i),
         embedded: "1",
       }),
@@ -646,6 +653,14 @@ export default function InspectionResultsPage() {
         await workspaceFetch<RecordReportsRes>("/api/app/inspection/record-reports", {
           method: "POST",
           body: JSON.stringify({ rows: data.rows, source_file: st?.filename ?? null }),
+        }).then((rec) => {
+          if (typeof rec.next_report_no === "number") {
+            setData((prev) => (prev ? { ...prev, next_report_no: rec.next_report_no } : prev));
+          } else {
+            setData((prev) =>
+              prev ? { ...prev, next_report_no: (Number(prev.next_report_no) || 1) + data.rows.length } : prev,
+            );
+          }
         });
       } catch (recErr) {
         setBatchErr(
@@ -670,9 +685,10 @@ export default function InspectionResultsPage() {
     }
   }, [data, st?.filename]);
 
-  function openPreview(r: Row) {
+  function openPreview(r: Row, index: number) {
     if (!data) return;
-    const url = firPreviewUrl(previewParamsForRow(r, data.customer, data.current_date));
+    const start = Math.max(1, Number(data.next_report_no) || 1);
+    const url = firPreviewUrl(previewParamsForRow(r, data.customer, data.current_date, start + index));
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
@@ -859,7 +875,7 @@ export default function InspectionResultsPage() {
                         type="button"
                         className="text-blue-700 underline"
                         title="New tab = fresh report. Batch auto-fill only updates the embedded previews below."
-                        onClick={() => openPreview(r)}
+                        onClick={() => openPreview(r, i)}
                       >
                         Preview FIR (new tab)
                       </button>

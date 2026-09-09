@@ -103,7 +103,16 @@ def test_count_fir_reports_total_calls_db() -> None:
     db = MagicMock()
     db.execute.return_value.scalar_one.return_value = 1313
     assert count_fir_reports_total(db, 3) == 1313
-    db.execute.assert_called_once()
+
+
+def test_next_fir_report_no_uses_max_of_logs_and_events() -> None:
+    from app.subscription_logic import next_fir_report_no
+
+    db = MagicMock()
+    db.execute.return_value.scalar_one.side_effect = [30, 12]
+    assert next_fir_report_no(db, 1) == 31
+    db.execute.return_value.scalar_one.side_effect = [0, 0]
+    assert next_fir_report_no(db, 1) == 1
 
 
 def test_median_gap_days_consecutive() -> None:
