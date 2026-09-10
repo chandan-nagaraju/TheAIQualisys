@@ -206,7 +206,7 @@ export default function AdminCompanyPage() {
           </button>
         </form>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(12rem,16rem)_auto] sm:items-end sm:gap-x-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(12rem,16rem)_auto_auto] sm:items-end sm:gap-x-3">
           <div className="min-w-0">
             <label className="block text-xs text-slate-500">Extend (days)</label>
             <input
@@ -216,6 +216,13 @@ export default function AdminCompanyPage() {
               onChange={(e) => setExtendDays(Number(e.target.value))}
             />
           </div>
+          <button
+            type="button"
+            className="h-10 w-full rounded-lg border border-slate-600 px-4 text-sm text-slate-100 hover:bg-slate-800 sm:w-auto sm:self-end sm:justify-self-start"
+            onClick={() => patch({ action: "extend_trial", extend_days: extendDays })}
+          >
+            Extend trial
+          </button>
           <button
             type="button"
             className="h-10 w-full rounded-lg border border-slate-600 px-4 text-sm text-slate-100 hover:bg-slate-800 sm:w-auto sm:self-end sm:justify-self-start"
@@ -229,13 +236,7 @@ export default function AdminCompanyPage() {
           <button
             type="button"
             className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800"
-            onClick={() =>
-              patch(
-                plan === "trial"
-                  ? { action: "set_plan", plan_type: "trial", extend_days: extendDays || 7 }
-                  : { action: "set_plan", plan_type: plan },
-              )
-            }
+            onClick={() => patch({ action: "set_plan", plan_type: plan })}
           >
             Set plan only
           </button>
@@ -248,9 +249,8 @@ export default function AdminCompanyPage() {
           </button>
         </div>
         <p className="text-sm text-slate-400">
-          Trial + Activate (or Set plan only) restarts the trial for Extend (days), sets plan to{" "}
-          <span className="text-slate-200">trial</span>, and clears paid subscription dates. Choose basic, pro, or
-          enterprise to activate a paid plan.
+          You choose the action: activate trial (uses Extend days from today), extend trial, extend the paid
+          subscription, or set the plan label only.
         </p>
         {msg && <p className="text-sm text-emerald-400">{msg}</p>}
       </div>

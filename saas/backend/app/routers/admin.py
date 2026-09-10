@@ -62,6 +62,7 @@ from app.subscription_logic import (
     top_fir_part_thank_you_table_rows,
     effective_plan_type,
     put_company_on_trial,
+    extend_company_trial,
     close_overlapping_trial_for_paid_activation,
 )
 
@@ -377,16 +378,17 @@ def patch_company(
         if c.subscription_start is None:
             c.subscription_start = today
 
+    elif body.action == "extend_trial":
+        if not body.extend_days or body.extend_days <= 0:
+            raise HTTPException(status_code=400, detail="Provide extend_days")
+        extend_company_trial(c, today, body.extend_days)
+
     elif body.action == "set_plan":
         if not body.plan_type:
             raise HTTPException(status_code=400, detail="plan_type required")
         if body.plan_type not in (PlanType.trial.value, *_PAID_PLAN_TYPES):
             raise HTTPException(status_code=400, detail="Invalid plan_type")
-        if body.plan_type == PlanType.trial.value:
-            days = body.extend_days if body.extend_days and body.extend_days > 0 else 7
-            put_company_on_trial(c, today, days)
-        else:
-            c.plan_type = body.plan_type
+        c.plan_type = body.plan_type
 
     elif body.action == "mark_expired":
         c.subscription_status = SubscriptionStatus.expired.value

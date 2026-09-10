@@ -243,7 +243,7 @@ class ChangePasswordRequest(BaseModel):
 
 class AdminCompanyPatch(BaseModel):
     action: str = Field(
-        description="activate | extend | set_plan | mark_expired",
+        description="activate | extend | extend_trial | set_plan | mark_expired",
     )
     subscription_end: date | None = None
     subscription_start: date | None = None
