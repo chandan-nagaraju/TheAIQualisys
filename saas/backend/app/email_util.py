@@ -16,6 +16,7 @@ from typing import Literal
 from app.config import Settings
 
 SUBSCRIPTION_EXPIRY_SUBJECT = "Your Final inspection reports subscription ends today"
+TRIAL_ENDING_SUBJECT = "Your TheAIQualisys trial is ending — subscribe to keep working"
 SUBSCRIPTION_EXPIRY_REPLY_TO = "admin@theaiqualisys.com"
 
 
@@ -304,6 +305,93 @@ def send_subscription_expiring_email(
         settings,
         to_email,
         SUBSCRIPTION_EXPIRY_SUBJECT,
+        text,
+        html,
+        reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO,
+    )
+
+
+def _trial_ending_text_body(
+    company_name: str,
+    trial_end_formatted: str,
+    subscribe_url: str,
+    *,
+    already_ended: bool,
+) -> str:
+    if already_ended:
+        when = f"your free trial for {company_name} ended on {trial_end_formatted}"
+        ask = "Subscribe now to restore access and continue without interruption."
+    else:
+        when = f"your free trial for {company_name} ends on {trial_end_formatted}"
+        ask = "Please subscribe so your team can keep working without interruption."
+    return (
+        "Hello,\n\n"
+        "Thank you for trying Final inspection reports on TheAIQualisys.\n\n"
+        f"This is a reminder that {when}.\n\n"
+        f"{ask}\n\n"
+        "Choose a plan here:\n\n"
+        f"{subscribe_url}\n\n"
+        "If you have any questions, reply to this email — we are happy to help.\n\n"
+        "Team,\n"
+        "TheAIQualisys\n"
+    )
+
+
+def _trial_ending_html_body(
+    company_name: str,
+    trial_end_formatted: str,
+    subscribe_url: str,
+    *,
+    already_ended: bool,
+) -> str:
+    cn = escape(company_name)
+    df = escape(trial_end_formatted)
+    safe_url = escape(subscribe_url, quote=True)
+    if already_ended:
+        when = f"your free trial for <strong>{cn}</strong> ended on <strong>{df}</strong>"
+        ask = "Subscribe now to restore access and continue without interruption."
+    else:
+        when = f"your free trial for <strong>{cn}</strong> ends on <strong>{df}</strong>"
+        ask = "Please subscribe so your team can keep working without interruption."
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+<body style="margin:0;padding:24px;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.65;color:#1e293b;background:#f8fafc;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;padding:32px;border-radius:12px;border:1px solid #e2e8f0;">
+    <p style="margin:0 0 16px;">Hello,</p>
+    <p style="margin:0 0 16px;">Thank you for trying Final inspection reports on TheAIQualisys.</p>
+    <p style="margin:0 0 16px;">This is a reminder that {when}.</p>
+    <p style="margin:0 0 20px;">{ask}</p>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="{safe_url}" style="display:inline-block;background:#2563eb;color:#ffffff !important;text-decoration:none;font-weight:600;padding:14px 28px;border-radius:10px;font-family:system-ui,sans-serif;">Subscribe</a>
+    </div>
+    <p style="margin:0 0 16px;font-size:15px;">If you have any questions, reply to this email — we are happy to help.</p>
+    <p style="margin:16px 0 4px;">Team,<br />TheAIQualisys</p>
+  </div>
+</body>
+</html>"""
+
+
+def send_trial_ending_email(
+    settings: Settings,
+    to_email: str,
+    *,
+    company_name: str,
+    trial_end_date: date,
+    subscribe_url: str,
+    already_ended: bool = False,
+) -> None:
+    trial_end_formatted = _format_subscription_end_human(trial_end_date)
+    text = _trial_ending_text_body(
+        company_name, trial_end_formatted, subscribe_url, already_ended=already_ended
+    )
+    html = _trial_ending_html_body(
+        company_name, trial_end_formatted, subscribe_url, already_ended=already_ended
+    )
+    _send_text_and_html_email(
+        settings,
+        to_email,
+        TRIAL_ENDING_SUBJECT,
         text,
         html,
         reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO,

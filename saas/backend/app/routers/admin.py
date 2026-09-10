@@ -14,6 +14,7 @@ from app.email_util import (
     build_admin_thank_you_email,
     is_email_configured,
     send_plain_text_email,
+    send_trial_ending_email,
 )
 from app.fir_analytics import build_fir_intelligence, list_fir_invoice_months
 from app.models import (
@@ -427,10 +428,10 @@ def send_manual_subscription_reminder(
             detail="No active (non-blocked) workspace users to email for this tenant.",
         )
 
-    if body.reminder_type in ("ending_soon", "already_ended") and c.subscription_end is None:
+    if body.reminder_type in ("ending_soon", "already_ended") and c.subscription_end is None and c.trial_end_date is None:
         raise HTTPException(
             status_code=400,
-            detail="This tenant has no subscription end date; activate or extend the subscription first.",
+            detail="This tenant has no trial end date or subscription end date.",
         )
 
     report_total = count_fir_reports_total(db, company_id)
@@ -501,25 +502,41 @@ def send_manual_subscription_reminder(
                 "total_time_saved_hours": hours_saved,
             }
     else:
-        assert c.subscription_end is not None  # guarded above for ending/already
-        end_date_display = c.subscription_end.strftime("%B %d, %Y")
-        renewal_link = f"{settings.public_app_url.rstrip('/')}/dashboard/billing"
-        subject, text = build_admin_manual_subscription_reminder_email(
-            reminder_type=body.reminder_type,
-            customer_name=c.company_name,
-            plan_name=plan_name,
-            end_date_display=end_date_display,
-            current_month_name=current_month_name,
-            current_month_report_count=report_month,
-            total_report_count=report_total,
-            renewal_link=renewal_link,
-        )
+        trial_manual = c.subscription_end is None
+        if trial_manual:
+            assert c.trial_end_date is not None
+            subject = ""
+            text = ""
+        else:
+            end_date_display = c.subscription_end.strftime("%B %d, %Y")
+            renewal_link = f"{settings.public_app_url.rstrip('/')}/dashboard/billing"
+            subject, text = build_admin_manual_subscription_reminder_email(
+                reminder_type=body.reminder_type,
+                customer_name=c.company_name,
+                plan_name=plan_name,
+                end_date_display=end_date_display,
+                current_month_name=current_month_name,
+                current_month_report_count=report_month,
+                total_report_count=report_total,
+                renewal_link=renewal_link,
+            )
 
     errors: list[str] = []
     sent = 0
+    subscribe_url = f"{settings.public_app_url.rstrip('/')}/workspace/pricing"
     for u in users:
         try:
-            send_plain_text_email(settings, u.email, subject, text)
+            if body.reminder_type != "thank_you" and c.subscription_end is None:
+                send_trial_ending_email(
+                    settings,
+                    u.email,
+                    company_name=c.company_name,
+                    trial_end_date=c.trial_end_date,
+                    subscribe_url=subscribe_url,
+                    already_ended=body.reminder_type == "already_ended" or c.trial_end_date < today,
+                )
+            else:
+                send_plain_text_email(settings, u.email, subject, text)
             sent += 1
         except Exception as exc:  # noqa: BLE001 — surface provider errors to admin
             errors.append(f"{u.email}: {exc}")

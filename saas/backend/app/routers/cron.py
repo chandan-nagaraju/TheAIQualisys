@@ -23,11 +23,14 @@ def send_subscription_expiry_reminders(
     ),
 ):
     """
-    **Last day** (`subscription_end == today` in ``SUBSCRIPTION_REMINDER_TIMEZONE``): morning + evening slots.
+    **Paid last day** (`subscription_end == today`): morning + evening slots.
 
-    **After expiry** (`subscription_end < today_local`): morning only, once per local day, until renewal.
+    **Paid after expiry** (`subscription_end < today_local`): morning only, once per local day.
 
-    **Renewed** (`subscription_end > today_local`): excluded — no emails.
+    **Trial ending** (`trial_end_date` from 2 days before through 1 day after, while not on a paid plan):
+    morning (and evening on the last trial day). Emails ask the user to subscribe.
+
+    **Renewed / paid active** (`subscription_end > today_local`): excluded.
 
     The API process also runs the same logic **once per local day** at
     ``subscription_reminder_morning_hour``:00 when ``ENABLE_AUTOMATIC_SUBSCRIPTION_REMINDERS`` is true
