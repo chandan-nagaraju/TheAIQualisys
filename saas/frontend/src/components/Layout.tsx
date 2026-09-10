@@ -235,6 +235,9 @@ export default function Layout() {
                 <NavLink className={navItemCls} to="/admin/users">
                   Users &amp; customers
                 </NavLink>
+                <NavLink className={navItemCls} to="/admin/admins">
+                  Platform admins
+                </NavLink>
                 <NavLink className={navItemCls} to="/admin/pricing">
                   Pricing management
                 </NavLink>

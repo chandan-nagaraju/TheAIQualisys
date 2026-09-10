@@ -13,6 +13,7 @@ import AdminDesktopLicensingPage from "./pages/AdminDesktopLicensingPage";
 import AdminDesktopLicensesPage from "./pages/AdminDesktopLicensesPage";
 import AdminDesktopPaymentsPage from "./pages/AdminDesktopPaymentsPage";
 import AdminPricingPage from "./pages/AdminPricingPage";
+import AdminPlatformAdminsPage from "./pages/AdminPlatformAdminsPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import CompanyDashboardPage from "./pages/CompanyDashboardPage";
 import LandingPage from "./pages/LandingPage";
@@ -192,6 +193,14 @@ export default function App() {
           element={
             <AdminRoute>
               <AdminUsersPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/admins"
+          element={
+            <AdminRoute>
+              <AdminPlatformAdminsPage />
             </AdminRoute>
           }
         />
