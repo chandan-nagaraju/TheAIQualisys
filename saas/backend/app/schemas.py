@@ -181,6 +181,37 @@ class AdminLoginRequest(BaseModel):
     password: str
 
 
+class PlatformAdminOut(BaseModel):
+    id: int
+    email: str
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class PlatformAdminCreateBody(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def _passwords_match(self):
+        if self.password != self.confirm_password:
+            raise ValueError("password and confirm_password must match")
+        return self
+
+
+class PlatformAdminSetPasswordBody(BaseModel):
+    password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def _passwords_match(self):
+        if self.password != self.confirm_password:
+            raise ValueError("password and confirm_password must match")
+        return self
+
+
 class AdminCompanySummary(BaseModel):
     id: int
     company_name: str

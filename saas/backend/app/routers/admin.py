@@ -46,11 +46,15 @@ from app.schemas import (
     CompanyOut,
     ModulePricingPatch,
     ModulePricingPublicOut,
+    PlatformAdminCreateBody,
+    PlatformAdminOut,
+    PlatformAdminSetPasswordBody,
     TokenResponse,
 )
 from app.security import (
     create_access_token,
     create_admin_token,
+    hash_password,
     verify_password_and_upgrade,
 )
 from app.subscription_logic import (
@@ -99,6 +103,73 @@ def admin_login(body: AdminLoginRequest, db: Session = Depends(get_db_session)):
         db.commit()
     token = create_admin_token(str(admin.id))
     return TokenResponse(access_token=token)
+
+
+@router.get("/me", response_model=PlatformAdminOut)
+def admin_me(admin: PlatformAdmin = Depends(get_platform_admin)):
+    return PlatformAdminOut.model_validate(admin)
+
+
+@router.get("/platform-admins", response_model=list[PlatformAdminOut])
+def list_platform_admins(
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    rows = db.execute(select(PlatformAdmin).order_by(PlatformAdmin.id.asc())).scalars().all()
+    return [PlatformAdminOut.model_validate(r) for r in rows]
+
+
+@router.post("/platform-admins", response_model=PlatformAdminOut)
+def create_platform_admin(
+    body: PlatformAdminCreateBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    email = str(body.email).lower().strip()
+    existing = db.execute(select(PlatformAdmin).where(PlatformAdmin.email == email)).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="A platform admin with this email already exists")
+    row = PlatformAdmin(email=email, password_hash=hash_password(body.password))
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return PlatformAdminOut.model_validate(row)
+
+
+@router.patch("/platform-admins/{admin_id}", response_model=PlatformAdminOut)
+def set_platform_admin_password(
+    admin_id: int,
+    body: PlatformAdminSetPasswordBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = db.get(PlatformAdmin, admin_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Platform admin not found")
+    row.password_hash = hash_password(body.password)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return PlatformAdminOut.model_validate(row)
+
+
+@router.delete("/platform-admins/{admin_id}")
+def delete_platform_admin(
+    admin_id: int,
+    actor: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    if admin_id == actor.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own admin account")
+    row = db.get(PlatformAdmin, admin_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Platform admin not found")
+    remaining = db.execute(select(func.count()).select_from(PlatformAdmin)).scalar_one()
+    if remaining <= 1:
+        raise HTTPException(status_code=400, detail="Cannot delete the last platform admin")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/dashboard", response_model=AdminDashboardResponse)

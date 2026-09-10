@@ -97,6 +97,12 @@ export default function AdminDashboardPage() {
             Users &amp; customers (all tenants)
           </Link>
           <Link
+            to="/admin/admins"
+            className="inline-flex w-fit rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
+          >
+            Platform admins
+          </Link>
+          <Link
             to="/admin/pricing"
             className="inline-flex w-fit rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
           >
