@@ -110,7 +110,7 @@ export default function AdminCompanyPage() {
   async function activate(e: FormEvent) {
     e.preventDefault();
     if (plan === "trial") {
-      setMsg("Choose basic, pro, or enterprise to activate a paid plan.");
+      await patch({ action: "activate", plan_type: "trial", extend_days: extendDays || 7 });
       return;
     }
     await patch({ action: "activate", plan_type: plan });
@@ -202,7 +202,7 @@ export default function AdminCompanyPage() {
             type="submit"
             className="h-10 w-full rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500 sm:w-auto sm:self-end sm:justify-self-start"
           >
-            Activate subscription
+            Activate subscription / trial
           </button>
         </form>
 
@@ -229,7 +229,13 @@ export default function AdminCompanyPage() {
           <button
             type="button"
             className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800"
-            onClick={() => patch({ action: "set_plan", plan_type: plan })}
+            onClick={() =>
+              patch(
+                plan === "trial"
+                  ? { action: "set_plan", plan_type: "trial", extend_days: extendDays || 7 }
+                  : { action: "set_plan", plan_type: plan },
+              )
+            }
           >
             Set plan only
           </button>
@@ -241,6 +247,11 @@ export default function AdminCompanyPage() {
             Mark expired
           </button>
         </div>
+        <p className="text-sm text-slate-400">
+          Trial + Activate (or Set plan only) restarts the trial for Extend (days), sets plan to{" "}
+          <span className="text-slate-200">trial</span>, and clears paid subscription dates. Choose basic, pro, or
+          enterprise to activate a paid plan.
+        </p>
         {msg && <p className="text-sm text-emerald-400">{msg}</p>}
       </div>
 

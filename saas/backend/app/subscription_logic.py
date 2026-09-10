@@ -282,6 +282,29 @@ def effective_plan_type(company: Company) -> str:
     return company.plan_type
 
 
+def put_company_on_trial(company: Company, today: date, days: int) -> None:
+    """Restart a calendar trial and drop any paid subscription window.
+
+    Admin ``activate``/``set_plan`` with plan=trial must clear paid dates so
+    ``sync_subscription_status_from_dates`` does not immediately put the tenant
+    back on ``active``/``basic``.
+    """
+    length = days if days and days > 0 else 7
+    company.plan_type = PlanType.trial.value
+    company.subscription_status = SubscriptionStatus.trial.value
+    company.subscription_start = None
+    company.subscription_end = None
+    if company.trial_start_date is None or company.trial_start_date > today:
+        company.trial_start_date = today
+    company.trial_end_date = today + timedelta(days=length)
+
+
+def close_overlapping_trial_for_paid_activation(company: Company, today: date) -> None:
+    """End the trial window so a paid activate is not overwritten by date sync."""
+    if company.trial_end_date >= today:
+        company.trial_end_date = today - timedelta(days=1)
+
+
 def subscription_is_active(company: Company, today: date | None = None) -> bool:
     """
     True when the company's paid subscription window covers `today` (calendar only).
