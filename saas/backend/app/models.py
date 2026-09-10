@@ -26,6 +26,7 @@ from app.database import Base
 
 
 class PlanType(str, enum.Enum):
+    trial = "trial"
     basic = "basic"
     pro = "pro"
     enterprise = "enterprise"

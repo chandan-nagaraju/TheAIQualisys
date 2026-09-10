@@ -181,7 +181,7 @@ def complete_signup(body: CompleteSignupBody, db: Session = Depends(get_db_sessi
         vendor_code=vc,
         trial_start_date=today,
         trial_end_date=trial_end,
-        plan_type=PlanType.basic.value,
+        plan_type=PlanType.trial.value,
         subscription_status=SubscriptionStatus.trial.value,
     )
     db.add(company)

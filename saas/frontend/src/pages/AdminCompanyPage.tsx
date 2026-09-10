@@ -109,6 +109,10 @@ export default function AdminCompanyPage() {
 
   async function activate(e: FormEvent) {
     e.preventDefault();
+    if (plan === "trial") {
+      setMsg("Choose basic, pro, or enterprise to activate a paid plan.");
+      return;
+    }
     await patch({ action: "activate", plan_type: plan });
   }
 
@@ -188,6 +192,7 @@ export default function AdminCompanyPage() {
               value={plan}
               onChange={(e) => setPlan(e.target.value)}
             >
+              <option value="trial">trial</option>
               <option value="basic">basic</option>
               <option value="pro">pro</option>
               <option value="enterprise">enterprise</option>

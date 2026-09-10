@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.dates import format_date_english
-from app.models import Company, FirReportEvent, FirUploadLog, InvoiceV2, SubscriptionStatus
+from app.models import Company, FirReportEvent, FirUploadLog, InvoiceV2, PlanType, SubscriptionStatus
 from app.pricing_catalog import invoice_cap_for_plan
 
 FIR_WORKSPACE_FORBIDDEN_CODE = "FIR_WORKSPACE_FORBIDDEN"
@@ -273,6 +273,13 @@ def trial_days_remaining_company(company: Company, today: date | None = None) ->
     if not trial_is_valid(company, today):
         return None
     return max(0, (company.trial_end_date - today).days)
+
+
+def effective_plan_type(company: Company) -> str:
+    """Plan label for admin UI: trial tenants show as trial, not the placeholder paid plan."""
+    if company.subscription_status == SubscriptionStatus.trial.value:
+        return PlanType.trial.value
+    return company.plan_type
 
 
 def subscription_is_active(company: Company, today: date | None = None) -> bool:

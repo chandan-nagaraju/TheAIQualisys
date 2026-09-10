@@ -60,6 +60,7 @@ from app.subscription_logic import (
     sync_subscription_status_from_dates,
     thank_you_engagement_section_rows,
     top_fir_part_thank_you_table_rows,
+    effective_plan_type,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -73,8 +74,12 @@ _THANK_YOU_ALL_ENGAGEMENT_KEYS_AND_TITLES: list[tuple[str, str]] = [
 ]
 
 
+_PAID_PLAN_TYPES = (PlanType.basic.value, PlanType.pro.value, PlanType.enterprise.value)
+
+
 def _company_out(c: Company) -> CompanyOut:
-    return CompanyOut.model_validate(c)
+    out = CompanyOut.model_validate(c)
+    return out.model_copy(update={"plan_type": effective_plan_type(c)})
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -165,7 +170,7 @@ def list_all_tenant_users(
             company_id=c.id,
             company_name=c.company_name,
             company_vendor_code=c.vendor_code,
-            plan_type=c.plan_type,
+            plan_type=effective_plan_type(c),
             subscription_status=c.subscription_status,
         )
         for u, c in rows
@@ -301,7 +306,7 @@ def list_companies(
                 id=c.id,
                 company_name=c.company_name,
                 vendor_code=c.vendor_code,
-                plan_type=c.plan_type,
+                plan_type=effective_plan_type(c),
                 subscription_status=c.subscription_status,
                 monthly_usage=inv,
                 monthly_fir_reports=fir,
@@ -348,8 +353,8 @@ def patch_company(
         c.subscription_start = start
         c.subscription_end = end
         if body.plan_type:
-            if body.plan_type not in (PlanType.basic.value, PlanType.pro.value, PlanType.enterprise.value):
-                raise HTTPException(status_code=400, detail="Invalid plan_type")
+            if body.plan_type not in _PAID_PLAN_TYPES:
+                raise HTTPException(status_code=400, detail="Activate requires a paid plan (basic, pro, or enterprise)")
             c.plan_type = body.plan_type
 
     elif body.action == "extend":
@@ -368,7 +373,7 @@ def patch_company(
     elif body.action == "set_plan":
         if not body.plan_type:
             raise HTTPException(status_code=400, detail="plan_type required")
-        if body.plan_type not in (PlanType.basic.value, PlanType.pro.value, PlanType.enterprise.value):
+        if body.plan_type not in (PlanType.trial.value, *_PAID_PLAN_TYPES):
             raise HTTPException(status_code=400, detail="Invalid plan_type")
         c.plan_type = body.plan_type
 
@@ -440,7 +445,15 @@ def send_manual_subscription_reminder(
     plan_name = c.plan_type.title()
 
     thank_you_audit: dict | None = None
-    if body.reminder_type == "thank_you":
+    if body.reminder_type == "trial_ending":
+        if c.trial_end_date is None:
+            raise HTTPException(
+                status_code=400,
+                detail="This tenant has no trial end date; cannot send a trial reminder.",
+            )
+        subject = ""
+        text = ""
+    elif body.reminder_type == "thank_you":
         assert body.thank_you_category is not None
         # Pass:
         # (customer_email,)
@@ -526,7 +539,11 @@ def send_manual_subscription_reminder(
     subscribe_url = f"{settings.public_app_url.rstrip('/')}/workspace/pricing"
     for u in users:
         try:
-            if body.reminder_type != "thank_you" and c.subscription_end is None:
+            if body.reminder_type == "trial_ending" or (
+                body.reminder_type != "thank_you" and c.subscription_end is None
+            ):
+                if c.trial_end_date is None:
+                    raise HTTPException(status_code=400, detail="This tenant has no trial end date.")
                 send_trial_ending_email(
                     settings,
                     u.email,
@@ -647,7 +664,7 @@ def company_usage(
         "trial_end": c.trial_end_date.isoformat(),
         "subscription_start": c.subscription_start.isoformat() if c.subscription_start else None,
         "subscription_end": c.subscription_end.isoformat() if c.subscription_end else None,
-        "plan_type": c.plan_type,
+        "plan_type": effective_plan_type(c),
         "subscription_status": c.subscription_status,
     }
 

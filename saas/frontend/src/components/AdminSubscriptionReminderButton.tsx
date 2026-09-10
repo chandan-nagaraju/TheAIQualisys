@@ -37,7 +37,7 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
     setStep("menu");
   }
 
-  async function send(reminderType: "ending_soon" | "already_ended") {
+  async function send(reminderType: "ending_soon" | "already_ended" | "trial_ending") {
     setBusy(true);
     setFeedback(null);
     try {
@@ -141,6 +141,17 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
                   Choose the message type. Email goes to every non-blocked workspace user for this company.
                 </p>
                 <div className="mt-6 flex flex-col gap-3">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="rounded-lg border border-slate-600 bg-slate-950 px-4 py-3 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:opacity-50"
+                    onClick={() => void send("trial_ending")}
+                  >
+                    <span className="font-medium text-white">Trial users — subscribe reminder</span>
+                    <span className="mt-1 block text-xs text-slate-400">
+                      Trial ending or ended — ask them to subscribe so work is not interrupted.
+                    </span>
+                  </button>
                   <button
                     type="button"
                     disabled={busy}

@@ -163,6 +163,17 @@ def test_thank_you_performance_email_contains_summary_sections() -> None:
     assert "| 1    | P1          | 40                | 7                 | May 15, 2026         |" in body
 
 
+def test_effective_plan_type_is_trial_while_in_trial() -> None:
+    from types import SimpleNamespace
+
+    from app.subscription_logic import effective_plan_type
+
+    c = SimpleNamespace(subscription_status="trial", plan_type="basic")
+    assert effective_plan_type(c) == "trial"
+    c.subscription_status = "active"
+    assert effective_plan_type(c) == "basic"
+
+
 def test_thank_you_send_body_requires_category() -> None:
     from pydantic import ValidationError
 
@@ -176,6 +187,8 @@ def test_thank_you_send_body_requires_category() -> None:
     assert b.thank_you_category == "new"
     b_all = AdminSubscriptionReminderSendBody(reminder_type="thank_you", thank_you_category="all")
     assert b_all.thank_you_category == "all"
+    trial = AdminSubscriptionReminderSendBody(reminder_type="trial_ending")
+    assert trial.reminder_type == "trial_ending"
 
 
 def test_thank_you_all_category_performance_email() -> None:
