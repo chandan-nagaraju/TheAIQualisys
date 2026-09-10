@@ -1661,7 +1661,7 @@
   }
 
   function firShouldFitOneLandscapePage() {
-    return firTotalSerialNumberCount() > 0 && firTotalSerialNumberCount() <= 10;
+    return firTotalSerialNumberCount() > 0 && firTotalSerialNumberCount() <= 15;
   }
 
   function firGetJsPdfConstructor() {
