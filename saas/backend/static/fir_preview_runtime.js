@@ -1106,7 +1106,8 @@
       }
     }
 
-    // "95.5 - 96" / "95.5 to 96" explicit limits (not ± tolerance)
+    // "95.5 - 96" / "95.5 to 96" explicit limits (not ± / not 14-0.3 unilateral minus).
+    // Shop-floor "14-0.3" means 14.0 with −0.3 mm (13.7…14), not a band from 0.3 to 14.
     if (!/±/.test(s)) {
       const dashRange = s.match(/^(\d+(?:\.\d+)?)\s*(?:[-–—]|to)\s*(\d+(?:\.\d+)?)\s*$/i);
       if (dashRange) {
@@ -1115,7 +1116,9 @@
         if (!isNaN(a) && !isNaN(b)) {
           const lo = Math.min(a, b);
           const hi = Math.max(a, b);
-          return { min: lo, max: hi, nominal: (lo + hi) / 2, step: isRadius ? 0.5 : null, isRadius, isAngle };
+          if (hi > 0 && lo / hi >= 0.5) {
+            return { min: lo, max: hi, nominal: (lo + hi) / 2, step: isRadius ? 0.5 : null, isRadius, isAngle };
+          }
         }
       }
     }
