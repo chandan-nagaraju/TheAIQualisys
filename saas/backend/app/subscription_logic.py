@@ -282,6 +282,35 @@ def effective_plan_type(company: Company) -> str:
     return company.plan_type
 
 
+def put_company_on_trial(company: Company, today: date, days: int) -> None:
+    """Admin chose to put the tenant on trial for ``days`` from today.
+
+    Paid subscription dates are left as-is. Date sync prefers an in-range trial
+    window, so the tenant shows as trial until ``trial_end_date``.
+    """
+    length = days if days and days > 0 else 7
+    company.plan_type = PlanType.trial.value
+    company.subscription_status = SubscriptionStatus.trial.value
+    if company.trial_start_date is None or company.trial_start_date > today:
+        company.trial_start_date = today
+    company.trial_end_date = today + timedelta(days=length)
+
+
+def extend_company_trial(company: Company, today: date, days: int) -> None:
+    """Add calendar days to the trial end. Does not change paid subscription dates."""
+    if days <= 0:
+        raise ValueError("days must be positive")
+    base = company.trial_end_date if company.trial_end_date >= today else today
+    company.trial_end_date = base + timedelta(days=days)
+    company.plan_type = PlanType.trial.value
+
+
+def close_overlapping_trial_for_paid_activation(company: Company, today: date) -> None:
+    """End the trial window so a paid activate is not overwritten by date sync."""
+    if company.trial_end_date >= today:
+        company.trial_end_date = today - timedelta(days=1)
+
+
 def subscription_is_active(company: Company, today: date | None = None) -> bool:
     """
     True when the company's paid subscription window covers `today` (calendar only).

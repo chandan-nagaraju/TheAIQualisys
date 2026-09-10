@@ -110,7 +110,7 @@ export default function AdminCompanyPage() {
   async function activate(e: FormEvent) {
     e.preventDefault();
     if (plan === "trial") {
-      setMsg("Choose basic, pro, or enterprise to activate a paid plan.");
+      await patch({ action: "activate", plan_type: "trial", extend_days: extendDays || 7 });
       return;
     }
     await patch({ action: "activate", plan_type: plan });
@@ -202,11 +202,11 @@ export default function AdminCompanyPage() {
             type="submit"
             className="h-10 w-full rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500 sm:w-auto sm:self-end sm:justify-self-start"
           >
-            Activate subscription
+            Activate subscription / trial
           </button>
         </form>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(12rem,16rem)_auto] sm:items-end sm:gap-x-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(12rem,16rem)_auto_auto] sm:items-end sm:gap-x-3">
           <div className="min-w-0">
             <label className="block text-xs text-slate-500">Extend (days)</label>
             <input
@@ -216,6 +216,13 @@ export default function AdminCompanyPage() {
               onChange={(e) => setExtendDays(Number(e.target.value))}
             />
           </div>
+          <button
+            type="button"
+            className="h-10 w-full rounded-lg border border-slate-600 px-4 text-sm text-slate-100 hover:bg-slate-800 sm:w-auto sm:self-end sm:justify-self-start"
+            onClick={() => patch({ action: "extend_trial", extend_days: extendDays })}
+          >
+            Extend trial
+          </button>
           <button
             type="button"
             className="h-10 w-full rounded-lg border border-slate-600 px-4 text-sm text-slate-100 hover:bg-slate-800 sm:w-auto sm:self-end sm:justify-self-start"
@@ -241,6 +248,10 @@ export default function AdminCompanyPage() {
             Mark expired
           </button>
         </div>
+        <p className="text-sm text-slate-400">
+          You choose the action: activate trial (uses Extend days from today), extend trial, extend the paid
+          subscription, or set the plan label only.
+        </p>
         {msg && <p className="text-sm text-emerald-400">{msg}</p>}
       </div>
 

@@ -61,6 +61,9 @@ from app.subscription_logic import (
     thank_you_engagement_section_rows,
     top_fir_part_thank_you_table_rows,
     effective_plan_type,
+    put_company_on_trial,
+    extend_company_trial,
+    close_overlapping_trial_for_paid_activation,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -346,7 +349,11 @@ def patch_company(
 
     today = billing_today()
 
-    if body.action == "activate":
+    if body.action == "activate" and body.plan_type == PlanType.trial.value:
+        days = body.extend_days if body.extend_days and body.extend_days > 0 else 7
+        put_company_on_trial(c, today, days)
+
+    elif body.action == "activate":
         end = body.subscription_end or (today + timedelta(days=30))
         start = body.subscription_start or today
         c.subscription_status = SubscriptionStatus.active.value
@@ -356,6 +363,7 @@ def patch_company(
             if body.plan_type not in _PAID_PLAN_TYPES:
                 raise HTTPException(status_code=400, detail="Activate requires a paid plan (basic, pro, or enterprise)")
             c.plan_type = body.plan_type
+        close_overlapping_trial_for_paid_activation(c, today)
 
     elif body.action == "extend":
         if not body.extend_days and body.subscription_end is None:
@@ -369,6 +377,11 @@ def patch_company(
             c.subscription_status = SubscriptionStatus.active.value
         if c.subscription_start is None:
             c.subscription_start = today
+
+    elif body.action == "extend_trial":
+        if not body.extend_days or body.extend_days <= 0:
+            raise HTTPException(status_code=400, detail="Provide extend_days")
+        extend_company_trial(c, today, body.extend_days)
 
     elif body.action == "set_plan":
         if not body.plan_type:

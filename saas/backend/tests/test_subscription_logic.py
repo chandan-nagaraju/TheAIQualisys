@@ -174,6 +174,88 @@ def test_effective_plan_type_is_trial_while_in_trial() -> None:
     assert effective_plan_type(c) == "basic"
 
 
+def test_put_company_on_trial_keeps_paid_dates_and_shows_trial() -> None:
+    from types import SimpleNamespace
+    from datetime import date
+
+    from app.subscription_logic import (
+        effective_plan_type,
+        put_company_on_trial,
+        sync_subscription_status_from_dates,
+    )
+
+    today = date(2026, 9, 10)
+    c = SimpleNamespace(
+        trial_start_date=date(2026, 9, 2),
+        trial_end_date=date(2026, 9, 9),
+        subscription_start=date(2026, 9, 10),
+        subscription_end=date(2026, 9, 14),
+        plan_type="basic",
+        subscription_status="active",
+    )
+    put_company_on_trial(c, today, days=4)
+    sync_subscription_status_from_dates(c, today)
+    assert c.plan_type == "trial"
+    assert c.subscription_status == "trial"
+    assert c.subscription_start == date(2026, 9, 10)
+    assert c.subscription_end == date(2026, 9, 14)
+    assert c.trial_end_date == date(2026, 9, 14)
+    assert effective_plan_type(c) == "trial"
+
+
+def test_extend_company_trial_from_today_when_trial_already_ended() -> None:
+    from types import SimpleNamespace
+    from datetime import date
+
+    from app.subscription_logic import (
+        effective_plan_type,
+        extend_company_trial,
+        sync_subscription_status_from_dates,
+    )
+
+    today = date(2026, 9, 10)
+    c = SimpleNamespace(
+        trial_start_date=date(2026, 9, 2),
+        trial_end_date=date(2026, 9, 9),
+        subscription_start=date(2026, 9, 10),
+        subscription_end=date(2026, 9, 14),
+        plan_type="basic",
+        subscription_status="active",
+    )
+    extend_company_trial(c, today, days=4)
+    sync_subscription_status_from_dates(c, today)
+    assert c.trial_end_date == date(2026, 9, 14)
+    assert c.plan_type == "trial"
+    assert c.subscription_status == "trial"
+    assert c.subscription_end == date(2026, 9, 14)
+    assert effective_plan_type(c) == "trial"
+
+
+def test_paid_activate_closes_trial_so_sync_stays_active() -> None:
+    from types import SimpleNamespace
+    from datetime import date
+
+    from app.subscription_logic import (
+        close_overlapping_trial_for_paid_activation,
+        effective_plan_type,
+        sync_subscription_status_from_dates,
+    )
+
+    today = date(2026, 9, 10)
+    c = SimpleNamespace(
+        trial_start_date=date(2026, 9, 2),
+        trial_end_date=date(2026, 9, 20),
+        subscription_start=today,
+        subscription_end=date(2026, 10, 10),
+        plan_type="basic",
+        subscription_status="active",
+    )
+    close_overlapping_trial_for_paid_activation(c, today)
+    sync_subscription_status_from_dates(c, today)
+    assert c.subscription_status == "active"
+    assert effective_plan_type(c) == "basic"
+
+
 def test_thank_you_send_body_requires_category() -> None:
     from pydantic import ValidationError
 
