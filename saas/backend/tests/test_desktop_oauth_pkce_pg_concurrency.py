@@ -67,7 +67,7 @@ def _bootstrap(engine) -> None:
             )
         )
 
-    migration = Path(__file__).resolve().parents[1] / "migrations" / "038_desktop_oauth_pkce.sql"
+    migration = Path(__file__).resolve().parents[1] / "migrations" / "039_desktop_oauth_pkce.sql"
     with engine.begin() as conn:
         conn.execute(text(migration.read_text()))
 

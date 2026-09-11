@@ -1,4 +1,4 @@
-"""SQLAlchemy models for desktop OAuth — matches migration 038."""
+"""SQLAlchemy models for desktop OAuth — matches migration 039."""
 
 from __future__ import annotations
 

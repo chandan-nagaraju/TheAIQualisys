@@ -1,14 +1,14 @@
 -- Phase 9C-B: Desktop OAuth 2.0 Authorization Code + PKCE foundation.
--- Additive only. No production client seed. No licensing/paid data changes.
--- Do NOT apply against production from this agent; report as deploy-time step.
+-- Additive only. No client seed (staging or production) — register clients in ops.
+-- 038 is Cadence plans; this file is 039 so both apply on polishing-the-fir / production.
 
 DO $$
 BEGIN
   IF to_regclass('public.companies') IS NULL THEN
-    RAISE EXCEPTION '038 preflight failed: companies table missing';
+    RAISE EXCEPTION '039 preflight failed: companies table missing';
   END IF;
   IF to_regclass('public.company_users') IS NULL THEN
-    RAISE EXCEPTION '038 preflight failed: company_users table missing';
+    RAISE EXCEPTION '039 preflight failed: company_users table missing';
   END IF;
 END $$;
 
@@ -30,7 +30,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_oauth_desktop_clients_client_id
     ON oauth_desktop_clients (client_id);
 
 COMMENT ON TABLE oauth_desktop_clients IS
-  'Registered native desktop OAuth public clients (no client secret). Staging-only registration; do not seed production here.';
+  'Registered native desktop OAuth public clients (no client secret). Do not seed client ids in this migration; register staging vs production clients in ops.';
 
 CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
     id SERIAL PRIMARY KEY,

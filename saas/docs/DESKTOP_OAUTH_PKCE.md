@@ -1,6 +1,6 @@
 # Desktop OAuth 2.0 (Authorization Code + PKCE) — Phase 9C-B
 
-**Status:** Foundation implemented in code. **Production deployment is NOT AUTHORIZED.**
+**Status:** Foundation on `polishing-the-fir` as migration **039**. Register a **production** OAuth client in ops (do not reuse `qr-code-desktop-staging`).
 
 This document describes the AIQualisys-side contract for native desktop public clients
 (starting with QR Code Desktop). QR desktop integration happens in a later phase.
@@ -207,7 +207,7 @@ a distributed rate limiter. Do not treat the current limiter as production-grade
 - Admin impersonation cannot authorize desktop sessions
 - Audit events without secrets
 - `oauth_authorization_codes.client_id` and `oauth_refresh_sessions.client_id` FK to
-  `oauth_desktop_clients.client_id` (migration 038)
+  `oauth_desktop_clients.client_id` (migration 039)
 
 ## Audit events
 
@@ -221,7 +221,7 @@ a distributed rate limiter. Do not treat the current limiter as production-grade
 
 ## Migration
 
-`038_desktop_oauth_pkce.sql` — additive tables only. Do not apply to production from this agent.
+`039_desktop_oauth_pkce.sql` — additive tables only. Cadence already occupies `038`. API startup applies this via `schema_migrations`.
 
 ## Staging requirements
 
@@ -233,4 +233,4 @@ QR → system browser → AIQualisys login → consent → authorization code �
 
 ## Production
 
-**NOT AUTHORIZED.** Do not register production clients, do not enable production licensing, do not deploy this foundation to production without explicit approval.
+Schema is authorized on the production API when `polishing-the-fir` (or a merge of it) is deployed. Do **not** insert the staging client id. Register a production public client (`enabled=1`) with the QR redirect URI, pin the production Ed25519 public key in the QR build, and point that build at the production API.
