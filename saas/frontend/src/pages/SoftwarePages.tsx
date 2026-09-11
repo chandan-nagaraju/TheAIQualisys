@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api";
+import { CADENCE_CATALOG_LINE, cadenceMeta, sortPlansByDuration } from "../desktopCadence";
 
 type Plan = {
   id: number;
@@ -117,7 +118,8 @@ export function SoftwareCatalogPage() {
         </div>
       </div>
       <p className="text-sm text-slate-400">
-        Desktop applications for Windows. Each seat is one independent license for one PC.
+        Desktop applications for Windows. Each seat is one independent license for one PC. Cadence™ plans: Pulse,
+        Season, Horizon, Orbit.
       </p>
       {loading && <p className="text-sm text-slate-500">Loading catalog…</p>}
       {disabled && (
@@ -138,7 +140,7 @@ export function SoftwareCatalogPage() {
                 <h2 className="text-lg font-semibold text-white">{p.name}</h2>
                 <p className="mt-1 text-sm text-slate-400">{p.description || p.code}</p>
                 {from != null && (
-                  <p className="mt-2 text-sm text-slate-300">From {inr(from)} / seat / year</p>
+                  <p className="mt-2 text-sm text-slate-300">From {inr(from)} / seat</p>
                 )}
                 {p.trial_enabled ? (
                   <p className="mt-1 text-xs text-slate-500">
@@ -194,7 +196,11 @@ export function SoftwareProductPage() {
         const p = rows.find((r) => r.code === productCode) || null;
         setProduct(p);
         setCtx(checkout);
-        if (p?.plans[0]) setPlanId(p.plans[0].id);
+        if (p?.plans.length) {
+          const ordered = sortPlansByDuration(p.plans);
+          const orbit = ordered.find((pl) => cadenceMeta(pl.code, pl.duration_days).bestValue);
+          setPlanId((orbit || ordered[ordered.length - 1] || ordered[0]).id);
+        }
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load");
       }
@@ -204,9 +210,13 @@ export function SoftwareProductPage() {
     };
   }, [nav, productCode]);
 
+  const plansOrdered = useMemo(
+    () => (product ? sortPlansByDuration(product.plans) : []),
+    [product],
+  );
   const plan = useMemo(
-    () => product?.plans.find((pl) => pl.id === planId) || null,
-    [product, planId],
+    () => plansOrdered.find((pl) => pl.id === planId) || product?.plans.find((pl) => pl.id === planId) || null,
+    [product, planId, plansOrdered],
   );
   const seatN = Math.max(1, parseInt(seats, 10) || 1);
   const total = plan ? plan.price_inr * seatN : 0;
@@ -266,12 +276,15 @@ export function SoftwareProductPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 px-4 py-10">
+    <div className="mx-auto max-w-4xl space-y-6 px-4 py-10">
       <Link to="/software" className="text-sm text-brand-500 hover:underline">
         ← Software
       </Link>
       <h1 className="text-2xl font-semibold text-white">{product.name}</h1>
-      <p className="text-sm text-slate-400">{product.description}</p>
+      <p className="text-sm text-slate-400">{product.description || CADENCE_CATALOG_LINE}</p>
+      {product.description && product.description !== CADENCE_CATALOG_LINE ? (
+        <p className="text-sm text-slate-500">{CADENCE_CATALOG_LINE}</p>
+      ) : null}
 
       {product.trial_enabled ? (
         <div className="rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-4">
@@ -294,30 +307,44 @@ export function SoftwareProductPage() {
 
       {step === "plan" && (
         <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-5">
-          <h2 className="text-sm font-semibold text-slate-200">Select plan</h2>
-          <div className="space-y-2">
-            {product.plans.map((pl) => (
-              <label
-                key={pl.id}
-                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
-                  planId === pl.id ? "border-brand-500 bg-brand-950/30" : "border-slate-700"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="plan"
-                  checked={planId === pl.id}
-                  onChange={() => setPlanId(pl.id)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="block font-medium text-white">{pl.name}</span>
-                  <span className="text-sm text-slate-400">
-                    {inr(pl.price_inr)} / seat · {pl.duration_days} days · 1 seat = 1 PC
-                  </span>
-                </span>
-              </label>
-            ))}
+          <h2 className="text-sm font-semibold text-slate-200">Select cadence</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {plansOrdered.map((pl) => {
+              const meta = cadenceMeta(pl.code, pl.duration_days);
+              const selected = planId === pl.id;
+              return (
+                <label
+                  key={pl.id}
+                  className={`relative flex cursor-pointer flex-col gap-2 rounded-xl border p-4 ${
+                    selected ? "border-brand-500 bg-brand-950/30" : "border-slate-700 bg-slate-950/40"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="plan"
+                    checked={selected}
+                    onChange={() => setPlanId(pl.id)}
+                    className="sr-only"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-white">{pl.name.replace(/\s*·\s*1 seat/i, "")}</span>
+                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-200">
+                      {meta.badge}
+                    </span>
+                    {meta.bestValue ? (
+                      <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-200">
+                        Best value
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-sm text-slate-400">{meta.tagline || pl.description}</p>
+                  <p className="text-sm text-slate-200">
+                    {inr(pl.price_inr)} / seat · 1 seat = 1 PC
+                  </p>
+                  {meta.savings ? <p className="text-xs text-amber-200/90">{meta.savings}</p> : null}
+                </label>
+              );
+            })}
           </div>
           <label className="block text-xs text-slate-500">
             Number of seats
