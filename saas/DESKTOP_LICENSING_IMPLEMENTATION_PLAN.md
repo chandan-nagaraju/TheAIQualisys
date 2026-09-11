@@ -27,6 +27,7 @@ Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
 | 7 | Machine License API (Ed25519) | **Merged** on `polishing-the-fir` |
 | 7A | 7-day trial system | **Merged** on `polishing-the-fir` (PR #37) |
 | 8+ | Desktop app integration (QR / ASN) | External QR binary; SaaS APIs ready on `polishing-the-fir` |
+| 9C | Desktop OAuth PKCE | **On polishing as migration 039** (Cadence kept 038) |
 
 ## Phase 0 — Gap summary
 
