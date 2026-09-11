@@ -29,47 +29,72 @@ type DesktopProduct = {
   plans: DesktopPlan[];
 };
 
-function PlanEditor({
-  plan,
+type PlanDraft = {
+  name: string;
+  code: string;
+  price: string;
+  duration: string;
+};
+
+function draftsFromPlans(plans: DesktopPlan[]): Record<number, PlanDraft> {
+  const next: Record<number, PlanDraft> = {};
+  for (const plan of plans) {
+    next[plan.id] = {
+      name: plan.name,
+      code: plan.code,
+      price: String(plan.price_inr),
+      duration: String(plan.duration_days),
+    };
+  }
+  return next;
+}
+
+function CadencePlansEditor({
+  plans,
   onSaved,
 }: {
-  plan: DesktopPlan;
+  plans: DesktopPlan[];
   onSaved: () => void;
 }) {
-  const [name, setName] = useState(plan.name);
-  const [code, setCode] = useState(plan.code);
-  const [price, setPrice] = useState(String(plan.price_inr));
-  const [duration, setDuration] = useState(String(plan.duration_days));
+  const sorted = sortPlansByDuration(plans);
+  const [drafts, setDrafts] = useState(() => draftsFromPlans(plans));
   const [status, setStatus] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    setName(plan.name);
-    setCode(plan.code);
-    setPrice(String(plan.price_inr));
-    setDuration(String(plan.duration_days));
+    setDrafts(draftsFromPlans(plans));
     setStatus(null);
     setErr(null);
-  }, [plan]);
+  }, [plans]);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  function updateDraft(planId: number, patch: Partial<PlanDraft>) {
+    setDrafts((prev) => ({
+      ...prev,
+      [planId]: { ...prev[planId], ...patch },
+    }));
+  }
+
+  async function saveAll() {
     setErr(null);
     setStatus(null);
     setBusy(true);
     try {
-      await apiFetch(`/api/admin/desktop/plans/${plan.id}`, {
-        method: "PATCH",
-        token: "admin",
-        body: JSON.stringify({
-          name,
-          code,
-          price_inr: parseInt(price, 10),
-          duration_days: parseInt(duration, 10),
-        }),
-      });
-      setStatus("Saved.");
+      for (const plan of sorted) {
+        const d = drafts[plan.id];
+        if (!d) continue;
+        await apiFetch(`/api/admin/desktop/plans/${plan.id}`, {
+          method: "PATCH",
+          token: "admin",
+          body: JSON.stringify({
+            name: d.name.trim(),
+            code: d.code.trim(),
+            price_inr: parseInt(d.price, 10),
+            duration_days: parseInt(d.duration, 10),
+          }),
+        });
+      }
+      setStatus("Cadence saved.");
       onSaved();
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Save failed");
@@ -79,47 +104,64 @@ function PlanEditor({
   }
 
   return (
-    <form onSubmit={onSubmit} className="contents">
-      <input
-        aria-label="Plan name"
-        className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
-      <input
-        aria-label="Plan code"
-        className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs text-white"
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-      />
-      <input
-        aria-label="Price INR"
-        type="number"
-        min={0}
-        className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
-        value={price}
-        onChange={(e) => setPrice(e.target.value)}
-      />
-      <input
-        aria-label="Duration days"
-        type="number"
-        min={1}
-        className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
-        value={duration}
-        onChange={(e) => setDuration(e.target.value)}
-      />
-      <div className="flex min-w-0 items-center gap-2">
+    <div className="space-y-2">
+      <div className="overflow-x-auto rounded-lg border border-slate-800">
+        <div className="grid min-w-[36rem] grid-cols-[minmax(8rem,1.2fr)_minmax(10rem,1.3fr)_5.5rem_4.5rem] items-center gap-2 px-3 py-2">
+          <span className="text-[11px] uppercase tracking-wide text-slate-500">Name</span>
+          <span className="text-[11px] uppercase tracking-wide text-slate-500">Code</span>
+          <span className="text-[11px] uppercase tracking-wide text-slate-500">Price ₹</span>
+          <span className="text-[11px] uppercase tracking-wide text-slate-500">Days</span>
+          {sorted.map((plan) => {
+            const d = drafts[plan.id];
+            if (!d) return null;
+            return (
+              <div key={plan.id} className="contents">
+                <input
+                  aria-label={`${plan.name} name`}
+                  className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+                  value={d.name}
+                  onChange={(e) => updateDraft(plan.id, { name: e.target.value })}
+                />
+                <input
+                  aria-label={`${plan.name} code`}
+                  className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs text-white"
+                  value={d.code}
+                  onChange={(e) => updateDraft(plan.id, { code: e.target.value })}
+                />
+                <input
+                  aria-label={`${plan.name} price INR`}
+                  type="number"
+                  min={0}
+                  className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+                  value={d.price}
+                  onChange={(e) => updateDraft(plan.id, { price: e.target.value })}
+                />
+                <input
+                  aria-label={`${plan.name} duration days`}
+                  type="number"
+                  min={1}
+                  className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+                  value={d.duration}
+                  onChange={(e) => updateDraft(plan.id, { duration: e.target.value })}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <button
-          type="submit"
+          type="button"
           disabled={busy}
-          className="shrink-0 rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+          className="rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+          onClick={() => void saveAll()}
         >
           {busy ? "Saving…" : "Save"}
         </button>
-        {err ? <span className="truncate text-xs text-red-400">{err}</span> : null}
-        {status ? <span className="truncate text-xs text-emerald-400">{status}</span> : null}
+        {err ? <span className="text-xs text-red-400">{err}</span> : null}
+        {status ? <span className="text-xs text-emerald-400">{status}</span> : null}
       </div>
-    </form>
+    </div>
   );
 }
 
@@ -261,18 +303,7 @@ function ProductCard({
           Pulse → Season → Horizon → Orbit. Catalog visibility is the product listing above.
         </p>
         {product.plans.length > 0 ? (
-          <div className="overflow-x-auto rounded-lg border border-slate-800">
-            <div className="grid min-w-[44rem] grid-cols-[minmax(8rem,1.2fr)_minmax(10rem,1.3fr)_5.5rem_4.5rem_minmax(6.5rem,auto)] items-center gap-2 px-3 py-2">
-              <span className="text-[11px] uppercase tracking-wide text-slate-500">Name</span>
-              <span className="text-[11px] uppercase tracking-wide text-slate-500">Code</span>
-              <span className="text-[11px] uppercase tracking-wide text-slate-500">Price ₹</span>
-              <span className="text-[11px] uppercase tracking-wide text-slate-500">Days</span>
-              <span />
-              {sortPlansByDuration(product.plans).map((pl) => (
-                <PlanEditor key={pl.id} plan={pl} onSaved={onSaved} />
-              ))}
-            </div>
-          </div>
+          <CadencePlansEditor plans={product.plans} onSaved={onSaved} />
         ) : (
           <p className="text-xs text-slate-500">No plans yet — add one below.</p>
         )}
