@@ -108,7 +108,7 @@ def _list_products_with_plans(db: Session, *, include_inactive: bool) -> list[De
         plans = list(p.plans or [])
         if not include_inactive:
             plans = [pl for pl in plans if pl.listing_active == 1]
-        p.plans = sorted(plans, key=lambda pl: (pl.sort_order, pl.id))
+        p.plans = sorted(plans, key=lambda pl: (pl.duration_days, pl.sort_order, pl.id))
     return products
 
 

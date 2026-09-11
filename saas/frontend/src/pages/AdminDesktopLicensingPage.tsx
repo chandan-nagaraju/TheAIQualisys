@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api";
+import { sortPlansByDuration } from "../desktopCadence";
 
 type DesktopPlan = {
   id: number;
@@ -160,8 +161,8 @@ function ProductCard({
   const [err, setErr] = useState<string | null>(null);
   const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
-  const [newPrice, setNewPrice] = useState("4999");
-  const [newDuration, setNewDuration] = useState("365");
+  const [newPrice, setNewPrice] = useState("499");
+  const [newDuration, setNewDuration] = useState("30");
   const [createErr, setCreateErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -279,7 +280,8 @@ function ProductCard({
 
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-slate-200">Plans (1 seat each)</h3>
-        {product.plans.map((pl) => (
+        <p className="text-xs text-slate-500">List in duration order: Pulse → Season → Horizon → Orbit.</p>
+        {sortPlansByDuration(product.plans).map((pl) => (
           <PlanEditor key={pl.id} plan={pl} onSaved={onSaved} />
         ))}
         {product.plans.length === 0 && (
@@ -291,7 +293,7 @@ function ProductCard({
         <p className="text-xs font-medium text-slate-300">Add plan</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <input
-            placeholder="Code e.g. ANNUAL_1SEAT"
+            placeholder="Code e.g. QR_PULSE_1SEAT"
             className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
             value={newCode}
             onChange={(e) => setNewCode(e.target.value)}
@@ -390,9 +392,9 @@ export default function AdminDesktopLicensingPage() {
         </Link>
       </div>
       <p className="text-sm text-slate-400">
-        Manage QR Code, ASN PDF Printer, and ASN Auto Filler product listings and annual seat prices.
-        Requires <code className="text-slate-300">ENABLE_DESKTOP_LICENSING=true</code> on the API. Each plan is one
-        seat / one key — not a shared multi-device license.
+        Cadence™ plans are Pulse (30d), Season (90d), Horizon (180d), and Orbit (365d) — one seat / one key each.
+        Codes follow <code className="text-slate-300">{"{PREFIX}_PULSE_1SEAT"}</code> (QR, ASN_PDF, ASN_FILL). Requires{" "}
+        <code className="text-slate-300">ENABLE_DESKTOP_LICENSING=true</code> on the API.
       </p>
 
       {loading && <p className="text-sm text-slate-500">Loading desktop catalog…</p>}
