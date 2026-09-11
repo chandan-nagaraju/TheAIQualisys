@@ -24,9 +24,9 @@ Feature flag: `ENABLE_DESKTOP_LICENSING` (default **false**)
 | 4 | UPI payment approval + mint | **Merged** (PR #34) |
 | 5 | Email + My Licenses | **Merged** (PR #35) |
 | 6 | Protected installers / downloads | **Merged** (PR #36) |
-| 7 | Machine License API (Ed25519) | **In review** |
-| 7A | 7-day trial system | Not started |
-| 8+ | Desktop app integration (QR / ASN) | Explicitly deferred |
+| 7 | Machine License API (Ed25519) | **Merged** on `polishing-the-fir` |
+| 7A | 7-day trial system | **Merged** on `polishing-the-fir` (PR #37) |
+| 8+ | Desktop app integration (QR / ASN) | External QR binary; SaaS APIs ready on `polishing-the-fir` |
 
 ## Phase 0 — Gap summary
 
@@ -250,7 +250,7 @@ Machine activation, trials, QR/ASN desktop integration, payment gateway, prod de
 ## Phase 7 — Machine License API + signed entitlements
 
 ### Status
-**In review** on `cursor/desktop-licensing-phase07-64b6` (not merged; flag remains false).
+**Merged** on `polishing-the-fir`. Production enablement is the Railway flag + secrets (see Production prerequisites).
 
 ### Schema
 - Reuses `desktop_licenses`, `desktop_devices`, `desktop_activations`, `desktop_license_events`
@@ -314,16 +314,31 @@ Mitigation: finite offline window + periodic online refresh. Instant remote kill
 ### Production prerequisites (before enabling flag)
 1. Stable production Ed25519 private key in secret store
 2. Matching public key pinned in released desktop builds
-3. Migrations 032–036 applied
+3. Migrations 032–038 applied on the **production** database (not staging)
 4. Rate limits / monitoring / admin reset runbook
 5. Key rotation plan
-6. **`ENABLE_DESKTOP_LICENSING` remains false until signed off**
+6. Set `ENABLE_DESKTOP_LICENSING=true` on the **production** Railway API
+7. Point the **production** QR desktop build at the production API (`https://theaiqualisys-api-production.up.railway.app` or the custom API domain) — do not reuse the staging/trial client or staging host
+8. Catalog: QR product listing **Active**; Cadence prices saved; UPI settings on production
+9. Optional: turn **Free trial** off in Admin → Desktop software catalog if production should be paid Cadence only (staging may keep trials)
 
-### Out of scope (Phase 7)
-- Trials (7A)
-- QR / ASN desktop integration (Phase 8+)
+### QR go-live (SaaS vs desktop binary)
+
+This repository hosts the licensing API and Software catalog. The Windows QR app is a separate build.
+
+| Where | Production action |
+|-------|-------------------|
+| Railway production API | `ENABLE_DESKTOP_LICENSING=true`, Fernet + Ed25519 secrets, `PUBLIC_APP_URL` / `CORS_ORIGINS` = live SPA |
+| Production DB | Apply 032–038 if not already; do not copy staging trial licenses as paid |
+| SPA (Vercel/Cloudflare on `polishing-the-fir`) | Already proxies `/api` to production Railway |
+| QR desktop installer | Production API base URL + pinned production public key |
+| Admin | Listing on; trial on or off; Cadence prices; approve UPI → mint paid keys |
+
+Staging trial keys will not work against production. Customers buy Pulse / Season / Horizon / Orbit on `/software/qr-code`.
+
+### Out of scope (Phase 7 code)
 - Token denylist / `token_epoch`
-- Production deploy, migrate, secrets, flag enablement
+- Rebuilding the Windows QR/ASN binaries (separate repo/build)
 
 ### Known non-blocking hardening
 - Distributed rate limiting

@@ -175,6 +175,7 @@ function ProductCard({
   const [name, setName] = useState(product.name);
   const [description, setDescription] = useState(product.description ?? "");
   const [listingActive, setListingActive] = useState(product.listing_active);
+  const [trialEnabled, setTrialEnabled] = useState(product.trial_enabled);
   const [sortOrder, setSortOrder] = useState(String(product.sort_order));
   const [status, setStatus] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -188,6 +189,7 @@ function ProductCard({
     setName(product.name);
     setDescription(product.description ?? "");
     setListingActive(product.listing_active);
+    setTrialEnabled(product.trial_enabled);
     setSortOrder(String(product.sort_order));
     setStatus(null);
     setErr(null);
@@ -205,6 +207,7 @@ function ProductCard({
           name,
           description: description.trim() === "" ? null : description,
           listing_active: listingActive,
+          trial_enabled: trialEnabled,
           sort_order: parseInt(sortOrder, 10),
         }),
       });
@@ -285,6 +288,17 @@ function ProductCard({
           >
             <option value="active">Active — shown in Software catalog when flag is on</option>
             <option value="inactive">Inactive — hidden from customers</option>
+          </select>
+        </label>
+        <label className="block text-xs text-slate-500">
+          Free trial (7 days)
+          <select
+            className="mt-1 w-full max-w-md rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            value={trialEnabled ? "on" : "off"}
+            onChange={(e) => setTrialEnabled(e.target.value === "on")}
+          >
+            <option value="on">On — customers can start a 7-day trial</option>
+            <option value="off">Off — paid Cadence only (production)</option>
           </select>
         </label>
         {err && <p className="text-xs text-red-400">{err}</p>}
@@ -425,8 +439,9 @@ export default function AdminDesktopLicensingPage() {
       </div>
       <p className="text-sm text-slate-400">
         Cadence™ plans are Pulse (30d), Season (90d), Horizon (180d), and Orbit (365d) — one seat / one key each.
-        Codes follow <code className="text-slate-300">{"{PREFIX}_PULSE_1SEAT"}</code> (QR, ASN_PDF, ASN_FILL). Requires{" "}
-        <code className="text-slate-300">ENABLE_DESKTOP_LICENSING=true</code> on the API.
+        Codes follow <code className="text-slate-300">{"{PREFIX}_PULSE_1SEAT"}</code> (QR, ASN_PDF, ASN_FILL). Production
+        needs <code className="text-slate-300">ENABLE_DESKTOP_LICENSING=true</code> on the production API and the QR
+        desktop build pointed at that API (not staging). Use listing + trial controls per product below.
       </p>
 
       {loading && <p className="text-sm text-slate-500">Loading desktop catalog…</p>}

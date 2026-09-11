@@ -142,6 +142,8 @@ def patch_desktop_product(
         product.description = (desc.strip() or None) if isinstance(desc, str) else desc
     if "listing_active" in patch and patch["listing_active"] is not None:
         product.listing_active = 1 if patch["listing_active"] else 0
+    if "trial_enabled" in patch and patch["trial_enabled"] is not None:
+        product.trial_enabled = 1 if patch["trial_enabled"] else 0
     if "sort_order" in patch and patch["sort_order"] is not None:
         product.sort_order = int(patch["sort_order"])
     if "buy_url_path" in patch:
