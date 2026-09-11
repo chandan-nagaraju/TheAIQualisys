@@ -112,13 +112,13 @@ STAGING_OAUTH_ALLOWED_SCOPES=desktop_license
 
 Conceptual redirect for QR: `aiqualisys-qr://oauth/callback` (design value until QR registers it).
 
-Example staging insert (run only against an isolated staging DB):
+Example **production** insert (production DB only; different `client_id` from staging):
 
 ```sql
 INSERT INTO oauth_desktop_clients (
   client_id, client_name, client_type, redirect_uris, allowed_scopes, enabled
 ) VALUES (
-  'qr-code-desktop-staging',
+  'qr-code-desktop',
   'QR Code Desktop',
   'public',
   '["aiqualisys-qr://oauth/callback"]'::jsonb,
@@ -126,6 +126,8 @@ INSERT INTO oauth_desktop_clients (
   1
 );
 ```
+
+Match `redirect_uris` to the production QR build. `enabled` defaults to 0 in schema; this insert turns the client on.
 
 ## PKCE
 
