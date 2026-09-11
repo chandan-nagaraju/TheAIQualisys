@@ -76,6 +76,36 @@ class Settings(BaseSettings):
         "Pay via UPI: {upi_id} and send screenshot on WhatsApp"
     )
 
+    # Desktop OAuth (Authorization Code + PKCE). Independent of ENABLE_DESKTOP_LICENSING.
+    # Access tokens are short-lived company JWTs; refresh tokens are hashed server-side.
+    oauth_desktop_access_token_minutes: int = Field(
+        default=30,
+        ge=15,
+        le=60,
+        validation_alias=AliasChoices(
+            "OAUTH_DESKTOP_ACCESS_TOKEN_MINUTES",
+            "oauth_desktop_access_token_minutes",
+        ),
+    )
+    oauth_desktop_refresh_token_days: int = Field(
+        default=90,
+        ge=1,
+        le=365,
+        validation_alias=AliasChoices(
+            "OAUTH_DESKTOP_REFRESH_TOKEN_DAYS",
+            "oauth_desktop_refresh_token_days",
+        ),
+    )
+    oauth_authorization_code_ttl_seconds: int = Field(
+        default=180,
+        ge=60,
+        le=300,
+        validation_alias=AliasChoices(
+            "OAUTH_AUTHORIZATION_CODE_TTL_SECONDS",
+            "oauth_authorization_code_ttl_seconds",
+        ),
+    )
+
     cors_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",
         validation_alias=AliasChoices("CORS_ORIGINS", "cors_origins"),

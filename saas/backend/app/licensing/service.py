@@ -357,7 +357,6 @@ def create_trial_license_row(
     days = int(duration_days) if int(duration_days) > 0 else int(TRIAL_DURATION_DAYS)
     material = mint_license_key_material(settings, prefix=key_prefix_code)
     now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(days=days)
     row = DesktopLicense(
         product_id=product_id,
         plan_id=None,
@@ -372,7 +371,7 @@ def create_trial_license_row(
         key_encrypted=material.key_encrypted,
         status=LICENSE_STATUS_ISSUED,
         issued_at=now,
-        expires_at=expires_at,
+        expires_at=None,
         created_by_admin_id=None,
     )
     db.add(row)
@@ -386,8 +385,8 @@ def create_trial_license_row(
         meta={
             "entitlement_type": ENTITLEMENT_TRIAL,
             "product_id": product_id,
-            "expires_at": expires_at.isoformat(),
-            "duration_days": days,
+            "trial_duration_days": days,
+            "expires_at": None,
         },
     )
     return row, material.plaintext

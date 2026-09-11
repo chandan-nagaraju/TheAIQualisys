@@ -223,7 +223,7 @@ def activate_machine_license(
     db: Session,
     settings: Settings,
     *,
-    user: CompanyUser,
+    user: CompanyUser | None,
     license_key: str,
     product_code: str,
     fingerprint_hash: str,
@@ -239,12 +239,13 @@ def activate_machine_license(
     product = _product_by_code(db, product_code)
     license_row = _lookup_license_by_key(db, license_key)
     _maybe_mark_expired(license_row)
+    website_user_id = int(user.id) if user is not None else int(license_row.licensed_user_id)
 
     try:
         result = activate_license_on_device(
             db,
             license_row=license_row,
-            website_user_id=int(user.id),
+            website_user_id=website_user_id,
             product_id=int(product.id),
             fingerprint_hash=fp,
             fingerprint_raw_hint=None,
@@ -288,7 +289,7 @@ def activate_machine_license(
         db,
         license_id=result.license.id,
         actor_type="user",
-        actor_id=user.id,
+        actor_id=website_user_id,
         event_type=event,
         meta={
             "activation_id": result.activation.id,

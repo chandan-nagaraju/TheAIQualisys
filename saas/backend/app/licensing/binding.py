@@ -7,7 +7,7 @@ No max_devices / shared-seat behavior.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import select
@@ -23,6 +23,7 @@ from app.licensing.constants import (
     LICENSE_STATUS_ISSUED,
     LICENSE_STATUS_REVOKED,
     LICENSE_STATUS_SUSPENDED,
+    TRIAL_DURATION_DAYS,
 )
 from app.licensing.models import DesktopActivation, DesktopDevice, DesktopLicense, DesktopProduct
 
@@ -205,6 +206,23 @@ def assert_device_binding_allowed(
         )
 
 
+def _maybe_start_trial_period(
+    license_row: DesktopLicense,
+    product: DesktopProduct,
+    *,
+    now: Optional[datetime] = None,
+) -> None:
+    """Trial wall-clock starts on first activation only; reaffirm must never extend expiry."""
+    if (license_row.entitlement_type or "").lower() != ENTITLEMENT_TRIAL:
+        return
+    if license_row.expires_at is not None:
+        return
+    when = now or _utc_now()
+    days = int(product.trial_duration_days or 0) or int(TRIAL_DURATION_DAYS)
+    license_row.activated_at = when
+    license_row.expires_at = when + timedelta(days=days)
+
+
 def activate_license_on_device(
     db: Session,
     *,
@@ -263,6 +281,7 @@ def activate_license_on_device(
         if locked.status == LICENSE_STATUS_ISSUED:
             locked.status = LICENSE_STATUS_ACTIVE
             locked.activated_at = locked.activated_at or _utc_now()
+        _maybe_start_trial_period(locked, product)
         return ActivationBindResult(
             license=locked,
             device=device,
@@ -282,6 +301,7 @@ def activate_license_on_device(
             if locked.status == LICENSE_STATUS_ISSUED:
                 locked.status = LICENSE_STATUS_ACTIVE
                 locked.activated_at = locked.activated_at or _utc_now()
+            _maybe_start_trial_period(locked, product)
             return ActivationBindResult(
                 license=locked,
                 device=device,
@@ -301,6 +321,7 @@ def activate_license_on_device(
         locked.status = LICENSE_STATUS_ACTIVE
         if locked.activated_at is None:
             locked.activated_at = now
+        _maybe_start_trial_period(locked, product, now=now)
         db.add(existing)
         db.flush()
         return ActivationBindResult(
@@ -311,20 +332,22 @@ def activate_license_on_device(
         )
 
     # No prior (license, device) row — first bind for this pair
+    activation_now = _utc_now()
     activation = DesktopActivation(
         license_id=locked.id,
         user_id=website_user_id,
         device_id=device.id,
         status=ACTIVATION_STATUS_ACTIVE,
-        activated_at=_utc_now(),
-        last_validated_at=_utc_now(),
+        activated_at=activation_now,
+        last_validated_at=activation_now,
         app_version=app_version,
     )
     db.add(activation)
     locked.bound_device_id = device.id
     locked.status = LICENSE_STATUS_ACTIVE
     if locked.activated_at is None:
-        locked.activated_at = _utc_now()
+        locked.activated_at = activation_now
+    _maybe_start_trial_period(locked, product, now=activation_now)
     db.flush()
     return ActivationBindResult(
         license=locked,

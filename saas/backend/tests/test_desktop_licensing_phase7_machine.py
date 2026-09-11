@@ -156,6 +156,8 @@ def test_signing_roundtrip_and_tamper():
         expected_fp=_fp(),
         expected_license_id=1,
     )
+    assert claims["typ"] == "TAQ_LICENSE_V1"
+    assert verified["typ"] == "TAQ_LICENSE_V1"
     assert verified["jti"] == claims["jti"]
     assert verified["naf"] <= claims["iat"] + 14 * 86400 + 5
 
@@ -190,6 +192,24 @@ def test_signing_roundtrip_and_tamper():
         verify_entitlement_token(
             token, public_key_pem=material.public_key_pem, expected_fp=_fp("other")
         )
+
+
+def test_entitlement_token_rejects_wrong_typ():
+    settings = _settings()
+    material = load_signing_key_material(settings)
+    claims = build_entitlement_claims(
+        product_code="QR_CODE",
+        license_id=1,
+        activation_id=9,
+        licensed_user_id=7,
+        fingerprint_hash=_fp(),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=10),
+        max_offline_days=14,
+    )
+    claims["typ"] = "OTHER_TYPE"
+    token = sign_entitlement(settings, claims)
+    with pytest.raises(ValueError, match="token type"):
+        verify_entitlement_token(token, public_key_pem=material.public_key_pem)
 
 
 def test_naf_enforced_and_null_exp():
@@ -682,6 +702,7 @@ def test_feature_flag_off_machine_and_reset(monkeypatch):
 def test_unauthenticated_machine_and_non_admin_reset(monkeypatch):
     import app.licensing.feature_flag as ff
     from app.config import get_settings as real_get_settings
+    from app.deps import get_db_session
     from app.main import create_app
     from app.licensing.signing import generate_ephemeral_signing_pem
 
@@ -690,6 +711,12 @@ def test_unauthenticated_machine_and_non_admin_reset(monkeypatch):
     monkeypatch.setattr(ff, "get_settings", lambda: settings)
     app = create_app()
     app.dependency_overrides[real_get_settings] = lambda: settings
+
+    def _mock_db():
+        db = MagicMock()
+        yield db
+
+    app.dependency_overrides[get_db_session] = _mock_db
     app.state.startup_complete = True
     app.state.startup_status = "ok"
     client = TestClient(app)
@@ -698,7 +725,11 @@ def test_unauthenticated_machine_and_non_admin_reset(monkeypatch):
         "product_code": "QR_CODE",
         "fingerprint_hash": _fp(),
     }
-    assert client.post("/api/license/activate", json=body).status_code == 401
+    with patch(
+        "app.licensing.router_machine.activate_machine_license",
+        side_effect=HTTPException(status_code=404, detail={"code": "invalid_license", "message": "x"}),
+    ):
+        assert client.post("/api/license/activate", json=body).status_code == 404
     assert client.post(
         "/api/license/validate",
         json={"license_id": 1, "product_code": "QR_CODE", "fingerprint_hash": _fp()},
@@ -1109,3 +1140,154 @@ def test_sqlite_concurrent_two_device_activation_one_wins():
             os.unlink(path)
         except OSError:
             pass
+
+
+def test_key_only_activate_uses_license_owner():
+    """No JWT: website_user_id comes from the license row, not the caller."""
+    settings = _settings()
+    plaintext = "AQ-TEST-KEY-KEYONLY"
+    owner_id = 42
+    lic = _license(key_hash=hash_license_key(plaintext), licensed_user_id=owner_id)
+    product = _product()
+    device = DesktopDevice(fingerprint_hash=_fp())
+    device.id = 55
+    activation = DesktopActivation(license_id=lic.id, user_id=owner_id, device_id=55)
+    activation.id = 9
+    result = SimpleNamespace(
+        license=lic,
+        device=device,
+        activation=activation,
+        created_new_activation=True,
+    )
+
+    db = MagicMock()
+    calls = []
+
+    def exec2(stmt):
+        calls.append(1)
+        r = MagicMock()
+        r.scalar_one_or_none.return_value = product if len(calls) == 1 else lic
+        return r
+
+    db.execute.side_effect = exec2
+
+    with patch("app.licensing.machine.activate_license_on_device", return_value=result) as bind, patch(
+        "app.licensing.machine.record_license_event"
+    ):
+        out = activate_machine_license(
+            db,
+            settings,
+            user=None,
+            license_key=plaintext,
+            product_code="QR_CODE",
+            fingerprint_hash=_fp(),
+        )
+        assert bind.call_args.kwargs["website_user_id"] == owner_id
+    assert out["entitlement_token"]
+    assert out["license_id"] == lic.id
+
+
+def test_jwt_activate_still_enforces_owner_match():
+    """JWT path unchanged: caller must match licensed_user_id."""
+    settings = _settings()
+    plaintext = "AQ-TEST-KEY-JWTPATH"
+    lic = _license(key_hash=hash_license_key(plaintext), licensed_user_id=7)
+    product = _product()
+    user = SimpleNamespace(id=7)
+    db = MagicMock()
+    calls = []
+
+    def exec2(stmt):
+        calls.append(1)
+        r = MagicMock()
+        r.scalar_one_or_none.return_value = product if len(calls) == 1 else lic
+        return r
+
+    db.execute.side_effect = exec2
+    with patch(
+        "app.licensing.machine.activate_license_on_device",
+        side_effect=LicenseBindingError("wrong_user", "nope"),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            activate_machine_license(
+                db,
+                settings,
+                user=SimpleNamespace(id=99),
+                license_key=plaintext,
+                product_code="QR_CODE",
+                fingerprint_hash=_fp(),
+            )
+        assert exc.value.status_code == 403
+        assert exc.value.detail["code"] == "wrong_user"
+
+
+def _activate_http_client(monkeypatch):
+    import app.licensing.feature_flag as ff
+    from app.config import get_settings as real_get_settings
+    from app.deps import get_db_session
+    from app.main import create_app
+    from app.licensing.signing import generate_ephemeral_signing_pem
+
+    pem = generate_ephemeral_signing_pem()
+    settings = Settings(enable_desktop_licensing=True, license_signing_private_key=pem)
+    monkeypatch.setattr(ff, "get_settings", lambda: settings)
+    app = create_app()
+    app.dependency_overrides[real_get_settings] = lambda: settings
+
+    def _mock_db():
+        db = MagicMock()
+        yield db
+
+    app.dependency_overrides[get_db_session] = _mock_db
+    app.state.startup_complete = True
+    app.state.startup_status = "ok"
+    return app, TestClient(app)
+
+
+def test_activate_http_key_only_and_jwt_paths(monkeypatch):
+    from app.deps import get_optional_company_user
+
+    app, client = _activate_http_client(monkeypatch)
+    body = {
+        "license_key": "AQ-TEST",
+        "product_code": "QR_CODE",
+        "fingerprint_hash": _fp(),
+    }
+    entitlement = {
+        "license_id": 1,
+        "activation_id": 2,
+        "product_code": "QR_CODE",
+        "status": "active",
+        "expires_at": None,
+        "device_bound": True,
+        "reaffirmed": False,
+        "entitlement_token": "payload.sig",
+        "token_naf": 123,
+        "token_jti": "abc",
+    }
+    jwt_user = SimpleNamespace(id=7)
+
+    with patch("app.licensing.router_machine.activate_machine_license", return_value=entitlement) as mock:
+        r_key = client.post("/api/license/activate", json=body)
+        assert r_key.status_code == 200
+        assert r_key.json()["entitlement_token"] == "payload.sig"
+        assert mock.call_args.kwargs["user"] is None
+
+        app.dependency_overrides[get_optional_company_user] = lambda: jwt_user
+        r_jwt = client.post(
+            "/api/license/activate",
+            json=body,
+            headers={"Authorization": "Bearer valid-token-not-decoded-here"},
+        )
+        assert r_jwt.status_code == 200
+        assert mock.call_args.kwargs["user"] is jwt_user
+
+    app.dependency_overrides.pop(get_optional_company_user, None)
+    r_bad = client.post(
+        "/api/license/activate",
+        json=body,
+        headers={"Authorization": "Bearer not-a-valid-jwt"},
+    )
+    assert r_bad.status_code == 401
+
+    app.dependency_overrides.clear()

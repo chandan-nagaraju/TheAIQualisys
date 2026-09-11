@@ -28,6 +28,9 @@ import app.licensing  # noqa: F401
 from app.licensing.router_admin import router as desktop_licensing_admin_router
 from app.licensing.router_customer import router as desktop_licensing_customer_router
 from app.licensing.router_machine import router as desktop_licensing_machine_router
+import app.oauth.models  # noqa: F401 — register OAuth ORM tables for create_all
+from app.oauth.errors import OAuthError, oauth_error_response
+from app.oauth.router import router as desktop_oauth_router
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +219,14 @@ def create_app() -> FastAPI:
     app.include_router(desktop_licensing_admin_router)
     app.include_router(desktop_licensing_customer_router)
     app.include_router(desktop_licensing_machine_router)
+    # Desktop OAuth (Authorization Code + PKCE). Independent of ENABLE_DESKTOP_LICENSING.
+    app.include_router(desktop_oauth_router)
+    app.include_router(desktop_oauth_router, prefix="/api")
+
+    @app.exception_handler(OAuthError)
+    async def _oauth_error_handler(_request: Request, exc: OAuthError):
+        """Map OAuthError (including Depends-time impersonation rejects) to RFC 6749 JSON."""
+        return oauth_error_response(exc)
     # Backward-compatible alias for older frontend bundles that call
     # /api/ap/fir-preview (missing one "p" in "app").
     app.add_api_route(
