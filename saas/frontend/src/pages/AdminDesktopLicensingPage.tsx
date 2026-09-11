@@ -40,16 +40,15 @@ function PlanEditor({
   const [code, setCode] = useState(plan.code);
   const [price, setPrice] = useState(String(plan.price_inr));
   const [duration, setDuration] = useState(String(plan.duration_days));
-  const [listingActive, setListingActive] = useState(plan.listing_active);
   const [status, setStatus] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setName(plan.name);
     setCode(plan.code);
     setPrice(String(plan.price_inr));
     setDuration(String(plan.duration_days));
-    setListingActive(plan.listing_active);
     setStatus(null);
     setErr(null);
   }, [plan]);
@@ -58,6 +57,7 @@ function PlanEditor({
     e.preventDefault();
     setErr(null);
     setStatus(null);
+    setBusy(true);
     try {
       await apiFetch(`/api/admin/desktop/plans/${plan.id}`, {
         method: "PATCH",
@@ -67,81 +67,58 @@ function PlanEditor({
           code,
           price_inr: parseInt(price, 10),
           duration_days: parseInt(duration, 10),
-          listing_active: listingActive,
         }),
       });
       setStatus("Saved.");
       onSaved();
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Save failed");
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-sm font-medium text-white">{plan.name}</p>
-        <span className="text-xs text-slate-500">
-          seats=1 (fixed) · id {plan.id}
-        </span>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="block text-xs text-slate-500">
-          Name
-          <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <label className="block text-xs text-slate-500">
-          Code
-          <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
-        </label>
-        <label className="block text-xs text-slate-500">
-          Price (₹ / seat / term)
-          <input
-            type="number"
-            min={0}
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-          />
-        </label>
-        <label className="block text-xs text-slate-500">
-          Duration (days)
-          <input
-            type="number"
-            min={1}
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-          />
-        </label>
-      </div>
-      <label className="block text-xs text-slate-500">
-        Listing
-        <select
-          className="mt-1 w-full max-w-xs rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
-          value={listingActive ? "active" : "inactive"}
-          onChange={(e) => setListingActive(e.target.value === "active")}
+    <form onSubmit={onSubmit} className="contents">
+      <input
+        aria-label="Plan name"
+        className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <input
+        aria-label="Plan code"
+        className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs text-white"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+      />
+      <input
+        aria-label="Price INR"
+        type="number"
+        min={0}
+        className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+        value={price}
+        onChange={(e) => setPrice(e.target.value)}
+      />
+      <input
+        aria-label="Duration days"
+        type="number"
+        min={1}
+        className="min-w-0 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+        value={duration}
+        onChange={(e) => setDuration(e.target.value)}
+      />
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="submit"
+          disabled={busy}
+          className="shrink-0 rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50"
         >
-          <option value="active">Active — visible in customer catalog when product is active</option>
-          <option value="inactive">Inactive — hidden from customer catalog</option>
-        </select>
-      </label>
-      {err && <p className="text-xs text-red-400">{err}</p>}
-      {status && <p className="text-xs text-emerald-400">{status}</p>}
-      <button
-        type="submit"
-        className="rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500"
-      >
-        Save plan
-      </button>
+          {busy ? "Saving…" : "Save"}
+        </button>
+        {err ? <span className="truncate text-xs text-red-400">{err}</span> : null}
+        {status ? <span className="truncate text-xs text-emerald-400">{status}</span> : null}
+      </div>
     </form>
   );
 }
@@ -279,59 +256,83 @@ function ProductCard({
       </form>
 
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-slate-200">Plans (1 seat each)</h3>
-        <p className="text-xs text-slate-500">List in duration order: Pulse → Season → Horizon → Orbit.</p>
-        {sortPlansByDuration(product.plans).map((pl) => (
-          <PlanEditor key={pl.id} plan={pl} onSaved={onSaved} />
-        ))}
-        {product.plans.length === 0 && (
+        <h3 className="text-sm font-semibold text-slate-200">Cadence (1 seat each)</h3>
+        <p className="text-xs text-slate-500">
+          Pulse → Season → Horizon → Orbit. Catalog visibility is the product listing above.
+        </p>
+        {product.plans.length > 0 ? (
+          <div className="overflow-x-auto rounded-lg border border-slate-800">
+            <div className="grid min-w-[44rem] grid-cols-[minmax(8rem,1.2fr)_minmax(10rem,1.3fr)_5.5rem_4.5rem_minmax(6.5rem,auto)] items-center gap-2 px-3 py-2">
+              <span className="text-[11px] uppercase tracking-wide text-slate-500">Name</span>
+              <span className="text-[11px] uppercase tracking-wide text-slate-500">Code</span>
+              <span className="text-[11px] uppercase tracking-wide text-slate-500">Price ₹</span>
+              <span className="text-[11px] uppercase tracking-wide text-slate-500">Days</span>
+              <span />
+              {sortPlansByDuration(product.plans).map((pl) => (
+                <PlanEditor key={pl.id} plan={pl} onSaved={onSaved} />
+              ))}
+            </div>
+          </div>
+        ) : (
           <p className="text-xs text-slate-500">No plans yet — add one below.</p>
         )}
       </div>
 
-      <form onSubmit={createPlan} className="rounded-lg border border-dashed border-slate-700 p-3 space-y-2">
-        <p className="text-xs font-medium text-slate-300">Add plan</p>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <form
+        onSubmit={createPlan}
+        className="grid gap-2 rounded-lg border border-dashed border-slate-700 p-3 sm:grid-cols-[minmax(8rem,1.2fr)_minmax(10rem,1.3fr)_5.5rem_4.5rem_auto] sm:items-end"
+      >
+        <label className="block text-xs text-slate-500">
+          Name
           <input
-            placeholder="Code e.g. QR_PULSE_1SEAT"
-            className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
-            value={newCode}
-            onChange={(e) => setNewCode(e.target.value)}
-            required
-          />
-          <input
-            placeholder="Name"
-            className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            placeholder="Pulse · 1 seat"
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             required
           />
+        </label>
+        <label className="block text-xs text-slate-500">
+          Code
+          <input
+            placeholder="QR_PULSE_1SEAT"
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs text-white"
+            value={newCode}
+            onChange={(e) => setNewCode(e.target.value)}
+            required
+          />
+        </label>
+        <label className="block text-xs text-slate-500">
+          Price ₹
           <input
             type="number"
             min={0}
-            placeholder="Price ₹"
-            className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
             value={newPrice}
             onChange={(e) => setNewPrice(e.target.value)}
             required
           />
+        </label>
+        <label className="block text-xs text-slate-500">
+          Days
           <input
             type="number"
             min={1}
-            placeholder="Days"
-            className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
             value={newDuration}
             onChange={(e) => setNewDuration(e.target.value)}
             required
           />
+        </label>
+        <div>
+          {createErr && <p className="mb-1 text-xs text-red-400">{createErr}</p>}
+          <button
+            type="submit"
+            className="rounded border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800"
+          >
+            Add
+          </button>
         </div>
-        {createErr && <p className="text-xs text-red-400">{createErr}</p>}
-        <button
-          type="submit"
-          className="rounded border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800"
-        >
-          Create plan
-        </button>
       </form>
     </section>
   );
