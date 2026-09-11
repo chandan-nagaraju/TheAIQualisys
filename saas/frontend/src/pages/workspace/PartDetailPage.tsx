@@ -10,6 +10,7 @@ import {
 
 type Spec = {
   id?: number;
+  sl_no?: number;
   parameter: string;
   specification: string;
   special_char: string;
@@ -35,9 +36,76 @@ type Detail = {
   revision_rows?: RevRow[];
   spec_rows: Spec[];
   ccp_rows: Spec[];
-  material_rows: { material_grade: string }[];
+  material_rows: { material_grade: string; sl_no?: number }[];
   coating_rows: Spec[];
 };
+
+/** Global FIR settings: legend images for Critical / Safety / Important (from /api/app/settings). */
+type CharLegendUrls = {
+  char_critical_url: string | null;
+  char_safety_url: string | null;
+  char_important_url: string | null;
+};
+
+type SpecialTag = "" | "Critical" | "Safety" | "Important";
+
+function parseSpecialCharCell(stored: string): { tag: SpecialTag; custom: string } {
+  const raw = (stored ?? "").trim();
+  if (!raw) return { tag: "", custom: "" };
+  const lower = raw.toLowerCase();
+  if (lower === "critical") return { tag: "Critical", custom: "" };
+  if (lower === "safety") return { tag: "Safety", custom: "" };
+  if (lower === "important") return { tag: "Important", custom: "" };
+  return { tag: "", custom: stored };
+}
+
+function normalizeImportedSpecialChar(raw: string | undefined): string {
+  const { tag } = parseSpecialCharCell(raw ?? "");
+  return tag || "";
+}
+
+function SpecialCharEditor({
+  value,
+  onChange,
+  legendUrls,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  legendUrls: CharLegendUrls;
+}) {
+  const { tag } = parseSpecialCharCell(value);
+  const img =
+    tag === "Critical"
+      ? legendUrls.char_critical_url
+      : tag === "Safety"
+        ? legendUrls.char_safety_url
+        : tag === "Important"
+          ? legendUrls.char_important_url
+          : null;
+
+  return (
+    <div className="flex min-w-[7rem] flex-col gap-1 px-1 py-1">
+      <select
+        className="w-full rounded border border-slate-200 bg-white px-1 py-1 text-sm text-slate-900"
+        value={tag}
+        onChange={(e) => onChange((e.target.value as SpecialTag) || "")}
+        aria-label="Special characteristic"
+      >
+        <option value="">—</option>
+        <option value="Critical">Critical</option>
+        <option value="Safety">Safety</option>
+        <option value="Important">Important</option>
+      </select>
+      {tag ? (
+        img ? (
+          <img src={img} alt="" className="mx-auto max-h-10 max-w-[5rem] object-contain" />
+        ) : (
+          <span className="block text-center text-[10px] text-slate-400">Set image in Global FIR settings</span>
+        )
+      ) : null}
+    </div>
+  );
+}
 
 function emptySpec(): Spec {
   return { parameter: "", specification: "", special_char: "", method_of_inspection: "" };
@@ -59,11 +127,88 @@ function mergePasteFourColumn(current: Spec[], text: string): Spec[] {
     return {
       parameter: cells[0] ?? "",
       specification: cells[1] ?? "",
-      special_char: cells[2] ?? "",
+      special_char: normalizeImportedSpecialChar(cells[2]),
       method_of_inspection: cells[3] ?? "",
     };
   });
   const onlyEmpty = current.length === 1 && isSpecRowEmpty(current[0]);
+  if (onlyEmpty) return parsed.length ? parsed : [emptySpec()];
+  return [...current, ...parsed];
+}
+
+function looksLikeCoatingInspectionMethod(x: string): boolean {
+  const t = x.trim();
+  if (!t) return false;
+  const u = t.toUpperCase();
+  if (u === "VISUAL" || u.startsWith("VISUAL ")) return true;
+  return /^(DVC|DHG|DHI|RG|R\.G\.?|MM|CMM|UT|MPI|DFT|DFT\s*METER)$/i.test(t);
+}
+
+/** One pasted line for Section D: tolerate 3 Excel columns (Parameter, Specification, Method) and single-cell colour+process text. */
+function parseCoatingPasteLine(line: string): Spec {
+  const cells = line.split("\t").map((c) => c.trim());
+  if (cells.length >= 4) {
+    return {
+      parameter: cells[0] ?? "",
+      specification: cells[1] ?? "",
+      special_char: normalizeImportedSpecialChar(cells[2]),
+      method_of_inspection: cells[3] ?? "",
+    };
+  }
+  if (cells.length === 3) {
+    return {
+      parameter: cells[0] ?? "",
+      specification: cells[1] ?? "",
+      special_char: "",
+      method_of_inspection: cells[2] ?? "",
+    };
+  }
+  if (cells.length === 2) {
+    const a = cells[0] ?? "";
+    const b = cells[1] ?? "";
+    if (looksLikeCoatingInspectionMethod(b)) {
+      return { parameter: a, specification: "", special_char: "", method_of_inspection: b };
+    }
+    return { parameter: a, specification: b, special_char: "", method_of_inspection: "" };
+  }
+  const s = cells[0] ?? "";
+  const multi = s
+    .split(/\s{2,}/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (multi.length >= 2 && looksLikeCoatingInspectionMethod(multi[multi.length - 1]!)) {
+    return {
+      parameter: multi[0]!,
+      specification: multi.slice(1, -1).join(" ").trim(),
+      special_char: "",
+      method_of_inspection: multi[multi.length - 1]!,
+    };
+  }
+  if (multi.length === 2) {
+    return { parameter: multi[0]!, specification: multi[1]!, special_char: "", method_of_inspection: "" };
+  }
+  const trimmed = s.trim();
+  const colorLeading =
+    /^(\b(?:black|white|red|blue|green|grey|gray|yellow|orange|brown|zinc|matt|matte|glossy|silver|gold|navy|beige|tan)\b)\s+(.+)$/i.exec(
+      trimmed,
+    );
+  if (colorLeading) {
+    return {
+      parameter: colorLeading[2]!.trim(),
+      specification: colorLeading[1]!.toUpperCase(),
+      special_char: "",
+      method_of_inspection: "VISUAL",
+    };
+  }
+  return { parameter: trimmed, specification: "", special_char: "", method_of_inspection: "" };
+}
+
+function mergePasteCoatingRows(current: Spec[], text: string): Spec[] {
+  const raw = text.trim();
+  if (!raw) return current;
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim());
+  const parsed: Spec[] = lines.map((line) => parseCoatingPasteLine(line));
+  const onlyEmpty = current.length === 1 && isSpecRowEmpty(current[0]!);
   if (onlyEmpty) return parsed.length ? parsed : [emptySpec()];
   return [...current, ...parsed];
 }
@@ -84,22 +229,30 @@ function SpecSectionWithPaste({
   hint,
   pasteLabel,
   placeholder,
+  slNoStart,
   rows,
   setRows,
   onSave,
+  mergePaste,
+  charLegendUrls,
 }: {
   title: string;
   hint: string;
   pasteLabel: string;
   placeholder: string;
+  slNoStart: number;
   rows: Spec[];
   setRows: (r: Spec[]) => void;
   onSave: () => void | Promise<void>;
+  /** Override default 4-column paste (e.g. Section D coating heuristics). */
+  mergePaste?: (current: Spec[], text: string) => Spec[];
+  charLegendUrls: CharLegendUrls;
 }) {
   const [paste, setPaste] = useState("");
 
   function fillFromPaste() {
-    setRows(mergePasteFourColumn(rows, paste));
+    const merge = mergePaste ?? mergePasteFourColumn;
+    setRows(merge(rows, paste));
     setPaste("");
   }
 
@@ -129,6 +282,7 @@ function SpecSectionWithPaste({
         <table className="min-w-full border-collapse text-sm">
           <thead>
             <tr className="bg-slate-100">
+              <th className="border border-slate-200 px-2 py-1.5 text-left w-12">Sl No</th>
               <th className="border border-slate-200 px-2 py-1.5 text-left">Parameter</th>
               <th className="border border-slate-200 px-2 py-1.5 text-left">Specification</th>
               <th className="border border-slate-200 px-2 py-1.5 text-left">Special char</th>
@@ -139,17 +293,32 @@ function SpecSectionWithPaste({
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
+                <td className="border border-slate-200 px-2 py-1.5 text-center font-mono text-slate-600">
+                  {r.sl_no ?? slNoStart + i}
+                </td>
                 {(["parameter", "specification", "special_char", "method_of_inspection"] as const).map((k) => (
-                  <td key={k} className="border border-slate-200 p-0">
-                    <input
-                      className="w-full min-w-[6rem] px-2 py-1.5 text-slate-900"
-                      value={r[k]}
-                      onChange={(e) => {
-                        const n = [...rows];
-                        n[i] = { ...n[i], [k]: e.target.value };
-                        setRows(n);
-                      }}
-                    />
+                  <td key={k} className="border border-slate-200 p-0 align-top">
+                    {k === "special_char" ? (
+                      <SpecialCharEditor
+                        value={r[k]}
+                        legendUrls={charLegendUrls}
+                        onChange={(v) => {
+                          const n = [...rows];
+                          n[i] = { ...n[i], special_char: v };
+                          setRows(n);
+                        }}
+                      />
+                    ) : (
+                      <input
+                        className="w-full min-w-[6rem] px-2 py-1.5 text-slate-900"
+                        value={r[k]}
+                        onChange={(e) => {
+                          const n = [...rows];
+                          n[i] = { ...n[i], [k]: e.target.value };
+                          setRows(n);
+                        }}
+                      />
+                    )}
                   </td>
                 ))}
                 <td className="border border-slate-200 px-1 text-center">
@@ -174,10 +343,12 @@ function SpecSectionWithPaste({
 
 function MaterialSectionWithPaste({
   rows,
+  slNoStart,
   setRows,
   onSave,
 }: {
   rows: string[];
+  slNoStart: number;
   setRows: (r: string[]) => void;
   onSave: () => void | Promise<void>;
 }) {
@@ -213,16 +384,18 @@ function MaterialSectionWithPaste({
       </div>
       <div className="mt-4 space-y-2">
         {rows.map((g, i) => (
-          <input
-            key={i}
-            className="block w-full max-w-md rounded border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
-            value={g}
-            onChange={(e) => {
-              const n = [...rows];
-              n[i] = e.target.value;
-              setRows(n);
-            }}
-          />
+          <div key={i} className="flex max-w-md items-center gap-2">
+            <span className="w-8 shrink-0 text-center font-mono text-sm text-slate-600">{slNoStart + i}</span>
+            <input
+              className="block w-full rounded border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+              value={g}
+              onChange={(e) => {
+                const n = [...rows];
+                n[i] = e.target.value;
+                setRows(n);
+              }}
+            />
+          </div>
         ))}
       </div>
       <button type="button" className="mt-2 text-sm text-blue-700 underline" onClick={() => setRows([...rows, ""])}>
@@ -246,6 +419,25 @@ export default function PartDetailPage() {
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [drawingBusy, setDrawingBusy] = useState(false);
+  const [charLegendUrls, setCharLegendUrls] = useState<CharLegendUrls>({
+    char_critical_url: null,
+    char_safety_url: null,
+    char_important_url: null,
+  });
+
+  useEffect(() => {
+    workspaceFetch<CharLegendUrls>("/api/app/settings")
+      .then((s) =>
+        setCharLegendUrls({
+          char_critical_url: s.char_critical_url ?? null,
+          char_safety_url: s.char_safety_url ?? null,
+          char_important_url: s.char_important_url ?? null,
+        }),
+      )
+      .catch(() => {
+        /* keep nulls; dropdown still works */
+      });
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -382,6 +574,11 @@ export default function PartDetailPage() {
 
   const pastePlaceholderA = "HOLE DIA\tØ 8.5 + 0.20\t\tDVC\nPITCH\t38 ± 0.25\t\tDHG";
 
+  const slA = 1;
+  const slB = slA + specs.length;
+  const slC = slB + ccps.length;
+  const slD = slC + mats.length;
+
   const showDrawingActions = d.drawing_file_present ?? Boolean(d.drawing_pdf_filename);
 
   return (
@@ -477,34 +674,41 @@ export default function PartDetailPage() {
 
       <SpecSectionWithPaste
         title="A) Dimension parameters (part_spec_data)"
-        hint="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method) or add a row, then edit and save. This data is loaded into the FIR report when you generate it."
+        hint="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method) or add a row, then edit and save. Special char: choose Critical / Safety / Important to show your Global FIR settings images in the cell (other values in the paste are ignored)."
         pasteLabel="Paste from Excel (columns: Parameter, Specification, Special char, Method — tab-separated, one row per line):"
         placeholder={pastePlaceholderA}
+        slNoStart={slA}
         rows={specs}
         setRows={setSpecs}
         onSave={saveSpecs}
+        charLegendUrls={charLegendUrls}
       />
 
       <SpecSectionWithPaste
         title="B) Customer complaint parameters"
-        hint="Paste from Excel (tab-separated) or add a row, edit and save. Loaded into the FIR when you generate the report."
+        hint="Paste from Excel (tab-separated) or add a row, edit and save. Loaded into the FIR when you generate the report. Special char uses the same Critical / Safety / Important dropdown and images as section A."
         pasteLabel="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method):"
         placeholder={pastePlaceholderA}
+        slNoStart={slB}
         rows={ccps}
         setRows={setCcps}
         onSave={saveCcp}
+        charLegendUrls={charLegendUrls}
       />
 
-      <MaterialSectionWithPaste rows={mats} setRows={setMats} onSave={saveMat} />
+      <MaterialSectionWithPaste rows={mats} slNoStart={slC} setRows={setMats} onSave={saveMat} />
 
       <SpecSectionWithPaste
         title="D) Surface coating"
-        hint="Paste from Excel (tab-separated) or add a row, edit and save."
-        pasteLabel="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method):"
+        hint="Paste from Excel (tab-separated) or add a row, edit and save. Three columns from Excel (Parameter, Specification, Method) map correctly; a single cell like “Black Powder Coating” splits into Specification BLACK, Method VISUAL."
+        pasteLabel="Paste from Excel (tab-separated: Parameter, Specification, Special char, Method — or 3 columns: Parameter, Specification, Method):"
         placeholder={pastePlaceholderA}
+        slNoStart={slD}
         rows={coats}
         setRows={setCoats}
         onSave={saveCoat}
+        mergePaste={mergePasteCoatingRows}
+        charLegendUrls={charLegendUrls}
       />
     </div>
   );

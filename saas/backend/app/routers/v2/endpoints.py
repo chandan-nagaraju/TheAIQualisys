@@ -7,14 +7,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.dates import billing_today
 from app.deps import (
+    company_impersonated_by_admin,
     get_company_for_user,
     get_current_company_user,
     get_db_session,
     require_invoice_create_allowed,
     require_subscription_access,
 )
-from app.models import Company, CompanyUser, InvoiceV2, PartSpecV2, PartV2
+from app.models import Company, CompanyUser, Customer, InvoiceV2, PartSpecV2, PartV2
 from app.schemas import (
     CompanyOut,
     CompanyUserOut,
@@ -27,6 +29,8 @@ from app.schemas import (
 )
 from app.subscription_logic import (
     can_access_fir_workspace,
+    subscription_is_active,
+    trial_is_valid,
     can_create_invoice,
     can_record_fir_reports,
     count_combined_usage_this_month,
@@ -37,15 +41,27 @@ from app.subscription_logic import (
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
 
+def _v2_default_customer_id(db: Session, company_id: int) -> int:
+    rows = db.execute(select(Customer).where(Customer.company_id == company_id).order_by(Customer.id)).scalars().all()
+    if not rows:
+        c = Customer(company_id=company_id, vendor_code="IMPORT", name="Imported parts")
+        db.add(c)
+        db.flush()
+        return c.id
+    return rows[0].id
+
+
+
 
 @router.get("/me", response_model=MeResponse)
 def v2_me(
     user_company: tuple[CompanyUser, Company] = Depends(require_subscription_access),
     db: Session = Depends(get_db_session),
+    admin_impersonation: bool = Depends(company_impersonated_by_admin),
 ):
     user, company = user_company
     settings = get_settings()
-    today = date.today()
+    today = billing_today()
     inv = count_invoices_this_month(db, company.id, today)
     fir = count_fir_reports_this_month(db, company.id, today)
     usage = count_combined_usage_this_month(db, company.id, today)
@@ -63,8 +79,13 @@ def v2_me(
         invoice_limit=limit,
         can_create_invoice=ok,
         can_record_fir_report=ok_fir,
+        trial_active=trial_is_valid(company, today),
+        subscription_active=subscription_is_active(company, today),
         can_access_fir_workspace=can_access_fir_workspace(
-            company, enable_subscription=settings.enable_subscription, today=today
+            company,
+            enable_subscription=settings.enable_subscription,
+            today=today,
+            impersonated_by_admin=admin_impersonation,
         ),
         subscription_message=None if ok else sub_msg,
     )
@@ -123,13 +144,19 @@ def create_part(
     db: Session = Depends(get_db_session),
 ):
     _, company = user_company
+    cid = _v2_default_customer_id(db, company.id)
     exists = db.execute(
-        select(PartV2).where(PartV2.company_id == company.id, PartV2.part_no == body.part_no.strip())
+        select(PartV2).where(
+            PartV2.company_id == company.id,
+            PartV2.customer_id == cid,
+            PartV2.part_no == body.part_no.strip(),
+        )
     ).scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=400, detail="Part number already exists for this company")
     p = PartV2(
         company_id=company.id,
+        customer_id=cid,
         part_no=body.part_no.strip(),
         drawing_rev=body.drawing_rev,
         description=body.description,
@@ -268,6 +295,7 @@ async def import_data(
     specs_in = data.get("specs") or []
     invoices_in = data.get("invoices") or []
 
+    cid_imp = _v2_default_customer_id(db, company.id)
     part_by_no: dict[str, PartV2] = {}
     for row in parts_in:
         if not isinstance(row, dict):
@@ -277,6 +305,7 @@ async def import_data(
             continue
         p = PartV2(
             company_id=company.id,
+            customer_id=cid_imp,
             part_no=pn,
             drawing_rev=row.get("drawing_rev"),
             description=row.get("description"),

@@ -1,12 +1,37 @@
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from app.dates import billing_month_year_english, billing_today
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.deps import get_db_session, get_platform_admin
-from app.fir_analytics import build_fir_intelligence
-from app.models import Company, CompanyUser, Customer, InvoiceV2, ModulePricing, PlanType, PlatformAdmin, SubscriptionStatus
+from app.email_util import (
+    build_admin_manual_subscription_reminder_email,
+    build_admin_thank_you_all_email,
+    build_admin_thank_you_email,
+    is_email_configured,
+    send_plain_text_email,
+    send_trial_ending_email,
+)
+from app.fir_analytics import build_fir_intelligence, list_fir_invoice_months
+from app.models import (
+    AdminSubscriptionReminder,
+    Company,
+    CompanySettings,
+    CompanyUser,
+    Customer,
+    FirReportEvent,
+    FirUploadLog,
+    InvoiceV2,
+    ModulePricing,
+    PartV2,
+    PlanType,
+    PlatformAdmin,
+    SubscriptionStatus,
+)
 from app.module_access import resync_qms_trials_after_pricing_change
 from app.pricing_catalog import list_all_pricing_rows
 from app.schemas import (
@@ -15,24 +40,53 @@ from app.schemas import (
     AdminDashboardResponse,
     AdminFirCustomerRow,
     AdminLoginRequest,
+    AdminSubscriptionReminderSendBody,
+    AdminSubscriptionReminderSendResponse,
     AdminTenantUserRow,
     CompanyOut,
     ModulePricingPatch,
     ModulePricingPublicOut,
+    PlatformAdminCreateBody,
+    PlatformAdminOut,
+    PlatformAdminSetPasswordBody,
     TokenResponse,
 )
 from app.security import (
     create_access_token,
     create_admin_token,
+    hash_password,
     verify_password_and_upgrade,
 )
-from app.subscription_logic import count_fir_reports_this_month, count_invoices_this_month
+from app.subscription_logic import (
+    count_fir_reports_this_month,
+    count_fir_reports_total,
+    count_invoices_this_month,
+    sync_subscription_status_from_dates,
+    thank_you_engagement_section_rows,
+    top_fir_part_thank_you_table_rows,
+    effective_plan_type,
+    put_company_on_trial,
+    extend_company_trial,
+    close_overlapping_trial_for_paid_activation,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+_THANK_YOU_ALL_ENGAGEMENT_KEYS_AND_TITLES: list[tuple[str, str]] = [
+    ("running", "🏃 Running Parts"),
+    ("regular", "🔁 Regular Parts"),
+    ("occasional", "📅 Occasional Parts"),
+    ("stranger", "👋 Stranger Parts"),
+    ("new", "🆕 New Parts"),
+]
+
+
+_PAID_PLAN_TYPES = (PlanType.basic.value, PlanType.pro.value, PlanType.enterprise.value)
+
 
 def _company_out(c: Company) -> CompanyOut:
-    return CompanyOut.model_validate(c)
+    out = CompanyOut.model_validate(c)
+    return out.model_copy(update={"plan_type": effective_plan_type(c)})
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -51,11 +105,87 @@ def admin_login(body: AdminLoginRequest, db: Session = Depends(get_db_session)):
     return TokenResponse(access_token=token)
 
 
+@router.get("/me", response_model=PlatformAdminOut)
+def admin_me(admin: PlatformAdmin = Depends(get_platform_admin)):
+    return PlatformAdminOut.model_validate(admin)
+
+
+@router.get("/platform-admins", response_model=list[PlatformAdminOut])
+def list_platform_admins(
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    rows = db.execute(select(PlatformAdmin).order_by(PlatformAdmin.id.asc())).scalars().all()
+    return [PlatformAdminOut.model_validate(r) for r in rows]
+
+
+@router.post("/platform-admins", response_model=PlatformAdminOut)
+def create_platform_admin(
+    body: PlatformAdminCreateBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    email = str(body.email).lower().strip()
+    existing = db.execute(select(PlatformAdmin).where(PlatformAdmin.email == email)).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="A platform admin with this email already exists")
+    row = PlatformAdmin(email=email, password_hash=hash_password(body.password))
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return PlatformAdminOut.model_validate(row)
+
+
+@router.patch("/platform-admins/{admin_id}", response_model=PlatformAdminOut)
+def set_platform_admin_password(
+    admin_id: int,
+    body: PlatformAdminSetPasswordBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = db.get(PlatformAdmin, admin_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Platform admin not found")
+    row.password_hash = hash_password(body.password)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return PlatformAdminOut.model_validate(row)
+
+
+@router.delete("/platform-admins/{admin_id}")
+def delete_platform_admin(
+    admin_id: int,
+    actor: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    if admin_id == actor.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own admin account")
+    row = db.get(PlatformAdmin, admin_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Platform admin not found")
+    remaining = db.execute(select(func.count()).select_from(PlatformAdmin)).scalar_one()
+    if remaining <= 1:
+        raise HTTPException(status_code=400, detail="Cannot delete the last platform admin")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/dashboard", response_model=AdminDashboardResponse)
 def admin_dashboard(
     _: PlatformAdmin = Depends(get_platform_admin),
     db: Session = Depends(get_db_session),
 ):
+    today = billing_today()
+    companies = db.execute(select(Company)).scalars().all()
+    changed = False
+    for c in companies:
+        if sync_subscription_status_from_dates(c, today):
+            db.add(c)
+            changed = True
+    if changed:
+        db.commit()
     total = db.execute(select(func.count()).select_from(Company)).scalar_one()
     trial = db.execute(
         select(func.count()).select_from(Company).where(Company.subscription_status == SubscriptionStatus.trial.value)
@@ -90,6 +220,20 @@ def list_all_tenant_users(
         )
         .all()
     )
+    today = billing_today()
+    seen: set[int] = set()
+    changed = False
+    for _u, co in rows:
+        if co.id in seen:
+            continue
+        seen.add(co.id)
+        if sync_subscription_status_from_dates(co, today):
+            db.add(co)
+            changed = True
+    if changed:
+        db.commit()
+        for _u, co in rows:
+            db.refresh(co)
     return [
         AdminTenantUserRow(
             user_id=u.id,
@@ -100,7 +244,7 @@ def list_all_tenant_users(
             company_id=c.id,
             company_name=c.company_name,
             company_vendor_code=c.vendor_code,
-            plan_type=c.plan_type,
+            plan_type=effective_plan_type(c),
             subscription_status=c.subscription_status,
         )
         for u, c in rows
@@ -118,6 +262,9 @@ def block_tenant_user(
         raise HTTPException(status_code=404, detail="Tenant user not found")
     user.is_blocked = 1
     db.add(user)
+    from app.oauth.service import revoke_on_user_blocked
+
+    revoke_on_user_blocked(db, int(user.id))
     db.commit()
     return {"ok": True, "user_id": user.id, "is_blocked": True}
 
@@ -146,9 +293,19 @@ def delete_tenant_user(
     user = db.get(CompanyUser, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Tenant user not found")
+    company_id = int(user.company_id)
     db.execute(delete(CompanyUser).where(CompanyUser.id == user_id))
     db.commit()
-    return {"ok": True, "deleted_user_id": user_id}
+    remaining = db.execute(
+        select(func.count(CompanyUser.id)).where(CompanyUser.company_id == company_id)
+    ).scalar_one()
+    n = int(remaining or 0)
+    return {
+        "ok": True,
+        "deleted_user_id": user_id,
+        "company_id": company_id,
+        "remaining_tenant_users": n,
+    }
 
 
 @router.get("/fir-customers", response_model=list[AdminFirCustomerRow])
@@ -203,7 +360,20 @@ def list_companies(
     db: Session = Depends(get_db_session),
 ):
     companies = db.execute(select(Company).order_by(Company.id)).scalars().all()
-    today = date.today()
+    today = billing_today()
+    changed = False
+    for c in companies:
+        if sync_subscription_status_from_dates(c, today):
+            db.add(c)
+            changed = True
+    if changed:
+        db.commit()
+        for c in companies:
+            db.refresh(c)
+    uid_rows = db.execute(
+        select(CompanyUser.company_id, func.count(CompanyUser.id)).group_by(CompanyUser.company_id)
+    ).all()
+    user_count_by_company = {int(cid): int(n) for cid, n in uid_rows}
     out: list[AdminCompanySummary] = []
     for c in companies:
         inv = count_invoices_this_month(db, c.id, today)
@@ -213,11 +383,12 @@ def list_companies(
                 id=c.id,
                 company_name=c.company_name,
                 vendor_code=c.vendor_code,
-                plan_type=c.plan_type,
+                plan_type=effective_plan_type(c),
                 subscription_status=c.subscription_status,
                 monthly_usage=inv,
                 monthly_fir_reports=fir,
                 monthly_usage_combined=inv + fir,
+                tenant_user_count=user_count_by_company.get(c.id, 0),
             )
         )
     return out
@@ -232,6 +403,10 @@ def get_company(
     c = db.get(Company, company_id)
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
+    if sync_subscription_status_from_dates(c, billing_today()):
+        db.add(c)
+        db.commit()
+        db.refresh(c)
     return _company_out(c)
 
 
@@ -246,18 +421,23 @@ def patch_company(
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    today = date.today()
+    today = billing_today()
 
-    if body.action == "activate":
+    if body.action == "activate" and body.plan_type == PlanType.trial.value:
+        days = body.extend_days if body.extend_days and body.extend_days > 0 else 7
+        put_company_on_trial(c, today, days)
+
+    elif body.action == "activate":
         end = body.subscription_end or (today + timedelta(days=30))
         start = body.subscription_start or today
         c.subscription_status = SubscriptionStatus.active.value
         c.subscription_start = start
         c.subscription_end = end
         if body.plan_type:
-            if body.plan_type not in (PlanType.basic.value, PlanType.pro.value, PlanType.enterprise.value):
-                raise HTTPException(status_code=400, detail="Invalid plan_type")
+            if body.plan_type not in _PAID_PLAN_TYPES:
+                raise HTTPException(status_code=400, detail="Activate requires a paid plan (basic, pro, or enterprise)")
             c.plan_type = body.plan_type
+        close_overlapping_trial_for_paid_activation(c, today)
 
     elif body.action == "extend":
         if not body.extend_days and body.subscription_end is None:
@@ -272,22 +452,265 @@ def patch_company(
         if c.subscription_start is None:
             c.subscription_start = today
 
+    elif body.action == "extend_trial":
+        if not body.extend_days or body.extend_days <= 0:
+            raise HTTPException(status_code=400, detail="Provide extend_days")
+        extend_company_trial(c, today, body.extend_days)
+
     elif body.action == "set_plan":
         if not body.plan_type:
             raise HTTPException(status_code=400, detail="plan_type required")
-        if body.plan_type not in (PlanType.basic.value, PlanType.pro.value, PlanType.enterprise.value):
+        if body.plan_type not in (PlanType.trial.value, *_PAID_PLAN_TYPES):
             raise HTTPException(status_code=400, detail="Invalid plan_type")
         c.plan_type = body.plan_type
 
     elif body.action == "mark_expired":
         c.subscription_status = SubscriptionStatus.expired.value
+        yday = today - timedelta(days=1)
+        if c.subscription_end is None or c.subscription_end >= today:
+            c.subscription_end = yday
 
     else:
         raise HTTPException(status_code=400, detail="Unknown action")
 
+    sync_subscription_status_from_dates(c, today)
     db.commit()
     db.refresh(c)
     return _company_out(c)
+
+
+@router.post(
+    "/companies/{company_id}/subscription-reminder",
+    response_model=AdminSubscriptionReminderSendResponse,
+)
+def send_manual_subscription_reminder(
+    company_id: int,
+    body: AdminSubscriptionReminderSendBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Send a subscription reminder email to all non-blocked workspace users for this tenant."""
+    settings = get_settings()
+    if not is_email_configured(settings):
+        raise HTTPException(status_code=503, detail="Email is not configured (Resend or SMTP + EMAIL_FROM).")
+
+    c = db.get(Company, company_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    today = billing_today()
+    if sync_subscription_status_from_dates(c, today):
+        db.add(c)
+        db.commit()
+        db.refresh(c)
+
+    users = (
+        db.execute(
+            select(CompanyUser).where(
+                CompanyUser.company_id == company_id,
+                CompanyUser.is_blocked == 0,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not users:
+        raise HTTPException(
+            status_code=400,
+            detail="No active (non-blocked) workspace users to email for this tenant.",
+        )
+
+    if body.reminder_type in ("ending_soon", "already_ended") and c.subscription_end is None and c.trial_end_date is None:
+        raise HTTPException(
+            status_code=400,
+            detail="This tenant has no trial end date or subscription end date.",
+        )
+
+    report_total = count_fir_reports_total(db, company_id)
+    report_month = count_fir_reports_this_month(db, company_id, today)
+    current_month_name = billing_month_year_english(today)
+    plan_name = c.plan_type.title()
+
+    thank_you_audit: dict | None = None
+    if body.reminder_type == "trial_ending":
+        if c.trial_end_date is None:
+            raise HTTPException(
+                status_code=400,
+                detail="This tenant has no trial end date; cannot send a trial reminder.",
+            )
+        subject = ""
+        text = ""
+    elif body.reminder_type == "thank_you":
+        assert body.thank_you_category is not None
+        # Pass:
+        # (customer_email,)
+        #
+        # This guarantees:
+        # - Overall Top 5 = selected customer's parts only
+        # - Running Parts = selected customer's running parts only
+        # - Regular Parts = selected customer's regular parts only
+        # - Occasional Parts = selected customer's occasional parts only
+        # - Stranger Parts = selected customer's stranger parts only
+        # - New Parts = selected customer's new parts only
+        # - Every number and part shown in the email belongs only to the selected customer
+        sub_start = c.subscription_start.strftime("%B %d, %Y") if c.subscription_start else "—"
+        sub_end = c.subscription_end.strftime("%B %d, %Y") if c.subscription_end else "—"
+        top_parts = top_fir_part_thank_you_table_rows(db, company_id, limit=5)
+
+        if body.thank_you_category == "all":
+            today = billing_today()
+            engagement_sections: list[tuple[str, int, int, list[tuple[str, int, str, str]]]] = []
+            for key, title in _THANK_YOU_ALL_ENGAGEMENT_KEYS_AND_TITLES:
+                report_count, row_count, sec_top = thank_you_engagement_section_rows(
+                    db, company_id, key, today=today
+                )
+                engagement_sections.append((title, report_count, row_count, sec_top))
+            subject, text, hours_saved = build_admin_thank_you_all_email(
+                customer_name=c.company_name,
+                total_report_count=report_total,
+                top_parts_overall=top_parts,
+                engagement_sections=engagement_sections,
+            )
+            thank_you_audit = {
+                "thank_you_category": body.thank_you_category,
+                "current_month_report_count": None,
+                "top_5_parts": [
+                    {"part_no": p, "count": n, "median_gap_days": mg, "last_dispatched": ld}
+                    for p, n, mg, ld in top_parts
+                ],
+                "total_time_saved_hours": hours_saved,
+                "minutes_per_report": 10,
+            }
+        else:
+            subject, text, hours_saved, _ = build_admin_thank_you_email(
+                category=body.thank_you_category,
+                customer_name=c.company_name,
+                plan_name=plan_name,
+                subscription_start_date=sub_start,
+                subscription_end_date=sub_end,
+                total_report_count=report_total,
+                workspace_user_count=len(users),
+                top_parts=top_parts,
+            )
+            thank_you_audit = {
+                "thank_you_category": body.thank_you_category,
+                "current_month_report_count": None,
+                "top_5_parts": [
+                    {"part_no": p, "count": n, "median_gap_days": mg, "last_dispatched": ld}
+                    for p, n, mg, ld in top_parts
+                ],
+                "total_time_saved_hours": hours_saved,
+            }
+    else:
+        trial_manual = c.subscription_end is None
+        if trial_manual:
+            assert c.trial_end_date is not None
+            subject = ""
+            text = ""
+        else:
+            end_date_display = c.subscription_end.strftime("%B %d, %Y")
+            renewal_link = f"{settings.public_app_url.rstrip('/')}/dashboard/billing"
+            subject, text = build_admin_manual_subscription_reminder_email(
+                reminder_type=body.reminder_type,
+                customer_name=c.company_name,
+                plan_name=plan_name,
+                end_date_display=end_date_display,
+                current_month_name=current_month_name,
+                current_month_report_count=report_month,
+                total_report_count=report_total,
+                renewal_link=renewal_link,
+            )
+
+    errors: list[str] = []
+    sent = 0
+    subscribe_url = f"{settings.public_app_url.rstrip('/')}/workspace/pricing"
+    for u in users:
+        try:
+            if body.reminder_type == "trial_ending" or (
+                body.reminder_type != "thank_you" and c.subscription_end is None
+            ):
+                if c.trial_end_date is None:
+                    raise HTTPException(status_code=400, detail="This tenant has no trial end date.")
+                send_trial_ending_email(
+                    settings,
+                    u.email,
+                    company_name=c.company_name,
+                    trial_end_date=c.trial_end_date,
+                    subscribe_url=subscribe_url,
+                    already_ended=body.reminder_type == "already_ended" or c.trial_end_date < today,
+                )
+            else:
+                send_plain_text_email(settings, u.email, subject, text)
+            sent += 1
+        except Exception as exc:  # noqa: BLE001 — surface provider errors to admin
+            errors.append(f"{u.email}: {exc}")
+
+    n = len(users)
+    if sent == n:
+        st = "success"
+        err_msg = None
+    elif sent == 0:
+        st = "failed"
+        err_msg = "; ".join(errors)[:8000]
+    else:
+        st = "partial"
+        err_msg = "; ".join(errors)[:8000]
+
+    db.add(
+        AdminSubscriptionReminder(
+            company_id=company_id,
+            reminder_type=body.reminder_type,
+            reports_generated=report_total,
+            email_status=st,
+            error_message=err_msg,
+            thank_you_category=(thank_you_audit["thank_you_category"] if thank_you_audit else None),
+            current_month_report_count=(thank_you_audit["current_month_report_count"] if thank_you_audit else None),
+            top_5_parts=(thank_you_audit["top_5_parts"] if thank_you_audit else None),
+            total_time_saved_hours=(thank_you_audit["total_time_saved_hours"] if thank_you_audit else None),
+        )
+    )
+    db.commit()
+
+    if sent == 0:
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "Failed to send to all recipients", "errors": errors},
+        )
+
+    return AdminSubscriptionReminderSendResponse(
+        email_status=st,
+        total_report_count=report_total,
+        current_month_report_count=report_month,
+        current_month_name=current_month_name,
+        recipients_attempted=n,
+        emails_sent=sent,
+    )
+
+
+@router.delete("/companies/{company_id}")
+def delete_tenant_company(
+    company_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Permanently remove a tenant and all related workspace data (admin offboarding).
+
+    Order respects ``parts_v2.customer_id`` → ``fir_customers`` **RESTRICT** (parts deleted first).
+    """
+    c = db.get(Company, company_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Company not found")
+    cid = company_id
+    db.execute(delete(FirReportEvent).where(FirReportEvent.company_id == cid))
+    db.execute(delete(FirUploadLog).where(FirUploadLog.company_id == cid))
+    db.execute(delete(PartV2).where(PartV2.company_id == cid))
+    db.execute(delete(Customer).where(Customer.company_id == cid))
+    db.execute(delete(InvoiceV2).where(InvoiceV2.company_id == cid))
+    db.execute(delete(CompanyUser).where(CompanyUser.company_id == cid))
+    db.execute(delete(CompanySettings).where(CompanySettings.company_id == cid))
+    db.execute(delete(Company).where(Company.id == cid))
+    db.commit()
+    return {"ok": True, "deleted_company_id": company_id}
 
 
 @router.get("/companies/{company_id}/users", response_model=list[dict])
@@ -312,7 +735,11 @@ def company_usage(
     c = db.get(Company, company_id)
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
-    today = date.today()
+    today = billing_today()
+    if sync_subscription_status_from_dates(c, today):
+        db.add(c)
+        db.commit()
+        db.refresh(c)
     inv = count_invoices_this_month(db, company_id, today)
     fir = count_fir_reports_this_month(db, company_id, today)
     return {
@@ -324,21 +751,52 @@ def company_usage(
         "trial_end": c.trial_end_date.isoformat(),
         "subscription_start": c.subscription_start.isoformat() if c.subscription_start else None,
         "subscription_end": c.subscription_end.isoformat() if c.subscription_end else None,
-        "plan_type": c.plan_type,
+        "plan_type": effective_plan_type(c),
         "subscription_status": c.subscription_status,
     }
+
+
+@router.get("/companies/{company_id}/fir-intelligence-months")
+def company_fir_intelligence_months(
+    company_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Months that have at least one fir_events row (by invoice_date), for the admin month picker."""
+    c = db.get(Company, company_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return list_fir_invoice_months(db, company_id)
 
 
 @router.get("/companies/{company_id}/fir-intelligence")
 def company_fir_intelligence(
     company_id: int,
+    year: int | None = Query(None, ge=2000, le=2100),
+    month: int | None = Query(None, ge=1, le=12),
     _: PlatformAdmin = Depends(get_platform_admin),
     db: Session = Depends(get_db_session),
 ):
     c = db.get(Company, company_id)
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
-    return build_fir_intelligence(db, company_id)
+    if year is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "year_required",
+                "message": "Pass `year` as the April-start year of the Indian FY when using a full-year rollup "
+                "(e.g. ?year=2026 → Apr 2026–Mar 2027). Single calendar month: ?year=2026&month=4.",
+            },
+        )
+    settings = get_settings()
+    return build_fir_intelligence(
+        db,
+        company_id,
+        filter_year=year,
+        filter_month=month,
+        qty_reliable_since=settings.fir_intelligence_qty_reliable_since,
+    )
 
 
 @router.get("/pricing-modules", response_model=list[ModulePricingPublicOut])

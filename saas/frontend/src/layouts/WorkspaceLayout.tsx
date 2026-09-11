@@ -77,7 +77,9 @@ export default function WorkspaceLayout() {
           <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
             <Link to="/workspace/dashboard" className={`inline-flex min-w-0 items-center gap-2 ${titleCls}`}>
               <BrandLogo wordmark={false} />
-              <span className="whitespace-nowrap text-base font-semibold leading-none sm:text-lg">FIR Automation</span>
+              <span className="max-w-[12rem] text-sm font-semibold leading-tight sm:max-w-none sm:text-lg sm:leading-none">
+                Final inspection reports
+              </span>
             </Link>
             <ThemeSwitcher />
           </div>
