@@ -636,7 +636,7 @@ export function SoftwareOrderDetailPage() {
       <h1 className="text-2xl font-semibold text-white">Order confirmation</h1>
 
       <div
-        className={`grid gap-4 ${showUpi ? "lg:grid-cols-3" : "max-w-xl"} items-start`}
+        className={`grid gap-4 ${showUpi ? "md:grid-cols-3" : "max-w-xl"} items-start`}
       >
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
         <p className="font-mono text-lg text-brand-400">{order.order_number}</p>
