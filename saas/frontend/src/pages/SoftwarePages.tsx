@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api";
 import { CADENCE_CATALOG_LINE, cadenceMeta, sortPlansByDuration } from "../desktopCadence";
+import { buildUpiPayUri } from "../upiPayUri";
 
 type Plan = {
   id: number;
@@ -508,6 +510,7 @@ export function SoftwareOrderDetailPage() {
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
   const [msg, setMsg] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState("");
 
   useEffect(() => {
     if (!localStorage.getItem("fir_token")) {
@@ -534,6 +537,35 @@ export function SoftwareOrderDetailPage() {
       }
     })();
   }, [nav, orderId, tick]);
+
+  const showUpi = Boolean(upi && order && order.status !== "approved");
+  const upiPayload = useMemo(() => {
+    if (!showUpi || !upi?.upi_id || !order) return "";
+    return buildUpiPayUri({
+      vpa: upi.upi_id,
+      payeeName: upi.payee_name || "TheAIQualisys",
+      amountInr: order.total_price_inr,
+      note: order.order_number,
+    });
+  }, [showUpi, upi, order]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!upiPayload) {
+      setQrDataUrl("");
+      return;
+    }
+    QRCode.toDataURL(upiPayload, { width: 220, margin: 1, errorCorrectionLevel: "M" })
+      .then((url) => {
+        if (!cancelled) setQrDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setQrDataUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [upiPayload]);
 
   async function submitPayment(e: FormEvent) {
     e.preventDefault();
@@ -587,8 +619,12 @@ export function SoftwareOrderDetailPage() {
     order.status === "rejected" ||
     (order.status === "payment_submitted" && !payments.some((p) => p.status === "pending_review"));
 
+  const qrFallback = upiPayload
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiPayload)}`
+    : "";
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6 px-4 py-10">
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link to="/software/orders" className="text-sm text-brand-500 hover:underline">
           ← My orders
@@ -598,6 +634,10 @@ export function SoftwareOrderDetailPage() {
         </Link>
       </div>
       <h1 className="text-2xl font-semibold text-white">Order confirmation</h1>
+
+      <div
+        className={`grid gap-4 ${showUpi ? "md:grid-cols-3" : "max-w-xl"} items-start`}
+      >
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
         <p className="font-mono text-lg text-brand-400">{order.order_number}</p>
         <p className="text-sm text-slate-300">
@@ -665,18 +705,36 @@ export function SoftwareOrderDetailPage() {
         )}
       </div>
 
-      {upi && order.status !== "approved" && (
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-2">
-          <h2 className="text-sm font-semibold text-slate-200">UPI payment instructions</h2>
-          <p className="text-sm text-slate-300">
-            Payee: <strong className="text-white">{upi.payee_name || "—"}</strong>
+      {showUpi && upi && (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-200">UPI payment</h2>
+          <p className="text-xs text-slate-400">
+            Scan with Google Pay, PhonePe, Paytm, or CRED. The amount and UPI ID are filled in the app.
           </p>
-          <p className="text-sm text-slate-300">
-            UPI ID: <code className="text-brand-400">{upi.upi_id || "Not configured yet"}</code>
+          <div className="flex justify-center">
+            {qrDataUrl || qrFallback ? (
+              <img
+                src={qrDataUrl || qrFallback}
+                alt="UPI payment QR"
+                className="h-44 w-44 rounded-lg border border-slate-600 bg-white p-1.5"
+              />
+            ) : (
+              <p className="text-xs text-amber-200">Generating QR…</p>
+            )}
+          </div>
+          <p className="text-center text-lg font-semibold text-white">{inr(order.total_price_inr)}</p>
+          <p className="text-center text-xs text-slate-400">
+            Payee: <strong className="text-slate-200">{upi.payee_name || "—"}</strong>
           </p>
-          <p className="text-sm text-slate-300">
-            Amount: <strong className="text-white">{inr(order.total_price_inr)}</strong>
-          </p>
+          <p className="break-all text-center font-mono text-xs text-brand-400">{upi.upi_id || "Not configured yet"}</p>
+          {upiPayload ? (
+            <a
+              href={upiPayload}
+              className="block rounded-lg bg-brand-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-brand-500"
+            >
+              Open in UPI app
+            </a>
+          ) : null}
           {upi.instructions && <p className="text-xs text-slate-500 whitespace-pre-wrap">{upi.instructions}</p>}
         </div>
       )}
@@ -685,7 +743,7 @@ export function SoftwareOrderDetailPage() {
         <form onSubmit={submitPayment} className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 space-y-3">
           <h2 className="text-sm font-semibold text-slate-200">Submit payment reference</h2>
           <p className="text-xs text-slate-500">
-            Submitting a UTR does not automatically approve payment. An admin must verify before licenses are issued.
+            After you pay, enter the UTR. An admin verifies before license keys are issued.
           </p>
           <label className="block text-xs text-slate-500">
             UTR / UPI reference
@@ -716,6 +774,7 @@ export function SoftwareOrderDetailPage() {
           </button>
         </form>
       )}
+      </div>
 
       {payments.length > 0 && (
         <div className="space-y-2">
