@@ -46,6 +46,7 @@ class DesktopProductPatch(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     listing_active: Optional[bool] = None
+    trial_enabled: Optional[bool] = None
     sort_order: Optional[int] = None
     buy_url_path: Optional[str] = None
 

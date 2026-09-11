@@ -26,6 +26,14 @@ def test_patch_product_toggles_listing():
     db.add.assert_called()
 
 
+def test_patch_product_toggles_trial():
+    db = MagicMock()
+    product = DesktopProduct(code="QR_CODE", name="QR", listing_active=1, trial_enabled=1, sort_order=10)
+    patch_desktop_product(db, product, {"trial_enabled": False})
+    assert product.trial_enabled == 0
+    db.add.assert_called()
+
+
 def test_patch_product_rejects_empty_name():
     db = MagicMock()
     product = DesktopProduct(code="QR_CODE", name="QR", listing_active=1)
