@@ -99,8 +99,10 @@ export default function UploadPage() {
       <h1 className="text-xl font-semibold">Upload invoice details</h1>
       <p className="mt-2 text-sm text-slate-600">
         Upload an Excel invoice (<span className="font-mono text-xs">.xlsx</span> or{" "}
-        <span className="font-mono text-xs">.xls</span>). If you have more than one customer, choose who this
-        invoice is for below.
+        <span className="font-mono text-xs">.xls</span>). Standard columns are Material Code, Description, Advised
+        Qty, Invoice/DC No, and DC Date. ASN files work too: Material (or Material Code) as part number, ASN Qty as
+        quantity, Invoice No, and Invoice Date — description may be blank. The same invoice number may appear on
+        several rows. If you have more than one customer, choose who this invoice is for below.
       </p>
 
       {customers.length > 1 && (
