@@ -34,6 +34,12 @@ COLUMN_MAPPING = {
     "part": "Part Number",
     "material code": "Part Number",
     "materialcode": "Part Number",
+    "mat code": "Part Number",
+    "mat no": "Part Number",
+    "material no": "Part Number",
+    "material number": "Part Number",
+    "material": "Part Number",
+    "schedule line material": "Part Number",
     "description": "Description",
     "descripcion": "Description",
     "beschreibung": "Description",
@@ -74,6 +80,10 @@ COLUMN_MAPPING = {
     "rec qty": "Quantity",
     "received qty": "Quantity",
     "total qty": "Quantity",
+    "asn qty": "Quantity",
+    "asn quantity": "Quantity",
+    "codl asn qty": "Quantity",
+    "codl asn quantity": "Quantity",
     "invoice no": "Invoice Number",
     "invoice number": "Invoice Number",
     "invoice": "Invoice Number",
@@ -84,6 +94,24 @@ COLUMN_MAPPING = {
     "date": "Date",
     "dc date": "Date",
     "document date": "Date",
+    "invoice date": "Date",
+    "inv date": "Date",
+}
+
+# Prefer real material/part columns over "Schedule Line" numbers when both map to Part Number.
+_PART_NUMBER_HEADER_RANK = {
+    "material code": 0,
+    "materialcode": 0,
+    "mat code": 1,
+    "material no": 1,
+    "material number": 1,
+    "mat no": 1,
+    "material": 2,
+    "part number": 3,
+    "part no": 3,
+    "part_no": 3,
+    "part": 4,
+    "schedule line material": 8,
 }
 
 DISPLAY_COLS = [
@@ -104,6 +132,8 @@ _QTY_HEADER_FALLBACK_RE = re.compile(
     r"|quantity(\s+quantity)+"
     r"|bill\s+qty|order\s+qty|ship\s+qty|invoice\s+qty|po\s+qty"
     r"|received\s+qty|rec\s+qty|actual\s+qty|total\s+qty"
+    r"|asn\s+qty|asn\s+quantity"
+    r"|codl\s+asn\s+qty|codl\s+asn\s+quantity"
     r")$"
 )
 
@@ -173,6 +203,21 @@ def _remap_description_if_only_blank(
             continue
         if _EXTRA_DESC_HEADER_RE.search(key):
             matched_sources["Description"].append(col)
+
+
+def _sort_part_number_source_cols(cols: list[Any]) -> list[Any]:
+    return sorted(cols, key=lambda c: _PART_NUMBER_HEADER_RANK.get(_norm_header(c), 5))
+
+
+def _pick_part_number_cell(values: list[Any]) -> str:
+    """Skip pure numeric schedule-line values when a material code is also present."""
+    cleaned = [str(v).strip() for v in values if str(v).strip()]
+    if not cleaned:
+        return ""
+    with_letter = [v for v in cleaned if re.search(r"[A-Za-z]", v)]
+    if with_letter:
+        return with_letter[0]
+    return cleaned[0]
 
 
 def _add_fallback_quantity_columns(df: Any, matched_sources: dict[str, list[Any]]) -> None:
@@ -376,8 +421,14 @@ def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple
     extracted = pd.DataFrame(index=df.index)
     for canon in DISPLAY_COLS:
         src_cols = matched_sources.get(canon, [])
+        if canon == "Part Number" and src_cols:
+            src_cols = _sort_part_number_source_cols(src_cols)
         if not src_cols:
             extracted[canon] = ""
+            continue
+        if canon == "Part Number":
+            sub = df[src_cols].fillna("")
+            extracted[canon] = sub.apply(lambda row: _pick_part_number_cell(list(row)), axis=1)
             continue
         if len(src_cols) == 1:
             extracted[canon] = df[src_cols[0]].fillna("")
@@ -396,24 +447,7 @@ def parse_invoice_excel(content: bytes, *, filename: str | None = None) -> tuple
     extracted = extracted[
         extracted.apply(lambda r: any(str(v).strip() for v in r.values), axis=1)
     ]
-    # Business rule: Part Number can repeat, Invoice Number must be unique.
-    # Ignore blank invoice numbers here; required-field validation happens in UI/workflow.
-    invoice_series = extracted["Invoice Number"].map(lambda v: str(v).strip())
-    seen: set[str] = set()
-    dupes: list[str] = []
-    for inv in invoice_series:
-        if not inv:
-            continue
-        if inv in seen and inv not in dupes:
-            dupes.append(inv)
-        seen.add(inv)
-    if dupes:
-        dupes_str = ", ".join(dupes[:5])
-        extra = f" (+{len(dupes) - 5} more)" if len(dupes) > 5 else ""
-        raise ValueError(
-            "Invoice Number must be unique. Duplicate invoice number(s): "
-            f"{dupes_str}{extra}"
-        )
+    # ASN / multi-line invoices repeat Invoice Number across parts. Do not require uniqueness.
     rows = extracted.to_dict(orient="records")
     for row in rows:
         pn = row.get("Part Number")
