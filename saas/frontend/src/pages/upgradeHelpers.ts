@@ -43,6 +43,18 @@ export function parseBillingId(raw: string | null): BillingId | null {
   return BILLING_IDS.includes(s as BillingId) ? (s as BillingId) : null;
 }
 
+export function billingPeriodApi(id: BillingId): "MONTHLY" | "QUARTERLY" | "HALF_YEARLY" | "YEARLY" {
+  if (id === "3m") return "QUARTERLY";
+  if (id === "6m") return "HALF_YEARLY";
+  if (id === "12m") return "YEARLY";
+  return "MONTHLY";
+}
+
+export function moduleKeyFromSearch(search: string): string {
+  const q = new URLSearchParams(search);
+  return (q.get("module") || q.get("module_key") || "fir").trim() || "fir";
+}
+
 export type SelectedPlan = {
   planName: string;
   planType: string;

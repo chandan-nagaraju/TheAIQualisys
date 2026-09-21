@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
-import { Link, Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api";
 import { useTheme } from "../theme/ThemeContext";
 import {
   BILLING_OPTIONS,
+  billingPeriodApi,
   billingTotalInr,
   isEnterprisePlan,
+  moduleKeyFromSearch,
   parseBillingId,
   QR_REFRESH_MS,
   type UpgradeInfo,
@@ -16,7 +18,9 @@ import {
 
 export default function UpgradePayPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const billingParam = parseBillingId(new URLSearchParams(location.search).get("billing"));
+  const moduleKey = moduleKeyFromSearch(location.search);
   const [info, setInfo] = useState<UpgradeInfo | null>(null);
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -24,6 +28,14 @@ export default function UpgradePayPage() {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [secondsToRefresh, setSecondsToRefresh] = useState(QR_REFRESH_MS / 1000);
   const { theme } = useTheme();
+  const [doneOpen, setDoneOpen] = useState(false);
+  const [doneBusy, setDoneBusy] = useState(false);
+  const [doneErr, setDoneErr] = useState<string | null>(null);
+  const [doneResult, setDoneResult] = useState<{
+    already_submitted: boolean;
+    message: string;
+    whatsapp_url: string;
+  } | null>(null);
 
   const selected = useSelectedPlan(plans);
   const enterprisePricing = useMemo(
@@ -172,6 +184,37 @@ export default function UpgradePayPage() {
     };
   }, [upiPayload]);
 
+  async function onPaymentDone() {
+    if (!billingParam || !selected) return;
+    if (!localStorage.getItem("fir_token")) {
+      navigate("/login", { state: { from: location.pathname + location.search } });
+      return;
+    }
+    setDoneBusy(true);
+    setDoneErr(null);
+    try {
+      const res = await apiFetch<{
+        already_submitted: boolean;
+        message: string;
+        whatsapp_url: string;
+      }>("/subscription/payment-done", {
+        method: "POST",
+        body: JSON.stringify({
+          module_key: moduleKey,
+          plan_type: selected.planType || undefined,
+          billing_period: billingPeriodApi(billingParam),
+        }),
+      });
+      setDoneResult(res);
+      setDoneOpen(true);
+    } catch (e) {
+      setDoneErr(e instanceof Error ? e.message : "Could not submit payment");
+      setDoneOpen(true);
+    } finally {
+      setDoneBusy(false);
+    }
+  }
+
   if (!billingParam) {
     return <Navigate to={upgradeSearchStripped} replace />;
   }
@@ -258,6 +301,15 @@ export default function UpgradePayPage() {
           Pay with the QR or UPI app, then send your payment screenshot via WhatsApp.
         </p>
 
+        <button
+          type="button"
+          className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+          onClick={() => void onPaymentDone()}
+          disabled={doneBusy}
+        >
+          {doneBusy ? "Submitting…" : "Payment Done"}
+        </button>
+
         <div className="mt-4 text-center">
           <Link
             to={upgradeSearchStripped}
@@ -267,6 +319,48 @@ export default function UpgradePayPage() {
           </Link>
         </div>
       </div>
+      {doneOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="presentation"
+          onClick={() => setDoneOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className={`max-w-md rounded-xl border p-6 shadow-xl ${t.card}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className={`text-lg font-semibold ${t.title}`}>
+              {doneResult?.already_submitted ? "Payment already submitted" : "Payment marked as completed"}
+            </h3>
+            <p className={`mt-3 text-sm leading-relaxed ${t.sub}`}>
+              {doneErr ||
+                doneResult?.message ||
+                "Please send your payment screenshot to our WhatsApp number for verification. Your subscription will be activated only after our Admin verifies the payment."}
+            </p>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-500 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
+                onClick={() => setDoneOpen(false)}
+              >
+                Cancel
+              </button>
+              {doneResult?.whatsapp_url ? (
+                <a
+                  href={doneResult.whatsapp_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+                >
+                  Send Payment Screenshot on WhatsApp
+                </a>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

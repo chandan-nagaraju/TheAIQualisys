@@ -6,7 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.billing_payments import billing_payment_counts, get_billing_payment, list_billing_payments, serialize_billing_payment
+from app.billing_payments import (
+    billing_payment_counts,
+    get_billing_payment,
+    list_admin_notifications,
+    list_billing_payments,
+    mark_notification_read,
+    reject_payment,
+    serialize_billing_payment,
+    verify_payment,
+)
 from app.config import get_settings
 from app.deps import get_db_session, get_platform_admin
 from app.email_util import (
@@ -38,7 +47,9 @@ from app.pricing_catalog import list_all_pricing_rows
 from app.schemas import (
     AdminBillingPaymentListResponse,
     AdminBillingPaymentOut,
+    AdminBillingPaymentRejectBody,
     AdminCompanyPatch,
+    AdminNotificationOut,
     AdminCompanySummary,
     AdminDashboardResponse,
     AdminFirCustomerRow,
@@ -869,4 +880,70 @@ def admin_get_billing_payment(
 ):
     row = get_billing_payment(db, payment_id)
     return AdminBillingPaymentOut.model_validate(serialize_billing_payment(row))
+
+
+@router.post("/billing/payments/{payment_id}/verify", response_model=AdminBillingPaymentOut)
+def admin_verify_billing_payment(
+    payment_id: int,
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = verify_payment(db, admin=admin, payment_id=payment_id)
+    db.commit()
+    db.refresh(row)
+    return AdminBillingPaymentOut.model_validate(serialize_billing_payment(row))
+
+
+@router.post("/billing/payments/{payment_id}/reject", response_model=AdminBillingPaymentOut)
+def admin_reject_billing_payment(
+    payment_id: int,
+    body: AdminBillingPaymentRejectBody,
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = reject_payment(db, admin=admin, payment_id=payment_id, reason=body.reason, note=body.note)
+    db.commit()
+    db.refresh(row)
+    return AdminBillingPaymentOut.model_validate(serialize_billing_payment(row))
+
+
+@router.get("/notifications", response_model=list[AdminNotificationOut])
+def admin_list_notifications(
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+    unread: bool = Query(default=False),
+):
+    rows = list_admin_notifications(db, unread_only=unread)
+    return [
+        AdminNotificationOut(
+            id=n.id,
+            title=n.title,
+            message=n.message,
+            link_path=n.link_path,
+            payment_id=n.payment_id,
+            is_read=bool(n.is_read),
+            created_at=n.created_at,
+        )
+        for n in rows
+    ]
+
+
+@router.post("/notifications/{notification_id}/read", response_model=AdminNotificationOut)
+def admin_read_notification(
+    notification_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    n = mark_notification_read(db, notification_id)
+    db.commit()
+    db.refresh(n)
+    return AdminNotificationOut(
+        id=n.id,
+        title=n.title,
+        message=n.message,
+        link_path=n.link_path,
+        payment_id=n.payment_id,
+        is_read=bool(n.is_read),
+        created_at=n.created_at,
+    )
 

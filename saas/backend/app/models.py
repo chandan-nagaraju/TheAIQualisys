@@ -116,12 +116,51 @@ class BillingPayment(Base):
     payment_method: Mapped[str] = mapped_column(String(64), nullable=False, default="UPI")
     reference_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     payment_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_verification", index=True)
     proof_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    module_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    module_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    plan_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    billing_period: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    subscription_duration: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="INR")
+    pricing_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    payment_code: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    payment_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    verified_by_admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("platform_admins.id", ondelete="SET NULL"), nullable=True
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_by_admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("platform_admins.id", ondelete="SET NULL"), nullable=True
+    )
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rejection_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    customer_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     company: Mapped[Company] = relationship("Company", back_populates="billing_payments")
     user: Mapped[CompanyUser | None] = relationship("CompanyUser", back_populates="billing_payments")
+
+
+class AdminNotification(Base):
+    """In-app Platform Admin alerts (no prior notification table existed)."""
+
+    __tablename__ = "admin_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    link_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    payment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("billing_payments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    is_read: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class PlatformAdmin(Base):

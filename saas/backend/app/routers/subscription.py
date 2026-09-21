@@ -3,12 +3,27 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.billing_payments import (
+    customer_whatsapp_message,
+    quote_payment,
+    submit_payment_done,
+    whatsapp_url_for_message,
+)
+from app.billing_period import period_label
 from app.config import get_settings
 from app.dates import billing_today
 from app.deps import company_impersonated_by_admin, get_company_for_user, get_current_company_user, get_db_session
 from app.models import CompanyUser
 from app.pricing_catalog import list_fir_plan_rows
-from app.schemas import CompanyOut, PlanInfo, SubscriptionStatusResponse, UpgradeInfoResponse
+from app.schemas import (
+    CompanyOut,
+    PaymentDoneRequest,
+    PaymentDoneResponse,
+    PaymentQuoteOut,
+    PlanInfo,
+    SubscriptionStatusResponse,
+    UpgradeInfoResponse,
+)
 from app.subscription_logic import (
     can_access_fir_workspace,
     can_create_invoice,
@@ -119,3 +134,69 @@ def upgrade_info():
         )
     url = f"https://wa.me/{phone}?text={quote(msg)}"
     return UpgradeInfoResponse(upi_id=settings.upi_id, whatsapp_url=url, message=msg)
+
+
+@router.get("/payment-quote", response_model=PaymentQuoteOut)
+def payment_quote(
+    module_key: str = "fir",
+    plan_type: str | None = None,
+    billing_period: str = "MONTHLY",
+    db: Session = Depends(get_db_session),
+):
+    q = quote_payment(db, module_key=module_key, plan_type=plan_type, billing_period_raw=billing_period)
+    return PaymentQuoteOut(
+        module_key=q["module_key"],
+        module_label=q["module_label"],
+        plan_type=q["plan_type"],
+        plan_name=q["plan_name"],
+        billing_period=q["billing_period"],
+        billing_period_label=q["billing_period_label"],
+        subscription_duration=q["subscription_duration"],
+        amount_inr=q["amount_inr"],
+        currency=q["currency"],
+        monthly_price=q["monthly_price"],
+        payment_method=q["payment_method"],
+    )
+
+
+@router.post("/payment-done", response_model=PaymentDoneResponse)
+def payment_done(
+    body: PaymentDoneRequest,
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+):
+    company = get_company_for_user(user, db)
+    row, already = submit_payment_done(
+        db,
+        user=user,
+        company=company,
+        module_key=body.module_key,
+        plan_type=body.plan_type,
+        billing_period_raw=body.billing_period,
+    )
+    row.company = company
+    row.user = user
+    db.commit()
+    db.refresh(row)
+    msg_text = customer_whatsapp_message(row, user, company)
+    wa = whatsapp_url_for_message(msg_text)
+    notice = (
+        "Your payment is already submitted for verification."
+        if already
+        else "Please send your payment screenshot to our WhatsApp number for verification. Your subscription will be activated only after our Admin verifies the payment."
+    )
+    return PaymentDoneResponse(
+        payment_id=row.id,
+        payment_code=row.payment_code,
+        status=row.status if row.status != "pending" else "pending_verification",
+        already_submitted=already,
+        amount_inr=row.amount_inr,
+        currency=row.currency or "INR",
+        module_label=row.module_label,
+        plan_name=row.plan_name,
+        billing_period_label=period_label(row.billing_period or "MONTHLY"),
+        whatsapp_url=wa,
+        whatsapp_message=msg_text,
+        message=notice,
+    )
+

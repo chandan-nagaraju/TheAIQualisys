@@ -4,6 +4,7 @@ import { apiFetch, setWorkspaceCustomerId } from "../api";
 import { exitTenantImpersonation, isTenantImpersonation } from "../impersonation";
 import { showCompanyShellBannerPath } from "../layout/companyShellBannerPaths";
 import AdminDesktopAppsNav from "./AdminDesktopAppsNav";
+import AdminNotificationsNav from "./AdminNotificationsNav";
 import BrandLogo from "./BrandLogo";
 import HeaderBackButton from "./HeaderBackButton";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -244,6 +245,7 @@ export default function Layout() {
                 <NavLink className={navItemCls} to="/admin/billing">
                   Billings
                 </NavLink>
+                <AdminNotificationsNav />
                 <AdminDesktopAppsNav />
                 <button type="button" className={logoutBtn} onClick={logoutAdmin}>
                   Log out

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { apiFetch } from "../api";
 import { getModuleBySlug } from "../moduleCatalog";
+import { BILLING_OPTIONS } from "./upgradeHelpers";
 
 type UpgradeInfo = { upi_id: string; whatsapp_url: string; message: string };
 
@@ -117,6 +118,30 @@ export default function ModuleProductPricingPage() {
         >
           Enroll Now
         </a>
+      )}
+
+      {priceRow && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pay via UPI</p>
+          <p className="mt-2 text-sm text-slate-400">
+            Choose a billing period to open the existing payment page (QR + Payment Done).
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            {BILLING_OPTIONS.map((opt) => (
+              <Link
+                key={opt.id}
+                to={`/upgrade/pay?module=${encodeURIComponent(def.moduleName)}&plan_name=${encodeURIComponent(
+                  def.title,
+                )}&plan_type=${encodeURIComponent(def.moduleName)}&price_inr=${encodeURIComponent(
+                  String(priceRow.monthly_price),
+                )}&billing=${opt.id}`}
+                className="rounded-xl bg-brand-600 px-3 py-4 text-center text-sm font-semibold text-white hover:bg-brand-500"
+              >
+                {opt.label}
+              </Link>
+            ))}
+          </div>
+        </div>
       )}
 
       <p className="text-center text-xs text-slate-500">
