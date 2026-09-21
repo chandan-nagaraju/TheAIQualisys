@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
+import { buildUpgradeSearch } from "./upgradeHelpers";
 
 type Plan = {
   plan_type: string;
@@ -111,9 +112,12 @@ export default function PricingPage({ variant = "marketing" }: Props) {
               {plan.highlight && <p className={t.highlight}>{plan.highlight}</p>}
               {ws ? (
                 <Link
-                  to={`/upgrade?plan_name=${encodeURIComponent(plan.name)}&price_inr=${encodeURIComponent(
-                    String(plan.price_inr),
-                  )}&plan_type=${encodeURIComponent(plan.plan_type)}`}
+                  to={`/upgrade?${buildUpgradeSearch({
+                    moduleKey: "fir",
+                    planName: plan.name,
+                    planType: plan.plan_type,
+                    priceInr: plan.price_inr,
+                  })}`}
                   className="mt-8 inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
                 >
                   Buy

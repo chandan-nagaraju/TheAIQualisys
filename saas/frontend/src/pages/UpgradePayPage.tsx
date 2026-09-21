@@ -8,6 +8,7 @@ import {
   billingPeriodApi,
   billingTotalInr,
   isEnterprisePlan,
+  moduleDisplayName,
   moduleKeyFromSearch,
   parseBillingId,
   QR_REFRESH_MS,
@@ -36,6 +37,7 @@ export default function UpgradePayPage() {
     message: string;
     whatsapp_url: string;
   } | null>(null);
+  const [quotedAmount, setQuotedAmount] = useState<number | null>(null);
 
   const selected = useSelectedPlan(plans);
   const enterprisePricing = useMemo(
@@ -44,9 +46,10 @@ export default function UpgradePayPage() {
   );
 
   const payAmount = useMemo(() => {
+    if (quotedAmount != null) return quotedAmount;
     if (!billingParam || selected?.price == null) return null;
     return billingTotalInr(selected.price, billingParam, enterprisePricing);
-  }, [selected?.price, billingParam, enterprisePricing]);
+  }, [quotedAmount, selected?.price, billingParam, enterprisePricing]);
 
   const upgradeSearchStripped = useMemo(() => {
     const q = new URLSearchParams(location.search);
@@ -69,6 +72,28 @@ export default function UpgradePayPage() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!billingParam) return;
+    const planType = new URLSearchParams(location.search).get("plan_type") || "";
+    let cancelled = false;
+    (async () => {
+      try {
+        const q = new URLSearchParams({
+          module_key: moduleKey,
+          billing_period: billingPeriodApi(billingParam),
+        });
+        if (planType) q.set("plan_type", planType);
+        const quote = await apiFetch<{ amount_inr: number }>(`/subscription/payment-quote?${q.toString()}`);
+        if (!cancelled) setQuotedAmount(quote.amount_inr);
+      } catch {
+        if (!cancelled) setQuotedAmount(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [billingParam, moduleKey, location.search]);
 
   useEffect(() => {
     if (!billingParam) return;
@@ -252,7 +277,10 @@ export default function UpgradePayPage() {
             Pay · {billingLabel}
           </p>
           <p className={`mt-1 text-xl font-bold tabular-nums sm:text-2xl ${t.title}`}>₹{payAmount}</p>
-          <p className={`mt-1 text-xs ${t.sub}`}>{selectedPlanText}</p>
+          <p className={`mt-1 text-xs ${t.sub}`}>
+            {moduleDisplayName(moduleKey)}
+            {selectedPlanText ? ` · ${selectedPlanText}` : ""}
+          </p>
         </div>
 
         <div className="mt-4 flex justify-center">
