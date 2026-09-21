@@ -7,8 +7,8 @@ type Company = {
   id: number;
   company_name: string;
   vendor_code: string;
-  trial_start_date: string;
-  trial_end_date: string;
+  trial_start_date: string | null;
+  trial_end_date: string | null;
   subscription_start: string | null;
   subscription_end: string | null;
   plan_type: string;
@@ -20,8 +20,8 @@ type Usage = {
   monthly_invoice_count: number;
   monthly_fir_reports: number;
   monthly_usage_combined: number;
-  trial_start: string;
-  trial_end: string;
+  trial_start: string | null;
+  trial_end: string | null;
   subscription_start: string | null;
   subscription_end: string | null;
   plan_type: string;
@@ -36,6 +36,8 @@ export default function AdminCompanyPage() {
   const [users, setUsers] = useState<{ id: number; email: string; name: string | null }[]>([]);
   const [plan, setPlan] = useState("basic");
   const [extendDays, setExtendDays] = useState(30);
+  const [trialFrom, setTrialFrom] = useState("");
+  const [trialTo, setTrialTo] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
@@ -54,6 +56,8 @@ export default function AdminCompanyPage() {
     setUsage(u);
     setUsers(usr);
     setPlan(c.plan_type);
+    setTrialFrom(c.trial_start_date ?? "");
+    setTrialTo(c.trial_end_date ?? "");
   }, [id]);
 
   useEffect(() => {
@@ -110,7 +114,16 @@ export default function AdminCompanyPage() {
   async function activate(e: FormEvent) {
     e.preventDefault();
     if (plan === "trial") {
-      await patch({ action: "activate", plan_type: "trial", extend_days: extendDays || 7 });
+      if (!trialFrom || !trialTo) {
+        setMsg("Select trial start and end dates.");
+        return;
+      }
+      await patch({
+        action: "activate",
+        plan_type: "trial",
+        trial_start_date: trialFrom,
+        trial_end_date: trialTo,
+      });
       return;
     }
     await patch({ action: "activate", plan_type: plan });
@@ -134,7 +147,9 @@ export default function AdminCompanyPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300">
-          <p>Trial: {usage.trial_start} → {usage.trial_end}</p>
+          <p>
+            Trial: {usage.trial_start || "—"} → {usage.trial_end || "—"}
+          </p>
           <p className="mt-2">
             Subscription: {usage.subscription_start || "—"} → {usage.subscription_end || "—"}
           </p>
@@ -206,9 +221,47 @@ export default function AdminCompanyPage() {
           </button>
         </form>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(12rem,16rem)_auto_auto] sm:items-end sm:gap-x-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(11rem,14rem)_minmax(11rem,14rem)_auto] sm:items-end sm:gap-x-3">
           <div className="min-w-0">
-            <label className="block text-xs text-slate-500">Extend (days)</label>
+            <label className="block text-xs text-slate-500">Trial from</label>
+            <input
+              type="date"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              value={trialFrom}
+              onChange={(e) => setTrialFrom(e.target.value)}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className="block text-xs text-slate-500">Trial to</label>
+            <input
+              type="date"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              value={trialTo}
+              onChange={(e) => setTrialTo(e.target.value)}
+            />
+          </div>
+          <button
+            type="button"
+            className="h-10 w-full rounded-lg border border-slate-600 px-4 text-sm text-slate-100 hover:bg-slate-800 sm:w-auto sm:self-end sm:justify-self-start"
+            onClick={() => {
+              if (!trialFrom || !trialTo) {
+                setMsg("Select trial start and end dates.");
+                return;
+              }
+              void patch({
+                action: "extend_trial",
+                trial_start_date: trialFrom,
+                trial_end_date: trialTo,
+              });
+            }}
+          >
+            Extend trial
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(12rem,16rem)_auto] sm:items-end sm:gap-x-3">
+          <div className="min-w-0">
+            <label className="block text-xs text-slate-500">Extend subscription (days)</label>
             <input
               type="number"
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
@@ -216,13 +269,6 @@ export default function AdminCompanyPage() {
               onChange={(e) => setExtendDays(Number(e.target.value))}
             />
           </div>
-          <button
-            type="button"
-            className="h-10 w-full rounded-lg border border-slate-600 px-4 text-sm text-slate-100 hover:bg-slate-800 sm:w-auto sm:self-end sm:justify-self-start"
-            onClick={() => patch({ action: "extend_trial", extend_days: extendDays })}
-          >
-            Extend trial
-          </button>
           <button
             type="button"
             className="h-10 w-full rounded-lg border border-slate-600 px-4 text-sm text-slate-100 hover:bg-slate-800 sm:w-auto sm:self-end sm:justify-self-start"
@@ -249,8 +295,8 @@ export default function AdminCompanyPage() {
           </button>
         </div>
         <p className="text-sm text-slate-400">
-          You choose the action: activate trial (uses Extend days from today), extend trial, extend the paid
-          subscription, or set the plan label only.
+          You choose the action: set trial dates on the calendar, activate a paid plan, extend the paid
+          subscription by days, or mark expired (clears trial and subscription dates).
         </p>
         {msg && <p className="text-sm text-emerald-400">{msg}</p>}
       </div>

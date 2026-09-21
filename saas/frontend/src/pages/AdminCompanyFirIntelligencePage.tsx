@@ -6,8 +6,8 @@ type Company = {
   id: number;
   company_name: string;
   vendor_code: string;
-  trial_start_date: string;
-  trial_end_date: string;
+  trial_start_date: string | null;
+  trial_end_date: string | null;
   subscription_start: string | null;
   subscription_end: string | null;
   plan_type: string;

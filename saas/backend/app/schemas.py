@@ -60,8 +60,8 @@ class CompanyOut(BaseModel):
     id: int
     company_name: str
     vendor_code: str
-    trial_start_date: date
-    trial_end_date: date
+    trial_start_date: date | None
+    trial_end_date: date | None
     subscription_start: date | None
     subscription_end: date | None
     plan_type: str
@@ -278,6 +278,8 @@ class AdminCompanyPatch(BaseModel):
     )
     subscription_end: date | None = None
     subscription_start: date | None = None
+    trial_start_date: date | None = None
+    trial_end_date: date | None = None
     plan_type: str | None = None
     extend_days: int | None = None
 

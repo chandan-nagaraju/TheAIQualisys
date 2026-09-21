@@ -231,6 +231,50 @@ def test_extend_company_trial_from_today_when_trial_already_ended() -> None:
     assert effective_plan_type(c) == "trial"
 
 
+def test_set_company_trial_window_uses_calendar_dates() -> None:
+    from types import SimpleNamespace
+    from datetime import date
+
+    from app.subscription_logic import set_company_trial_window, sync_subscription_status_from_dates
+
+    today = date(2026, 9, 21)
+    c = SimpleNamespace(
+        trial_start_date=date(2026, 9, 2),
+        trial_end_date=date(2026, 9, 20),
+        subscription_start=date(2026, 9, 21),
+        subscription_end=date(2026, 10, 21),
+        plan_type="basic",
+        subscription_status="active",
+    )
+    set_company_trial_window(c, date(2026, 9, 2), date(2026, 9, 30))
+    sync_subscription_status_from_dates(c, today)
+    assert c.trial_start_date == date(2026, 9, 2)
+    assert c.trial_end_date == date(2026, 9, 30)
+    assert c.plan_type == "trial"
+    assert c.subscription_status == "trial"
+    assert c.subscription_end == date(2026, 10, 21)
+
+
+def test_cleared_trial_and_subscription_dates_sync_to_expired() -> None:
+    from types import SimpleNamespace
+    from datetime import date
+
+    from app.subscription_logic import sync_subscription_status_from_dates, trial_is_valid
+
+    today = date(2026, 9, 21)
+    c = SimpleNamespace(
+        trial_start_date=None,
+        trial_end_date=None,
+        subscription_start=None,
+        subscription_end=None,
+        plan_type="basic",
+        subscription_status="expired",
+    )
+    assert trial_is_valid(c, today) is False
+    sync_subscription_status_from_dates(c, today)
+    assert c.subscription_status == "expired"
+
+
 def test_paid_activate_closes_trial_so_sync_stays_active() -> None:
     from types import SimpleNamespace
     from datetime import date
