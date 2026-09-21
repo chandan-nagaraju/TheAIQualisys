@@ -260,21 +260,46 @@ class AdminFirCustomerRow(BaseModel):
 
 class AdminBillingPaymentOut(BaseModel):
     id: int
+    payment_code: str | None = None
     company_id: int
     user_id: int | None
+    customer_id: int | None = None
     customer_name: str | None
     company_name: str | None
     email: str | None
     phone: str | None
+    billing_address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    state_code: str | None = None
+    pincode: str | None = None
+    gstin: str | None = None
+    module_key: str | None = None
+    module_label: str | None = None
     subscription_plan: str
+    plan_type: str | None = None
+    plan_id: int | None = None
+    billing_period: str | None = None
+    billing_period_label: str | None = None
+    subscription_duration: str | None = None
     subscription_start: str | None
     subscription_end: str | None
     amount_inr: int
+    currency: str | None = "INR"
+    original_plan_price: int | None = None
     payment_method: str
     reference_note: str | None
     payment_date: str | None
+    payment_submitted_at: str | None = None
     status: str
     has_proof: bool
+    pricing_snapshot: dict | None = None
+    verified_at: str | None = None
+    rejected_at: str | None = None
+    rejection_reason: str | None = None
+    rejection_reason_label: str | None = None
+    whatsapp_number: str | None = None
+    whatsapp_url: str | None = None
 
 
 class AdminBillingPaymentListResponse(BaseModel):
@@ -282,6 +307,64 @@ class AdminBillingPaymentListResponse(BaseModel):
     verified_count: int
     rejected_count: int
     items: list[AdminBillingPaymentOut]
+
+
+class AdminBillingPaymentRejectBody(BaseModel):
+    reason: str
+    note: str | None = None
+
+
+class AdminNotificationOut(BaseModel):
+    id: int
+    title: str
+    message: str
+    link_path: str
+    payment_id: int | None
+    is_read: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PaymentQuoteRequest(BaseModel):
+    module_key: str = "fir"
+    plan_type: str | None = None
+    billing_period: str
+
+
+class PaymentDoneRequest(BaseModel):
+    module_key: str = "fir"
+    plan_type: str | None = None
+    billing_period: str
+
+
+class PaymentDoneResponse(BaseModel):
+    payment_id: int
+    payment_code: str | None
+    status: str
+    already_submitted: bool
+    amount_inr: int
+    currency: str
+    module_label: str | None
+    plan_name: str
+    billing_period_label: str | None
+    whatsapp_url: str
+    whatsapp_message: str
+    message: str
+
+
+class PaymentQuoteOut(BaseModel):
+    module_key: str
+    module_label: str
+    plan_type: str
+    plan_name: str
+    billing_period: str
+    billing_period_label: str
+    subscription_duration: str
+    amount_inr: int
+    currency: str
+    monthly_price: int
+    payment_method: str
 
 
 class ForgotPasswordRequest(BaseModel):

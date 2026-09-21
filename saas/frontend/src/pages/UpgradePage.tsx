@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api";
 import { useTheme } from "../theme/ThemeContext";
 import {
@@ -7,11 +7,16 @@ import {
   type PlanInfo,
   type UpgradeInfo,
   isEnterprisePlan,
+  moduleDisplayName,
+  moduleKeyFromSearch,
   useSelectedPlan,
 } from "./upgradeHelpers";
 
 export default function UpgradePage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const moduleKey = moduleKeyFromSearch(location.search);
+  const moduleTitle = moduleDisplayName(moduleKey);
   const [info, setInfo] = useState<UpgradeInfo | null>(null);
   const [plans, setPlans] = useState<PlanInfo[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -84,22 +89,27 @@ export default function UpgradePage() {
 
   return (
     <div className={`mx-auto w-full max-w-3xl rounded-2xl border p-5 shadow-sm sm:p-7 ${t.card}`}>
-      <h1 className={`text-2xl font-semibold sm:text-3xl ${t.title}`}>Upgrade (manual payment)</h1>
+      <h1 className={`text-2xl font-semibold sm:text-3xl ${t.title}`}>
+        {moduleTitle} — upgrade (manual UPI)
+      </h1>
       <p className={`mt-2 text-sm leading-relaxed sm:text-base ${t.lead}`}>
         Choose <strong className="font-semibold text-slate-700 dark:text-slate-200">Month</strong>,{" "}
         <strong className="font-semibold text-slate-700 dark:text-slate-200">Quarterly</strong>,{" "}
         <strong className="font-semibold text-slate-700 dark:text-slate-200">Half yearly</strong>, or{" "}
         <strong className="font-semibold text-slate-700 dark:text-slate-200">Yearly</strong> below. You will go to a
-        dedicated payment page with your UPI QR centered on screen (no scrolling needed to scan). Then pay and send the
-        screenshot on WhatsApp.
+        dedicated payment page with your <strong>UPI QR</strong>, UPI ID, and Open in UPI app. Then pay and tap Payment
+        Done.
       </p>
       {err && <p className={`mt-4 text-sm ${t.err}`}>{err}</p>}
       {info && (
         <div className="mt-6 space-y-4 sm:mt-8">
           {selected && (
             <div className={`rounded-xl border p-4 sm:p-5 ${t.selectedBox}`}>
-              <p className={`text-xs uppercase tracking-wide ${t.selectedTitle}`}>Selected plan</p>
-              <p className={`mt-1 text-base font-semibold sm:text-lg ${t.selectedText}`}>{selectedPlanText}</p>
+              <p className={`text-xs uppercase tracking-wide ${t.selectedTitle}`}>Selected module &amp; plan</p>
+              <p className={`mt-1 text-base font-semibold sm:text-lg ${t.selectedText}`}>
+                {moduleTitle}
+                {selectedPlanText ? ` · ${selectedPlanText}` : ""}
+              </p>
               {listPriceLine && <p className={`mt-1 text-sm ${t.selectedText}`}>{listPriceLine}</p>}
               {enterprisePricing && (
                 <p className={`mt-2 text-xs font-medium text-amber-800 dark:text-amber-200`}>
@@ -125,7 +135,7 @@ export default function UpgradePage() {
                 ))}
               </div>
               <p className={`mt-4 text-center text-xs ${t.msg}`}>
-                Tap a period to open the payment page with your QR and UPI details.
+                Tap a period to open the UPI QR payment page.
               </p>
             </div>
           )}

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { QMS_MODULES } from "../moduleCatalog";
 
 export type UpgradeInfo = { upi_id: string; whatsapp_url: string; message: string };
 export type PlanInfo = { plan_type: string; name: string; price_inr: number };
@@ -41,6 +42,39 @@ export function parseBillingId(raw: string | null): BillingId | null {
   if (!raw) return null;
   const s = raw.trim().toLowerCase();
   return BILLING_IDS.includes(s as BillingId) ? (s as BillingId) : null;
+}
+
+export function billingPeriodApi(id: BillingId): "MONTHLY" | "QUARTERLY" | "HALF_YEARLY" | "YEARLY" {
+  if (id === "3m") return "QUARTERLY";
+  if (id === "6m") return "HALF_YEARLY";
+  if (id === "12m") return "YEARLY";
+  return "MONTHLY";
+}
+
+export function moduleKeyFromSearch(search: string): string {
+  const q = new URLSearchParams(search);
+  return (q.get("module") || q.get("module_key") || "fir").trim() || "fir";
+}
+
+export function moduleDisplayName(moduleKey: string, fallback = "FIR"): string {
+  const key = (moduleKey || "fir").trim().toLowerCase();
+  if (!key || key === "fir" || key === "final_inspection") return "FIR";
+  const def = QMS_MODULES.find((m) => m.moduleName.toLowerCase() === key || m.slug === key);
+  return def?.title || fallback;
+}
+
+export function buildUpgradeSearch(opts: {
+  moduleKey?: string;
+  planName: string;
+  planType: string;
+  priceInr: number;
+}): string {
+  const q = new URLSearchParams();
+  q.set("module", opts.moduleKey || "fir");
+  q.set("plan_name", opts.planName);
+  q.set("plan_type", opts.planType);
+  q.set("price_inr", String(opts.priceInr));
+  return q.toString();
 }
 
 export type SelectedPlan = {

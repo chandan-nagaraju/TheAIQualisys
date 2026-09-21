@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
 import { QMS_MODULES } from "../moduleCatalog";
+import { buildUpgradeSearch } from "./upgradeHelpers";
 
 type Plan = {
   plan_type: string;
@@ -85,6 +86,17 @@ export default function AllModulesPricingPage() {
                       ? `${plan.min_invoices}+ invoices / month`
                       : `${plan.min_invoices}–${plan.max_invoices} invoices / month`}
                   </p>
+                  <Link
+                    to={`/upgrade?${buildUpgradeSearch({
+                      moduleKey: "fir",
+                      planName: plan.name,
+                      planType: plan.plan_type,
+                      priceInr: plan.price_inr,
+                    })}`}
+                    className="mt-3 inline-flex min-h-9 items-center justify-center rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+                  >
+                    Buy — pay with UPI QR
+                  </Link>
                 </div>
               ))
             )}
