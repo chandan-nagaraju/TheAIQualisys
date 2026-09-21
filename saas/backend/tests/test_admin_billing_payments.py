@@ -74,6 +74,16 @@ def test_billing_period_aliases():
     assert billing_total_inr(6799, "MONTHLY", enterprise=True) == 6799
 
 
+def test_admin_billing_payments_routes_include_optional_trailing_slash():
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "app" / "routers" / "admin.py").read_text(encoding="utf-8")
+    assert '@router.get("/billing/payments"' in src
+    assert '@router.get("/billing/payments/"' in src
+    assert src.count('@router.get("/notifications"') >= 1
+    assert '@router.get("/notifications/"' not in src
+
+
 def test_billing_payment_counts_empty_list_payload():
     db = MagicMock()
     db.execute.return_value.all.return_value = []

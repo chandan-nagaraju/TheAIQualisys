@@ -859,6 +859,7 @@ def admin_patch_pricing_module(
     return ModulePricingPublicOut.model_validate(row)
 
 
+@router.get("/billing/payments/", response_model=AdminBillingPaymentListResponse, include_in_schema=False)
 @router.get("/billing/payments", response_model=AdminBillingPaymentListResponse)
 def admin_list_billing_payments(
     _: PlatformAdmin = Depends(get_platform_admin),

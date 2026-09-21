@@ -37,6 +37,22 @@ logger = logging.getLogger(__name__)
 _STARTUP_POLL_SEC = 60
 
 
+class _ForwardedProtoMiddleware:
+    """Honor X-Forwarded-Proto from Railway's TLS terminator (no extra uvicorn import)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            headers = {k.decode("latin1").lower(): v.decode("latin1") for k, v in scope.get("headers") or []}
+            proto = (headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+            if proto in ("http", "https"):
+                scope = dict(scope)
+                scope["scheme"] = proto
+        await self.app(scope, receive, send)
+
+
 def _seconds_until_next_local_hms(
     tz: ZoneInfo,
     *,
@@ -184,7 +200,10 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="Final inspection reports SaaS API", lifespan=lifespan)
+    # redirect_slashes=False: FastAPI's default 307 from /payments/ → /payments uses the
+    # internal HTTP URL (http://…railway.app/…) behind Railway TLS. Browsers treat that
+    # https→http redirect as a CORS/mixed-content failure. Serve the path as registered.
+    app = FastAPI(title="Final inspection reports SaaS API", lifespan=lifespan, redirect_slashes=False)
 
     raw_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     pub = (settings.public_app_url or "").strip().rstrip("/")
@@ -201,6 +220,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Railway terminates TLS in front of gunicorn; honor X-Forwarded-Proto so any
+    # remaining redirects are https:// not http:// (which browsers surface as CORS).
+    app.add_middleware(_ForwardedProtoMiddleware)
 
     app.include_router(auth.router)
     app.include_router(auth.router, prefix="/api")
