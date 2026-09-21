@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
 from app.config import Settings, get_settings
-from app.cors_origins import expand_cors_origins
+from app.cors_origins import KNOWN_SPA_ORIGINS, expand_cors_origins
 from app.database import Base, SessionLocal, engine
 from app.s3_assets import s3_assets_configured
 from app.migration_runner import apply_sql_migrations
@@ -190,6 +190,7 @@ def create_app() -> FastAPI:
     pub = (settings.public_app_url or "").strip().rstrip("/")
     if pub:
         raw_origins.append(pub)
+    raw_origins.extend(KNOWN_SPA_ORIGINS)
     # Add apex ⟷ www variants so users on either URL pass CORS (common production footgun).
     origins = expand_cors_origins(raw_origins)
     if not origins:
