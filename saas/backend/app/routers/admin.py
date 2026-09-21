@@ -7,6 +7,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.billing_payments import (
+    STATUS_PENDING,
+    STATUS_REJECTED,
+    STATUS_VERIFIED,
     billing_payment_counts,
     get_billing_payment,
     list_admin_notifications,
@@ -865,9 +868,9 @@ def admin_list_billing_payments(
     counts = billing_payment_counts(db)
     rows = list_billing_payments(db, status_filter=status)
     return AdminBillingPaymentListResponse(
-        pending_count=counts["pending"],
-        verified_count=counts["verified"],
-        rejected_count=counts["rejected"],
+        pending_count=counts[STATUS_PENDING],
+        verified_count=counts[STATUS_VERIFIED],
+        rejected_count=counts[STATUS_REJECTED],
         items=[AdminBillingPaymentOut.model_validate(serialize_billing_payment(r)) for r in rows],
     )
 
