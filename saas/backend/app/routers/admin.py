@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.billing_payments import billing_payment_counts, get_billing_payment, list_billing_payments, serialize_billing_payment
 from app.config import get_settings
 from app.deps import get_db_session, get_platform_admin
 from app.email_util import (
@@ -35,6 +36,8 @@ from app.models import (
 from app.module_access import resync_qms_trials_after_pricing_change
 from app.pricing_catalog import list_all_pricing_rows
 from app.schemas import (
+    AdminBillingPaymentListResponse,
+    AdminBillingPaymentOut,
     AdminCompanyPatch,
     AdminCompanySummary,
     AdminDashboardResponse,
@@ -840,3 +843,30 @@ def admin_patch_pricing_module(
     db.commit()
     db.refresh(row)
     return ModulePricingPublicOut.model_validate(row)
+
+
+@router.get("/billing/payments", response_model=AdminBillingPaymentListResponse)
+def admin_list_billing_payments(
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+    status: str | None = Query(default=None),
+):
+    counts = billing_payment_counts(db)
+    rows = list_billing_payments(db, status_filter=status)
+    return AdminBillingPaymentListResponse(
+        pending_count=counts["pending"],
+        verified_count=counts["verified"],
+        rejected_count=counts["rejected"],
+        items=[AdminBillingPaymentOut.model_validate(serialize_billing_payment(r)) for r in rows],
+    )
+
+
+@router.get("/billing/payments/{payment_id}", response_model=AdminBillingPaymentOut)
+def admin_get_billing_payment(
+    payment_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = get_billing_payment(db, payment_id)
+    return AdminBillingPaymentOut.model_validate(serialize_billing_payment(row))
+

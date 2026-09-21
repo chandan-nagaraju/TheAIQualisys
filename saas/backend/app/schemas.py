@@ -258,6 +258,32 @@ class AdminFirCustomerRow(BaseModel):
     company_vendor_code: str
 
 
+class AdminBillingPaymentOut(BaseModel):
+    id: int
+    company_id: int
+    user_id: int | None
+    customer_name: str | None
+    company_name: str | None
+    email: str | None
+    phone: str | None
+    subscription_plan: str
+    subscription_start: str | None
+    subscription_end: str | None
+    amount_inr: int
+    payment_method: str
+    reference_note: str | None
+    payment_date: str | None
+    status: str
+    has_proof: bool
+
+
+class AdminBillingPaymentListResponse(BaseModel):
+    pending_count: int
+    verified_count: int
+    rejected_count: int
+    items: list[AdminBillingPaymentOut]
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
