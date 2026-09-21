@@ -87,63 +87,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-10">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold text-white">Admin panel</h1>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            to="/admin/users"
-            className="inline-flex w-fit rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-2 text-sm font-medium text-amber-100 hover:bg-amber-950/50"
-          >
-            Users &amp; customers (all tenants)
-          </Link>
-          <Link
-            to="/admin/admins"
-            className="inline-flex w-fit rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            Platform admins
-          </Link>
-          <Link
-            to="/admin/pricing"
-            className="inline-flex w-fit rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            Pricing management
-          </Link>
-          <Link
-            to="/admin/desktop-licensing"
-            className="inline-flex w-fit rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            Desktop licensing
-          </Link>
-          <Link
-            to="/admin/desktop-payments"
-            className="inline-flex w-fit rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            Desktop payments
-          </Link>
-          <Link
-            to="/admin/desktop-licenses"
-            className="inline-flex w-fit rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            Desktop licenses
-          </Link>
-          <Link
-            to="/admin/desktop-installers"
-            className="inline-flex w-fit rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            Desktop installers
-          </Link>
-        </div>
-        <button
-          type="button"
-          className="text-sm text-slate-400 hover:text-white"
-          onClick={() => {
-            localStorage.removeItem("fir_admin_token");
-            nav("/login");
-          }}
-        >
-          Log out
-        </button>
-      </div>
+      <h1 className="text-2xl font-semibold text-white">Admin panel</h1>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Companies" value={dash.total_companies} />
