@@ -5,6 +5,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import PublicPricingGate from "./components/PublicPricingGate";
 import WorkspaceSubscriptionGate from "./components/WorkspaceSubscriptionGate";
 import WorkspaceLayout from "./layouts/WorkspaceLayout";
+import AdminBillingPaymentDetailPage from "./pages/AdminBillingPaymentDetailPage";
+import AdminBillingPaymentsPage from "./pages/AdminBillingPaymentsPage";
 import AdminBillingPlaceholderPage from "./pages/AdminBillingPlaceholderPage";
 import AdminCompanyFirIntelligencePage from "./pages/AdminCompanyFirIntelligencePage";
 import AdminCompanyPage from "./pages/AdminCompanyPage";
@@ -227,7 +229,15 @@ export default function App() {
           path="/admin/billing/payments"
           element={
             <AdminRoute>
-              <AdminBillingPlaceholderPage section="payments" />
+              <AdminBillingPaymentsPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/billing/payments/:id"
+          element={
+            <AdminRoute>
+              <AdminBillingPaymentDetailPage />
             </AdminRoute>
           }
         />

@@ -76,6 +76,9 @@ class Company(Base):
     admin_subscription_reminders: Mapped[list["AdminSubscriptionReminder"]] = relationship(
         "AdminSubscriptionReminder", back_populates="company"
     )
+    billing_payments: Mapped[list["BillingPayment"]] = relationship(
+        "BillingPayment", back_populates="company"
+    )
 
 
 class CompanyUser(Base):
@@ -91,6 +94,34 @@ class CompanyUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     company: Mapped[Company] = relationship("Company", back_populates="users")
+    billing_payments: Mapped[list["BillingPayment"]] = relationship(
+        "BillingPayment", back_populates="user"
+    )
+
+
+class BillingPayment(Base):
+    """SaaS subscription payment submitted for Platform Admin verification (not desktop licensing)."""
+
+    __tablename__ = "billing_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("company_users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    plan_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount_inr: Mapped[int] = mapped_column(Integer, nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(64), nullable=False, default="UPI")
+    reference_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payment_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    proof_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    company: Mapped[Company] = relationship("Company", back_populates="billing_payments")
+    user: Mapped[CompanyUser | None] = relationship("CompanyUser", back_populates="billing_payments")
 
 
 class PlatformAdmin(Base):
