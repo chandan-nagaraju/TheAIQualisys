@@ -264,6 +264,8 @@ def count_combined_usage_this_month(db: Session, company_id: int, today: date | 
 def trial_is_valid(company: Company, today: date | None = None) -> bool:
     """True when today falls in the company's trial calendar window (independent of stored status)."""
     today = today or datetime.now(timezone.utc).date()
+    if company.trial_start_date is None or company.trial_end_date is None:
+        return False
     return company.trial_start_date <= today <= company.trial_end_date
 
 
@@ -273,6 +275,16 @@ def trial_days_remaining_company(company: Company, today: date | None = None) ->
     if not trial_is_valid(company, today):
         return None
     return max(0, (company.trial_end_date - today).days)
+
+
+def set_company_trial_window(company: Company, start: date, end: date) -> None:
+    """Admin-set trial from/to calendar dates. Does not change paid subscription dates."""
+    if end < start:
+        raise ValueError("trial_end_date must be on or after trial_start_date")
+    company.trial_start_date = start
+    company.trial_end_date = end
+    company.plan_type = PlanType.trial.value
+    company.subscription_status = SubscriptionStatus.trial.value
 
 
 def effective_plan_type(company: Company) -> str:
@@ -300,14 +312,19 @@ def extend_company_trial(company: Company, today: date, days: int) -> None:
     """Add calendar days to the trial end. Does not change paid subscription dates."""
     if days <= 0:
         raise ValueError("days must be positive")
-    base = company.trial_end_date if company.trial_end_date >= today else today
+    if company.trial_end_date is None:
+        base = today
+    else:
+        base = company.trial_end_date if company.trial_end_date >= today else today
     company.trial_end_date = base + timedelta(days=days)
+    if company.trial_start_date is None:
+        company.trial_start_date = today
     company.plan_type = PlanType.trial.value
 
 
 def close_overlapping_trial_for_paid_activation(company: Company, today: date) -> None:
     """End the trial window so a paid activate is not overwritten by date sync."""
-    if company.trial_end_date >= today:
+    if company.trial_end_date is not None and company.trial_end_date >= today:
         company.trial_end_date = today - timedelta(days=1)
 
 
@@ -338,7 +355,11 @@ def sync_subscription_status_from_dates(company: Company, today: date | None = N
     Returns True if the stored status was changed (caller may commit).
     """
     today = today or datetime.now(timezone.utc).date()
-    if company.trial_start_date <= today <= company.trial_end_date:
+    if (
+        company.trial_start_date is not None
+        and company.trial_end_date is not None
+        and company.trial_start_date <= today <= company.trial_end_date
+    ):
         new_status = SubscriptionStatus.trial.value
     elif company.subscription_end is not None and today <= company.subscription_end and (
         company.subscription_start is None or today >= company.subscription_start
@@ -394,7 +415,9 @@ def can_create_invoice(
     if company.subscription_status == SubscriptionStatus.expired.value:
         return False, "Subscription expired. Upgrade to create invoices."
 
-    if company.subscription_status == SubscriptionStatus.trial.value and today > company.trial_end_date:
+    if company.subscription_status == SubscriptionStatus.trial.value and (
+        company.trial_end_date is None or today > company.trial_end_date
+    ):
         return False, "Trial ended. Upgrade to create invoices."
 
     if company.subscription_status == SubscriptionStatus.active.value and not subscription_is_active(company, today):
@@ -434,7 +457,9 @@ def can_record_fir_reports(
     if company.subscription_status == SubscriptionStatus.expired.value:
         return False, "Subscription expired. Upgrade to generate FIR reports."
 
-    if company.subscription_status == SubscriptionStatus.trial.value and today > company.trial_end_date:
+    if company.subscription_status == SubscriptionStatus.trial.value and (
+        company.trial_end_date is None or today > company.trial_end_date
+    ):
         return False, "Trial ended. Upgrade to generate FIR reports."
 
     if company.subscription_status == SubscriptionStatus.active.value and not subscription_is_active(company, today):

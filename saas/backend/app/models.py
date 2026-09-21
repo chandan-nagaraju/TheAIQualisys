@@ -45,8 +45,8 @@ class Company(Base):
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
     vendor_code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
 
-    trial_start_date: Mapped[date] = mapped_column(Date, nullable=False)
-    trial_end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    trial_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    trial_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     subscription_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     subscription_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Local calendar day (SUBSCRIPTION_REMINDER_TIMEZONE) for which subscription_expiry_reminder_mask applies.

@@ -76,7 +76,7 @@ export default function Layout() {
           company: {
             plan_type: string;
             subscription_status: string;
-            trial_end_date: string;
+            trial_end_date: string | null;
             subscription_end: string | null;
           };
         }>("/subscription/status");

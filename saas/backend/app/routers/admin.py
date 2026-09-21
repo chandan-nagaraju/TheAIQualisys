@@ -66,7 +66,7 @@ from app.subscription_logic import (
     top_fir_part_thank_you_table_rows,
     effective_plan_type,
     put_company_on_trial,
-    extend_company_trial,
+    set_company_trial_window,
     close_overlapping_trial_for_paid_activation,
 )
 
@@ -424,8 +424,14 @@ def patch_company(
     today = billing_today()
 
     if body.action == "activate" and body.plan_type == PlanType.trial.value:
-        days = body.extend_days if body.extend_days and body.extend_days > 0 else 7
-        put_company_on_trial(c, today, days)
+        if body.trial_start_date is not None and body.trial_end_date is not None:
+            try:
+                set_company_trial_window(c, body.trial_start_date, body.trial_end_date)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        else:
+            days = body.extend_days if body.extend_days and body.extend_days > 0 else 7
+            put_company_on_trial(c, today, days)
 
     elif body.action == "activate":
         end = body.subscription_end or (today + timedelta(days=30))
@@ -453,9 +459,15 @@ def patch_company(
             c.subscription_start = today
 
     elif body.action == "extend_trial":
-        if not body.extend_days or body.extend_days <= 0:
-            raise HTTPException(status_code=400, detail="Provide extend_days")
-        extend_company_trial(c, today, body.extend_days)
+        if body.trial_start_date is None or body.trial_end_date is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Select trial start and end dates on the calendar",
+            )
+        try:
+            set_company_trial_window(c, body.trial_start_date, body.trial_end_date)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     elif body.action == "set_plan":
         if not body.plan_type:
@@ -466,9 +478,10 @@ def patch_company(
 
     elif body.action == "mark_expired":
         c.subscription_status = SubscriptionStatus.expired.value
-        yday = today - timedelta(days=1)
-        if c.subscription_end is None or c.subscription_end >= today:
-            c.subscription_end = yday
+        c.subscription_start = None
+        c.subscription_end = None
+        c.trial_start_date = None
+        c.trial_end_date = None
 
     else:
         raise HTTPException(status_code=400, detail="Unknown action")
@@ -747,8 +760,8 @@ def company_usage(
         "monthly_invoice_count": inv,
         "monthly_fir_reports": fir,
         "monthly_usage_combined": inv + fir,
-        "trial_start": c.trial_start_date.isoformat(),
-        "trial_end": c.trial_end_date.isoformat(),
+        "trial_start": c.trial_start_date.isoformat() if c.trial_start_date else None,
+        "trial_end": c.trial_end_date.isoformat() if c.trial_end_date else None,
         "subscription_start": c.subscription_start.isoformat() if c.subscription_start else None,
         "subscription_end": c.subscription_end.isoformat() if c.subscription_end else None,
         "plan_type": effective_plan_type(c),
