@@ -255,7 +255,7 @@ export default function AdminCompanyPage() {
               });
             }}
           >
-            Set trial dates
+            Extend trial
           </button>
         </div>
 
