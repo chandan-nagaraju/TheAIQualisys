@@ -45,6 +45,8 @@ export type AdminBillingInvoice = {
   pincode: string | null;
   gstin: string | null;
   seller?: Record<string, unknown> | null;
+  vendor_code?: string | null;
+  hsn_sac?: string | null;
 };
 
 type ListResponse = {

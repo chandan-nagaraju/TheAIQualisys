@@ -14,6 +14,7 @@ from app.billing_invoices import (
     STATUS_GENERATED,
     TAX_CGST_SGST,
     TAX_IGST,
+    _amount_in_words,
     compute_tax,
     preview_invoice,
     render_invoice_pdf,
@@ -147,6 +148,8 @@ def test_preview_and_pdf_for_pay_00002_monthly(monkeypatch):
     assert out["invoice_date"] == "2026-09-22"
     assert out["taxable_amount"] == 6799.0
     assert out["tax_mode"] == TAX_CGST_SGST
+    assert out["vendor_code"] == "7200465"
+    assert out["hsn_sac"] == "998314"
     pdf = render_invoice_pdf({**out, "invoice_number": "INV-00001"})
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 400
@@ -180,3 +183,10 @@ def test_preview_requires_seller_and_customer_state(monkeypatch):
         preview_invoice(db, payment_id=2)
     assert exc.value.status_code == 400
     assert "customer billing state" in str(exc.value.detail).lower()
+
+
+def test_amount_in_words_matches_gst_invoice_style():
+    assert _amount_in_words(Decimal("1484.92")) == (
+        "Indian Rupees One Thousand Four Hundred Eighty Four and Ninety Two Paise Only"
+    )
+    assert _amount_in_words(Decimal("8022.82")).startswith("Indian Rupees Eight Thousand Twenty Two")

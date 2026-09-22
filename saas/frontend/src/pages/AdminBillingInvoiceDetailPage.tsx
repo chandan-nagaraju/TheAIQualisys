@@ -5,6 +5,87 @@ import AdminBillingShell from "../components/AdminBillingShell";
 import { formatDateOnly, formatWhen } from "./AdminBillingPaymentsPage";
 import { formatInr, invoiceStatusClass, type AdminBillingInvoice } from "./AdminBillingInvoicesPage";
 
+function dmy(iso: string | null | undefined) {
+  if (!iso) return "";
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit", timeZone: "UTC" });
+}
+
+function amt(n: number | null | undefined) {
+  return Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const ONES = [
+  "",
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+  "Thirteen",
+  "Fourteen",
+  "Fifteen",
+  "Sixteen",
+  "Seventeen",
+  "Eighteen",
+  "Nineteen",
+];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+function two(n: number) {
+  if (n < 20) return ONES[n];
+  return `${TENS[Math.floor(n / 10)]} ${ONES[n % 10]}`.trim();
+}
+
+function amountInWords(raw: number | null | undefined) {
+  const n = Math.round(Number(raw || 0) * 100) / 100;
+  const rupees = Math.floor(n);
+  const paise = Math.round((n - rupees) * 100);
+  let rem = rupees;
+  const crore = Math.floor(rem / 10000000);
+  rem %= 10000000;
+  const lakh = Math.floor(rem / 100000);
+  rem %= 100000;
+  const thousand = Math.floor(rem / 1000);
+  rem %= 1000;
+  const hundred = Math.floor(rem / 100);
+  rem %= 100;
+  const parts: string[] = [];
+  if (crore) parts.push(`${two(crore)} Crore`);
+  if (lakh) parts.push(`${two(lakh)} Lakh`);
+  if (thousand) parts.push(`${two(thousand)} Thousand`);
+  if (hundred) parts.push(`${ONES[hundred]} Hundred`);
+  if (rem) parts.push(two(rem));
+  let words = `Indian Rupees ${parts.join(" ") || "Zero"}`;
+  if (paise) words += ` and ${two(paise)} Paise`;
+  return `${words} Only`;
+}
+
+function partyBlock(title: string, row: AdminBillingInvoice) {
+  return (
+    <td className="align-top p-2 w-1/2">
+      <div className="text-[10px] font-semibold">{title}</div>
+      <div className="font-semibold">{row.company_name || row.customer_name}</div>
+      <div className="whitespace-pre-line">{row.billing_address}</div>
+      <div>
+        {[row.city, row.pincode].filter(Boolean).join(" ")}
+      </div>
+      <div>GSTIN/UIN : {row.gstin || "—"}</div>
+      <div>
+        State Name : {row.state || "—"} , Code : {row.state_code || "—"}
+      </div>
+    </td>
+  );
+}
+
 export default function AdminBillingInvoiceDetailPage() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -48,17 +129,18 @@ export default function AdminBillingInvoiceDetailPage() {
   }
 
   const seller = (row?.seller || {}) as Record<string, string | undefined>;
+  const cgstSgst = row?.tax_mode === "cgst_sgst";
 
   return (
     <AdminBillingShell title="Invoice">
-      <Link to="/admin/billing/invoices" className="text-sm text-brand-500 hover:underline">
+      <Link to="/admin/billing/invoices" className="text-sm text-brand-500 hover:underline print:hidden">
         ← Invoices
       </Link>
-      {err && <p className="text-sm text-red-400">{err}</p>}
+      {err && <p className="text-sm text-red-400 print:hidden">{err}</p>}
       {!row && !err && <p className="text-sm text-slate-400">Loading invoice…</p>}
       {row && (
         <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
             <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${invoiceStatusClass(row.status)}`}>
               {row.status.toUpperCase()}
             </span>
@@ -69,7 +151,7 @@ export default function AdminBillingInvoiceDetailPage() {
                 disabled={busy}
                 onClick={() => void downloadPdf()}
               >
-                Generate PDF
+                Download PDF
               </button>
               <button type="button" className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200" onClick={() => window.print()}>
                 Print
@@ -77,78 +159,194 @@ export default function AdminBillingInvoiceDetailPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-white p-6 text-slate-900 print:border-0">
-            <h3 className="text-lg font-semibold">TAX INVOICE {row.invoice_number}</h3>
-            <p className="text-sm text-slate-600">Invoice date: {formatDateOnly(row.invoice_date)}</p>
-            <div className="mt-4 grid gap-6 md:grid-cols-2 text-sm">
-              <div>
-                <p className="font-semibold">Seller</p>
-                <p>{seller.business_name || "—"}</p>
-                <p className="whitespace-pre-line">{seller.business_address || ""}</p>
-                <p>GSTIN: {seller.gstin || "—"}</p>
-                <p>
-                  State: {seller.state || "—"} ({seller.state_code || "—"})
-                </p>
-              </div>
-              <div>
-                <p className="font-semibold">Bill to</p>
-                <p>{row.customer_name}</p>
-                <p>{row.company_name}</p>
-                <p>{row.billing_address || "—"}</p>
-                <p>
-                  {row.city || ""} {row.pincode || ""} {row.state || ""} ({row.state_code || "—"})
-                </p>
-                <p>GSTIN: {row.gstin || "—"}</p>
-                <p>
-                  {row.email || "—"} · {row.phone || "—"}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 text-sm space-y-1">
-              <p>
-                Payment:{" "}
-                <Link className="text-brand-600 hover:underline" to={`/admin/billing/payments/${row.payment_id}`}>
-                  {row.payment_code || `PAY-${row.payment_id}`}
-                </Link>{" "}
-                · {row.payment_method} · {row.payment_reference || "—"}
-              </p>
-              <p>Payment verified: {formatWhen(row.payment_verified_at)}</p>
-              <p>
-                Subscription period: {formatDateOnly(row.subscription_start_date)} to {formatDateOnly(row.subscription_end_date)}
-              </p>
-              <p>Billing period: {row.billing_period_label || row.billing_period}</p>
-            </div>
-            <table className="mt-4 min-w-full text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="py-2">Description</th>
-                  <th>Qty</th>
-                  <th>Rate</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
+          <div className="overflow-x-auto rounded-xl border border-slate-800 bg-white p-3 text-[11px] leading-snug text-slate-900 print:border-0 print:p-0">
+            <table className="w-full border-collapse border border-slate-800">
               <tbody>
-                <tr className="border-b">
-                  <td className="py-2">{row.line_description}</td>
-                  <td>1</td>
-                  <td>{formatInr(row.taxable_amount)}</td>
-                  <td>{formatInr(row.taxable_amount)}</td>
+                <tr>
+                  <td colSpan={4} className="border border-slate-800 py-2 text-center text-base font-bold">
+                    TAX INVOICE
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-800 p-2 align-top" colSpan={2}>
+                    <div className="text-sm font-bold">{seller.business_name || "TheAIQualisys"}</div>
+                    <div className="whitespace-pre-line">{seller.business_address || ""}</div>
+                    <div>GSTIN/UIN: {seller.gstin || "—"}</div>
+                    <div>
+                      State Name : {seller.state || "—"} , Code : {seller.state_code || "—"}
+                    </div>
+                    {(seller.email || seller.phone) && (
+                      <div>
+                        E-Mail : {seller.email || "—"}  Ph: {seller.phone || "—"}
+                      </div>
+                    )}
+                  </td>
+                  <td className="border border-slate-800 p-0 align-top" colSpan={2}>
+                    <table className="w-full border-collapse">
+                      <tbody>
+                        <Meta label="Invoice No." value={row.invoice_number} label2="Dated" value2={dmy(row.invoice_date)} />
+                        <Meta label="Delivery Note" value="" label2="Mode/Terms of Payment" value2={row.payment_method || "UPI"} />
+                        <Meta
+                          label="Reference No. & Date."
+                          value={row.payment_code || ""}
+                          label2="Other References"
+                          value2=""
+                        />
+                        <Meta label="Buyer's Order No." value="" label2="Dated" value2="" />
+                        <Meta label="Dispatch Doc No." value="" label2="Delivery Note Date" value2="" />
+                        <Meta label="Dispatched through" value="" label2="Destination" value2="" />
+                        <Meta
+                          label="Supplier / Vendor Code"
+                          value={(row as AdminBillingInvoice & { vendor_code?: string }).vendor_code || ""}
+                          label2="Terms of Delivery"
+                          value2={`${row.billing_period_label || ""} ${dmy(row.subscription_start_date)} to ${dmy(row.subscription_end_date)}`.trim()}
+                        />
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  {partyBlock("Consignee (Ship to)", row)}
+                  {partyBlock("Buyer (Bill to)", row)}
                 </tr>
               </tbody>
             </table>
-            <div className="mt-4 ml-auto max-w-xs text-sm space-y-1">
-              <Row label="Taxable value" value={formatInr(row.taxable_amount)} />
-              {row.tax_mode === "cgst_sgst" ? (
-                <>
-                  <Row label={`CGST @ ${row.cgst_rate}%`} value={formatInr(row.cgst)} />
-                  <Row label={`SGST @ ${row.sgst_rate}%`} value={formatInr(row.sgst)} />
-                </>
-              ) : (
-                <Row label={`IGST @ ${row.igst_rate}%`} value={formatInr(row.igst)} />
-              )}
-              <Row label="Total tax" value={formatInr(row.total_tax)} />
-              <Row label="Grand total" value={formatInr(row.grand_total)} strong />
-            </div>
+
+            <table className="mt-0 w-full border-collapse border border-slate-800 text-center">
+              <thead>
+                <tr className="font-semibold">
+                  <th className="border border-slate-800 p-1">SI</th>
+                  <th className="border border-slate-800 p-1 text-left">Description of Services</th>
+                  <th className="border border-slate-800 p-1">HSN/SAC</th>
+                  <th className="border border-slate-800 p-1">Quantity</th>
+                  <th className="border border-slate-800 p-1">Rate</th>
+                  <th className="border border-slate-800 p-1">per</th>
+                  <th className="border border-slate-800 p-1">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="border border-slate-800 p-1">1</td>
+                  <td className="border border-slate-800 p-1 text-left">{row.line_description}</td>
+                  <td className="border border-slate-800 p-1">{(row as AdminBillingInvoice & { hsn_sac?: string }).hsn_sac || "998314"}</td>
+                  <td className="border border-slate-800 p-1">1 Nos</td>
+                  <td className="border border-slate-800 p-1 text-right">{amt(row.taxable_amount)}</td>
+                  <td className="border border-slate-800 p-1">Nos</td>
+                  <td className="border border-slate-800 p-1 text-right">{amt(row.taxable_amount)}</td>
+                </tr>
+                {cgstSgst ? (
+                  <>
+                    <tr>
+                      <td className="border border-slate-800 p-1" />
+                      <td className="border border-slate-800 p-1 text-right">CGST @ {row.cgst_rate}%</td>
+                      <td className="border border-slate-800 p-1" colSpan={4} />
+                      <td className="border border-slate-800 p-1 text-right">{amt(row.cgst)}</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-slate-800 p-1" />
+                      <td className="border border-slate-800 p-1 text-right">SGST @ {row.sgst_rate}%</td>
+                      <td className="border border-slate-800 p-1" colSpan={4} />
+                      <td className="border border-slate-800 p-1 text-right">{amt(row.sgst)}</td>
+                    </tr>
+                  </>
+                ) : (
+                  <tr>
+                    <td className="border border-slate-800 p-1" />
+                    <td className="border border-slate-800 p-1 text-right">IGST @ {row.igst_rate}%</td>
+                    <td className="border border-slate-800 p-1" colSpan={4} />
+                    <td className="border border-slate-800 p-1 text-right">{amt(row.igst)}</td>
+                  </tr>
+                )}
+                <tr className="font-semibold">
+                  <td className="border border-slate-800 p-1" />
+                  <td className="border border-slate-800 p-1 text-left">Total</td>
+                  <td className="border border-slate-800 p-1" />
+                  <td className="border border-slate-800 p-1">1 Nos</td>
+                  <td className="border border-slate-800 p-1" colSpan={2} />
+                  <td className="border border-slate-800 p-1 text-right">{amt(row.grand_total)}</td>
+                </tr>
+                <tr>
+                  <td className="border border-slate-800 p-2 text-left" colSpan={6}>
+                    Amount Chargeable (in words)
+                    <div className="font-semibold">{amountInWords(row.grand_total)}</div>
+                  </td>
+                  <td className="border border-slate-800 p-2 text-right align-top">E. &amp; O.E</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <table className="w-full border-collapse border border-slate-800 text-center">
+              <thead>
+                <tr className="font-semibold">
+                  <th className="border border-slate-800 p-1">HSN/SAC</th>
+                  <th className="border border-slate-800 p-1">Taxable Value</th>
+                  {cgstSgst ? (
+                    <>
+                      <th className="border border-slate-800 p-1">CGST Rate</th>
+                      <th className="border border-slate-800 p-1">CGST Amount</th>
+                      <th className="border border-slate-800 p-1">SGST Rate</th>
+                      <th className="border border-slate-800 p-1">SGST Amount</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="border border-slate-800 p-1">IGST Rate</th>
+                      <th className="border border-slate-800 p-1">IGST Amount</th>
+                    </>
+                  )}
+                  <th className="border border-slate-800 p-1">Total Tax Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="border border-slate-800 p-1">{(row as AdminBillingInvoice & { hsn_sac?: string }).hsn_sac || "998314"}</td>
+                  <td className="border border-slate-800 p-1">{amt(row.taxable_amount)}</td>
+                  {cgstSgst ? (
+                    <>
+                      <td className="border border-slate-800 p-1">{row.cgst_rate}%</td>
+                      <td className="border border-slate-800 p-1">{amt(row.cgst)}</td>
+                      <td className="border border-slate-800 p-1">{row.sgst_rate}%</td>
+                      <td className="border border-slate-800 p-1">{amt(row.sgst)}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="border border-slate-800 p-1">{row.igst_rate}%</td>
+                      <td className="border border-slate-800 p-1">{amt(row.igst)}</td>
+                    </>
+                  )}
+                  <td className="border border-slate-800 p-1">{amt(row.total_tax)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <table className="w-full border-collapse border border-slate-800">
+              <tbody>
+                <tr>
+                  <td className="border border-slate-800 p-2 align-top w-1/2">
+                    <div className="font-semibold">Declaration</div>
+                    <p className="mt-1">
+                      We declare that this invoice shows the actual price of the services described and that all
+                      particulars are true and correct.
+                    </p>
+                    <p className="mt-6">Customer's Seal and Signature</p>
+                  </td>
+                  <td className="border border-slate-800 p-2 align-top text-right w-1/2">
+                    <div className="font-semibold">for {seller.business_name || "TheAIQualisys"}</div>
+                    <p className="mt-10">Authorised Signatory</p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="mt-2 text-center text-[10px] font-semibold">
+              SUBJECT TO {(seller.city || seller.state || "INDIA").toString().toUpperCase()} JURISDICTION
+            </p>
+            <p className="mt-2 print:hidden text-slate-500">
+              Payment{" "}
+              <Link className="text-brand-600 hover:underline" to={`/admin/billing/payments/${row.payment_id}`}>
+                {row.payment_code || `PAY-${row.payment_id}`}
+              </Link>{" "}
+              · verified {formatWhen(row.payment_verified_at)} · invoice date {formatDateOnly(row.invoice_date)} ·{" "}
+              {formatInr(row.grand_total)}
+            </p>
           </div>
         </div>
       )}
@@ -156,11 +354,27 @@ export default function AdminBillingInvoiceDetailPage() {
   );
 }
 
-function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Meta({
+  label,
+  value,
+  label2,
+  value2,
+}: {
+  label: string;
+  value: string;
+  label2: string;
+  value2: string;
+}) {
   return (
-    <div className={`flex justify-between ${strong ? "font-semibold" : ""}`}>
-      <span>{label}</span>
-      <span>{value}</span>
-    </div>
+    <tr>
+      <td className="border border-slate-800 p-1 align-top w-1/2">
+        <div className="text-[9px] text-slate-500">{label}</div>
+        <div className="font-semibold">{value || "\u00a0"}</div>
+      </td>
+      <td className="border border-slate-800 p-1 align-top w-1/2">
+        <div className="text-[9px] text-slate-500">{label2}</div>
+        <div className="font-semibold">{value2 || "\u00a0"}</div>
+      </td>
+    </tr>
   );
 }
