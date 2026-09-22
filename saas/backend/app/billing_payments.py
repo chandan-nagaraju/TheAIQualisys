@@ -1,14 +1,14 @@
 """SaaS billing payments: customer Payment Done + Platform Admin verify/reject.
 
-Does not generate invoices. Subscription dates are stored on the payment at
-Admin verification (not at plan select, UPI, or Payment Done). Company access
-activation stays a later step.
+Does not generate invoices. Subscription dates are stored on the payment and
+applied to the company when Admin verifies (not at plan select, UPI, or
+Payment Done).
 Desktop license payments stay in desktop_payments.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
@@ -27,8 +27,9 @@ from app.billing_period import (
     subscription_end_from_start,
 )
 from app.config import Settings, get_settings
-from app.models import AdminNotification, BillingPayment, Company, CompanyUser, PlatformAdmin
+from app.models import AdminNotification, BillingPayment, Company, CompanyUser, PlanType, PlatformAdmin, SubscriptionStatus
 from app.pricing_catalog import get_pricing_by_module_name, list_fir_plan_rows
+from app.subscription_logic import close_overlapping_trial_for_paid_activation
 
 STATUS_PENDING = "pending_verification"
 STATUS_VERIFIED = "verified"
@@ -414,6 +415,25 @@ def submit_payment_done(
     return row, False
 
 
+def apply_verified_subscription_to_company(
+    company: Company | None,
+    *,
+    start: date,
+    end: date,
+    plan_type: str | None,
+) -> None:
+    """Write the paid window from Admin verification. Does not use payment_submitted_at."""
+    if company is None:
+        return
+    company.subscription_start = start
+    company.subscription_end = end
+    company.subscription_status = SubscriptionStatus.active.value
+    want = (plan_type or "").strip().lower()
+    if want in {PlanType.basic.value, PlanType.pro.value, PlanType.enterprise.value}:
+        company.plan_type = want
+    close_overlapping_trial_for_paid_activation(company, start)
+
+
 def verify_payment(db: Session, *, admin: PlatformAdmin, payment_id: int) -> BillingPayment:
     row = get_billing_payment(db, payment_id)
     st = row.status if row.status != "pending" else STATUS_PENDING
@@ -424,6 +444,7 @@ def verify_payment(db: Session, *, admin: PlatformAdmin, payment_id: int) -> Bil
     now = _utc_now()
     period = row.billing_period if row.billing_period in ALLOWED_PERIODS else PERIOD_MONTHLY
     start = now.date()
+    end = subscription_end_from_start(start, period)
     row.status = STATUS_VERIFIED
     row.verified_by_admin_id = admin.id
     row.verified_at = now
@@ -431,9 +452,17 @@ def verify_payment(db: Session, *, admin: PlatformAdmin, payment_id: int) -> Bil
     if not row.subscription_duration:
         row.subscription_duration = period_duration(period)
     row.subscription_start_date = start
-    row.subscription_end_date = subscription_end_from_start(start, period)
+    row.subscription_end_date = end
     row.updated_at = now
+    apply_verified_subscription_to_company(
+        row.company,
+        start=start,
+        end=end,
+        plan_type=row.plan_type,
+    )
     db.add(row)
+    if row.company is not None:
+        db.add(row.company)
     db.flush()
     return row
 
