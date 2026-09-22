@@ -209,10 +209,10 @@ def serialize_billing_payment(row: BillingPayment, *, settings: Settings | None 
         "billing_period": row.billing_period or "MONTHLY",
         "billing_period_label": period_label(row.billing_period or "MONTHLY"),
         "subscription_duration": row.subscription_duration or period_duration(row.billing_period or "MONTHLY"),
-        "subscription_start": row.subscription_start.isoformat() if row.subscription_start else None,
-        "subscription_end": row.subscription_end.isoformat() if row.subscription_end else None,
-        "subscription_start_date": row.subscription_start.isoformat() if row.subscription_start else None,
-        "subscription_end_date": row.subscription_end.isoformat() if row.subscription_end else None,
+        "subscription_start": row.subscription_start_date.isoformat() if row.subscription_start_date else None,
+        "subscription_end": row.subscription_end_date.isoformat() if row.subscription_end_date else None,
+        "subscription_start_date": row.subscription_start_date.isoformat() if row.subscription_start_date else None,
+        "subscription_end_date": row.subscription_end_date.isoformat() if row.subscription_end_date else None,
         "amount_inr": row.amount_inr,
         "currency": row.currency or "INR",
         "original_plan_price": snap.get("monthly_price") or snap.get("original_plan_price"),
@@ -430,8 +430,8 @@ def verify_payment(db: Session, *, admin: PlatformAdmin, payment_id: int) -> Bil
     row.billing_period = period
     if not row.subscription_duration:
         row.subscription_duration = period_duration(period)
-    row.subscription_start = start
-    row.subscription_end = subscription_end_from_start(start, period)
+    row.subscription_start_date = start
+    row.subscription_end_date = subscription_end_from_start(start, period)
     row.updated_at = now
     db.add(row)
     db.flush()

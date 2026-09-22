@@ -199,8 +199,8 @@ def test_verify_sets_dates_from_admin_verification_not_submit(monkeypatch):
     assert out.payment_submitted_at == submitted
     assert out.billing_period == "MONTHLY"
     assert out.subscription_duration == "1 Month"
-    assert out.subscription_start == date(2026, 9, 21)
-    assert out.subscription_end == date(2026, 10, 21)
+    assert out.subscription_start_date == date(2026, 9, 21)
+    assert out.subscription_end_date == date(2026, 10, 21)
     payload = serialize_billing_payment(out)
     assert payload["payment_submitted_at"].startswith("2026-09-20")
     assert payload["payment_verified_at"].startswith("2026-09-21T17:45")
@@ -215,15 +215,15 @@ def test_verify_sets_dates_from_admin_verification_not_submit(monkeypatch):
 def test_verify_rejects_already_verified_without_recalculating():
     row = _payment(status=STATUS_VERIFIED)
     row.verified_at = datetime(2026, 9, 21, 17, 45, tzinfo=timezone.utc)
-    row.subscription_start = date(2026, 9, 21)
-    row.subscription_end = date(2026, 10, 21)
+    row.subscription_start_date = date(2026, 9, 21)
+    row.subscription_end_date = date(2026, 10, 21)
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = row
     with pytest.raises(HTTPException) as exc:
         verify_payment(db, admin=SimpleNamespace(id=4), payment_id=9)
     assert exc.value.status_code == 409
-    assert row.subscription_start == date(2026, 9, 21)
-    assert row.subscription_end == date(2026, 10, 21)
+    assert row.subscription_start_date == date(2026, 9, 21)
+    assert row.subscription_end_date == date(2026, 10, 21)
     assert row.verified_at == datetime(2026, 9, 21, 17, 45, tzinfo=timezone.utc)
 
 
@@ -237,3 +237,54 @@ def test_reject_requires_reason():
     out = reject_payment(db, admin=SimpleNamespace(id=1), payment_id=9, reason="incorrect_amount")
     assert out.status == STATUS_REJECTED
     assert out.rejection_reason == "incorrect_amount"
+
+
+def test_verify_persists_monthly_dates_and_keeps_submitted_at(monkeypatch):
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    submitted = datetime(2026, 9, 20, 16, 20, tzinfo=timezone.utc)
+    verified = datetime(2026, 9, 21, 17, 45, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.billing_payments._utc_now", lambda: verified)
+
+    engine = create_engine("sqlite:///:memory:")
+    BillingPayment.__table__.create(engine)
+    with Session(engine) as db:
+        row = BillingPayment(
+            company_id=1,
+            user_id=2,
+            plan_name="Enterprise",
+            amount_inr=6799,
+            payment_method="UPI",
+            payment_date=submitted,
+            status=STATUS_PENDING,
+            billing_period="MONTHLY",
+            subscription_duration="1 Month",
+            payment_submitted_at=submitted,
+        )
+        db.add(row)
+        db.flush()
+        payment_id = row.id
+        monkeypatch.setattr("app.billing_payments.get_billing_payment", lambda _db, _id: _db.get(BillingPayment, payment_id))
+        verify_payment(db, admin=SimpleNamespace(id=4), payment_id=payment_id)
+        db.commit()
+
+    with Session(engine) as db:
+        stored = db.execute(select(BillingPayment).where(BillingPayment.id == payment_id)).scalar_one()
+        assert stored.status == STATUS_VERIFIED
+        assert stored.payment_submitted_at.replace(tzinfo=timezone.utc) == submitted
+        assert stored.verified_at.replace(tzinfo=timezone.utc) == verified
+        assert stored.subscription_start_date == date(2026, 9, 21)
+        assert stored.subscription_end_date == date(2026, 10, 21)
+        assert stored.billing_period == "MONTHLY"
+        assert stored.subscription_duration == "1 Month"
+        assert stored.subscription_start_date.isoformat() == "2026-09-21"
+        assert stored.subscription_end_date.isoformat() == "2026-10-21"
+        with pytest.raises(HTTPException) as exc:
+            verify_payment(db, admin=SimpleNamespace(id=4), payment_id=payment_id)
+        assert exc.value.status_code == 409
+        assert stored.subscription_start_date == date(2026, 9, 21)
+        assert stored.subscription_end_date == date(2026, 10, 21)
+        assert stored.verified_at.replace(tzinfo=timezone.utc) == verified
+        assert stored.payment_submitted_at.replace(tzinfo=timezone.utc) == submitted
+
