@@ -26,6 +26,27 @@ todos:
   - id: workspace-pricing-annual-banner
     content: "PricingPage (variant=workspace only): horizontal promo banner — teal/sage palette, gift icon, headline + subline for annual prepay (pay for 11 months, get 12); CTA links to /upgrade with anchor or query annual=1 for WhatsApp context; responsive flex"
     status: completed
+  - id: parts-master-uppercase-alphanumeric
+    content: "PartsPage: Part number + Description inputs — force uppercase A–Z and 0–9 only (strip or block other chars on change); optional backend mirror validation on POST /api/app/parts"
+    status: completed
+  - id: parts-master-excel-duplicate-block
+    content: "PartsPage onExcelPickForReview: after preview-excel-master returns bundle, compare each extracted part_no (case-insensitive trim) to loaded rows; if any match, set error, clear pending review, block save — user must remove duplicate from Excel or delete existing part first"
+    status: completed
+  - id: part-number-global-fe
+    content: "Shared sanitizePartNo (or reuse part_field_validation parity): ManualEntryPage part number input onChange/paste; optional ExtractedPage editable Part Number column if we add inline edit — same [A-Z0-9] uppercase strip; normalize partMasterKeys lookups with sanitizer"
+    status: completed
+  - id: part-number-global-be
+    content: "fir_excel.parse_invoice_excel: after building rows, sanitize Part Number column with same logic as sanitize_part_master_alnum_upper; fir_part_excel: normalize part_no strings when assigning from cells/sheets so Excel/section imports match Parts master"
+    status: completed
+  - id: workspace-dashboard-intro-copy
+    content: "WorkspaceDashboard.tsx: replace legacy/PostgreSQL lead paragraph with user-facing FIR Automation module description (what users do: generate inspection reports from invoice data, manage customers/vendors/parts, configure company FIR branding) — no stack or legacy references"
+    status: completed
+  - id: parts-master-customer-schema
+    content: "DB + API: add PartV2.customer_id (FK fir_customers, nullable index); replace uq_parts_v2_company_part with uniqueness per (company_id, customer_id, part_no) using partial/NULLS NOT DISTINCT per Postgres version; data migration backfill customer_id = sole customer when company has exactly one FIR customer"
+    status: completed
+  - id: parts-master-customer-ui
+    content: "PartsPage: customer dropdown (all + each customer) to filter table; new/edit part form includes customer selector — hidden or auto-filled when only one customer; list/detail/export/import-bundle paths pass customer scope"
+    status: completed
 ---
 
 # Roadmap: premium ZIP, asset readiness, size target, faster batches
@@ -152,3 +173,80 @@ todos:
 **Scope guard:** Show **only** for workspace variant; marketing `/pricing` can omit or use shorter strip later.
 
 **Files:** `saas/frontend/src/pages/PricingPage.tsx`; optional `UpgradePage.tsx` query-param handling for WhatsApp message if we add `billing=annual`.
+
+## Parts master: uppercase alphanumeric fields + Excel duplicate guard
+
+**Goal:** On **`/workspace/parts`**, keep **Part number** and **Description** aligned to **uppercase letters and digits only** (no spaces, punctuation, or lowercase). On **Upload Excel**, after the server parses the workbook (`POST /api/app/parts/preview-excel-master`), **block** proceeding to review/save if **any** extracted part number already exists in the current tenant’s part master (same behavior as “no duplicate part numbers”).
+
+### Uppercase + allowed charset (UI)
+
+- **Fields:** **Part number** and **Description** in the New part / Update part form (`PartsPage.tsx`).
+- **Behavior:** On each keystroke/paste, normalize to **uppercase** and **drop** (or reject) any character outside **`[A-Z0-9]`**. Empty description remains allowed unless product later requires non-empty.
+- **Edit mode:** When loading a row for edit, run the same sanitizer on initial values so legacy mixed-case data becomes consistent on next save.
+- **Optional hardening:** Mirror validation in FastAPI on create/update (`schemas` / parts router) so API clients cannot bypass the rule.
+
+### Excel: duplicate detection vs part master
+
+- **When:** Immediately after a successful **`preview-excel-master`** response, before opening **`PartMasterExcelReview`** (or right after setting state — same net effect).
+- **Data:** Build a **`Set`** of normalized keys from `rows` already loaded: `part_no.trim().toLowerCase()` (or uppercase — one canonical form).
+- **Check:** For each `bundle.parts[].part.part_no`, normalize the same way; if **any** key is in the set, **do not** show the review modal as a valid import path for that file:
+  - **`setErr`** with a clear message listing **which part number(s)** conflict (cap list length, e.g. first 5 + “and N more”).
+  - **`setPendingExcelBundle(null)`**, clear file label, **do not** call `confirmExcelImport` until the user fixes the Excel or removes the existing part from master.
+- **Edge case:** Multiple **new** rows in the same Excel with the **same** part number — optionally flag as duplicate-within-file (nice-to-have); primary requirement is **no overlap with server-backed master list**.
+
+**Files (primary):** `saas/frontend/src/pages/workspace/PartsPage.tsx`; optional `saas/backend/app/routers` + `schemas` for server-side charset validation.
+
+## Part number normalization everywhere (FIR flows)
+
+**Rule (same as Parts master part number):** On input (including paste), **uppercase** and **only `[A-Z0-9]`** — strip everything else.
+
+**Already done:** `PartsPage.tsx` (part number field), backend `sanitize_part_master_alnum_upper` on workspace parts APIs and bundle import.
+
+**Frontend — still apply the shared helper**
+
+- **`ManualEntryPage.tsx`**: Part Number text inputs — wire `onChange` to the same sanitizer as Parts page; when comparing to Parts master (`partMasterKeys`), normalize both sides with the sanitizer + lowercase key (or compare sanitized strings).
+- **`ExtractedPage.tsx`**: Read-only table today; if Part Number becomes editable, use the same sanitizer. If it stays read-only, normalization can be **server-side** on upload so the preview table shows canonical values (see backend).
+- **Optional:** Move `sanitizePartMasterAlnumUpper` to e.g. `saas/frontend/src/utils/partFields.ts` and import from `PartsPage` + `ManualEntryPage` to avoid drift.
+
+**Backend — canonical values at parse time**
+
+- **`fir_excel.py` (`parse_invoice_excel`)**: After building each row’s `"Part Number"` string, apply **`sanitize_part_master_alnum_upper`** so invoice Excel upload → extracted → inspection all see the same part keys as Parts master.
+- **`fir_part_excel.py`**: When setting `part_no` from sheet cells or grouped keys, apply the same sanitizer so part master Excel import/review matches DB and FIR rows.
+
+**Out of scope for this rule:** Admin read-only tables that only **display** `part_no` from the API (no user typing).
+
+## Parts master: classify parts by FIR customer (vendor)
+
+**Problem today:** `PartV2` is scoped only by **`company_id`** (`uq_parts_v2_company_part`). **Customers** live in `fir_customers` and are **not** linked to parts — so the app cannot store “this part belongs to Customer A vs B” inside the same tenant.
+
+**Product rules**
+
+1. **Single customer** for the company: treat all parts as belonging to that customer — **auto-assign** `customer_id` on create (and **backfill** existing parts in migration).
+2. **Multiple customers:** user **classifies** each part with a **customer** (vendor). Parts master shows a **dropdown** at the top (same interaction pattern as admin “pick tenant / open workspace”: select scope, then content updates) to filter the table to **one customer** or **All customers**.
+3. **Part number uniqueness** becomes **per customer** (same `part_no` allowed for two different customers in one company), unless product insists on global uniqueness — default here is **per `(company_id, customer_id)`**.
+
+**Schema / API (summary)**
+
+- Add **`customer_id`** nullable FK on `parts_v2` → `fir_customers.id` (index). Drop old unique constraint; add new uniqueness on **`(company_id, customer_id, part_no)`** (handle `NULL` semantics: prefer **no NULLs in app** after backfill, or use **partial unique indexes** / Postgres **`UNIQUE NULLS NOT DISTINCT`** if supported).
+- **`GET/POST /api/app/parts`**, import-bundle, export, part detail: include **`customer_id`** (or nested customer summary) and filter `GET` by optional `?customer_id=`.
+- **Migration:** for each company with exactly **one** `fir_customers` row, set **`parts_v2.customer_id`** to that id. Companies with **zero** customers: leave null until first customer exists, then prompt or batch-assign.
+
+**Frontend**
+
+- **`PartsPage.tsx`:** customer `<select>` — options “All”, then each `{vendor_code — name}`; filter client-side or server-side. Form fields: customer dropdown for new/update when **multiple** customers; **omit or pre-fill** when **one** customer.
+- Reuse styling patterns from **`AdminDashboardPage`** tenant selector (label + select + primary action) for familiarity — not necessarily the same component.
+
+**Risks / follow-ups**
+
+- **FIR flows** (`ManualEntryPage`, invoice upload, inspection) today match parts by **part number** only within company — may need to prefer **`workspaceCustomerId`** (session customer) when resolving parts so the correct customer’s part master row is used. Track as a separate sub-task if not bundled.
+- **JSON/Excel import**: extend bundle format or map file parts to selected customer in UI before import.
+
+## Workspace dashboard: module intro copy
+
+**Where:** `saas/frontend/src/pages/workspace/WorkspaceDashboard.tsx` — the `<p>` under the **Dashboard** heading.
+
+**Remove:** References to “legacy app,” “PostgreSQL,” and “SaaS company” (implementation detail).
+
+**Replace with (user-facing, ~1–2 sentences):** Explain that **FIR Automation** helps quality teams turn **invoice / line-item data** into **Final Inspection Reports**: import or enter details, run the inspection step, preview and download FIR PDFs, while **customers/vendors**, **parts master**, and **global FIR settings** (branding, signatures) stay under one workspace.
+
+**Example copy (tune for tone):** *“FIR Automation helps you produce Final Inspection Reports from your invoice data: import or enter line items, complete inspection, then preview and download FIRs. Manage customers, parts, and company-wide FIR branding from this workspace.”*

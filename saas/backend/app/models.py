@@ -1,25 +1,33 @@
 from __future__ import annotations
 
 import enum
+import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
+    JSON,
     LargeBinary,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
 
 class PlanType(str, enum.Enum):
+    trial = "trial"
     basic = "basic"
     pro = "pro"
     enterprise = "enterprise"
@@ -38,14 +46,25 @@ class Company(Base):
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
     vendor_code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
 
-    trial_start_date: Mapped[date] = mapped_column(Date, nullable=False)
-    trial_end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    trial_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    trial_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     subscription_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     subscription_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Local calendar day (SUBSCRIPTION_REMINDER_TIMEZONE) for which subscription_expiry_reminder_mask applies.
+    subscription_expiry_reminder_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Bit 1 = morning reminder sent; bit 2 = evening reminder sent (reset when reminder_date != today_local).
+    subscription_expiry_reminder_mask: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     plan_type: Mapped[str] = mapped_column(String(32), nullable=False, default=PlanType.basic.value)
     subscription_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=SubscriptionStatus.trial.value
     )
+    billing_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    billing_city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    billing_state: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    billing_state_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    billing_pincode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    gstin: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -58,6 +77,18 @@ class Company(Base):
     )
     fir_report_events: Mapped[list["FirReportEvent"]] = relationship(
         "FirReportEvent", back_populates="company", cascade="all, delete-orphan"
+    )
+    fir_upload_logs: Mapped[list["FirUploadLog"]] = relationship(
+        "FirUploadLog", back_populates="company", cascade="all, delete-orphan"
+    )
+    admin_subscription_reminders: Mapped[list["AdminSubscriptionReminder"]] = relationship(
+        "AdminSubscriptionReminder", back_populates="company"
+    )
+    billing_payments: Mapped[list["BillingPayment"]] = relationship(
+        "BillingPayment", back_populates="company"
+    )
+    billing_invoices: Mapped[list["BillingInvoice"]] = relationship(
+        "BillingInvoice", back_populates="company"
     )
 
 
@@ -74,6 +105,146 @@ class CompanyUser(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     company: Mapped[Company] = relationship("Company", back_populates="users")
+    billing_payments: Mapped[list["BillingPayment"]] = relationship(
+        "BillingPayment", back_populates="user"
+    )
+
+
+class BillingPayment(Base):
+    """SaaS subscription payment submitted for Platform Admin verification (not desktop licensing)."""
+
+    __tablename__ = "billing_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("company_users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    plan_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount_inr: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(64), nullable=False, default="UPI")
+    reference_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payment_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_verification", index=True)
+    proof_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    module_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    module_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    plan_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    billing_period: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    subscription_duration: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    subscription_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    subscription_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="INR")
+    pricing_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    payment_code: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    payment_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    verified_by_admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("platform_admins.id", ondelete="SET NULL"), nullable=True
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_by_admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("platform_admins.id", ondelete="SET NULL"), nullable=True
+    )
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rejection_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    customer_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    company: Mapped[Company] = relationship("Company", back_populates="billing_payments")
+    user: Mapped[CompanyUser | None] = relationship("CompanyUser", back_populates="billing_payments")
+    invoices: Mapped[list["BillingInvoice"]] = relationship(
+        "BillingInvoice", back_populates="payment"
+    )
+
+
+class BillingSettings(Base):
+    """Singleton seller / GST configuration for SaaS subscription invoices (id=1)."""
+
+    __tablename__ = "billing_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    business_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    business_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gstin: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    state_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    logo_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    invoice_prefix: Mapped[str] = mapped_column(String(16), nullable=False, default="INV-")
+    cgst_rate: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, default=9)
+    sgst_rate: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, default=9)
+    igst_rate: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, default=18)
+    terms_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class BillingInvoice(Base):
+    """SaaS subscription tax invoice generated from a verified billing_payments row."""
+
+    __tablename__ = "billing_invoices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    invoice_number: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    payment_id: Mapped[int] = mapped_column(
+        ForeignKey("billing_payments.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("company_users.id", ondelete="SET NULL"), nullable=True
+    )
+    module_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    module_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    plan_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    billing_period: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    subscription_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    subscription_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    subtotal: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    taxable_amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    cgst: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    sgst: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    igst: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    total_tax: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    grand_total: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="INR")
+    tax_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    cgst_rate: Mapped[float | None] = mapped_column(Numeric(6, 3), nullable=True)
+    sgst_rate: Mapped[float | None] = mapped_column(Numeric(6, 3), nullable=True)
+    igst_rate: Mapped[float | None] = mapped_column(Numeric(6, 3), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="generated", index=True)
+    pdf_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    line_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    payment: Mapped[BillingPayment] = relationship("BillingPayment", back_populates="invoices")
+    company: Mapped[Company] = relationship("Company", back_populates="billing_invoices")
+
+
+class AdminNotification(Base):
+    """In-app Platform Admin alerts (no prior notification table existed)."""
+
+    __tablename__ = "admin_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    link_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    payment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("billing_payments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    is_read: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class PlatformAdmin(Base):
@@ -89,12 +260,38 @@ class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("company_users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("company_users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    platform_admin_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("platform_admins.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    user: Mapped[CompanyUser] = relationship("CompanyUser")
+    user: Mapped[CompanyUser | None] = relationship("CompanyUser")
+    platform_admin: Mapped[PlatformAdmin | None] = relationship("PlatformAdmin")
+
+
+class PendingSignup(Base):
+    """Email-verified-first signup; row deleted after company + first user are created."""
+
+    __tablename__ = "pending_signups"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    company_name: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(Text, unique=True, nullable=False, index=True)
+    vendor_code: Mapped[str] = mapped_column(Text, unique=True, nullable=False, index=True)
+    # SHA-256 hex digest of the raw token sent in email (64 chars).
+    verification_token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class InvoiceV2(Base):
@@ -112,10 +309,13 @@ class InvoiceV2(Base):
 
 class PartV2(Base):
     __tablename__ = "parts_v2"
-    __table_args__ = (UniqueConstraint("company_id", "part_no", name="uq_parts_v2_company_part"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", "customer_id", "part_no", name="uq_parts_v2_company_customer_part"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("fir_customers.id", ondelete="RESTRICT"), nullable=False, index=True)
     part_no: Mapped[str] = mapped_column(String(255), nullable=False)
     drawing_rev: Mapped[str | None] = mapped_column(String(128), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -124,6 +324,7 @@ class PartV2(Base):
     drawing_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     company: Mapped[Company] = relationship("Company", back_populates="parts")
+    customer: Mapped["Customer"] = relationship("Customer", back_populates="parts")
     specs: Mapped[list[PartSpecV2]] = relationship(
         "PartSpecV2", back_populates="part", cascade="all, delete-orphan"
     )
@@ -183,12 +384,14 @@ class Customer(Base):
     fir_report_events: Mapped[list["FirReportEvent"]] = relationship(
         "FirReportEvent", back_populates="customer"
     )
+    parts: Mapped[list["PartV2"]] = relationship("PartV2", back_populates="customer")
 
 
 class FirReportEvent(Base):
-    """One row per FIR PDF/report generated from inspection batch (ZIP or future flows)."""
+    """Unique business event per invoice line (deduped via event_uid) for FIR Intelligence analytics."""
 
-    __tablename__ = "fir_report_events"
+    __tablename__ = "fir_events"
+    __table_args__ = (UniqueConstraint("event_uid", name="fir_events_event_uid_unique"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(
@@ -199,12 +402,36 @@ class FirReportEvent(Base):
     )
     part_no: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     invoice_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    event_uid: Mapped[str] = mapped_column(String(64), nullable=False)
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    quantity: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_file: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
 
     company: Mapped[Company] = relationship("Company", back_populates="fir_report_events")
     customer: Mapped[Customer | None] = relationship("Customer", back_populates="fir_report_events")
+
+
+class FirUploadLog(Base):
+    """Optional per-upload summary for FIR Intelligence ingestion."""
+
+    __tablename__ = "fir_upload_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    file_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    rows_processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    new_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duplicate_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reports_generated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    company: Mapped[Company] = relationship("Company", back_populates="fir_upload_logs")
 
 
 class CompanySettings(Base):
@@ -225,8 +452,19 @@ class CompanySettings(Base):
     inspector_signature_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
     quality_signature_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     quality_signature_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    char_critical_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    char_critical_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    char_critical_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    char_safety_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    char_safety_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    char_safety_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    char_important_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    char_important_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    char_important_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
     quali_font_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     quali_font_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # S3 object key (company/{id}/...) when custom font is stored in object storage.
+    quali_font_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     format_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
     issue_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
     doc_rev_no: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -317,3 +555,26 @@ class ModulePricing(Base):
     invoice_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
     highlight: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    listing_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class AdminSubscriptionReminder(Base):
+    """Audit row for a manual subscription reminder sent from the platform admin UI."""
+
+    __tablename__ = "admin_subscription_reminders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    reminder_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    reports_generated: Mapped[int] = mapped_column(Integer, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    email_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    thank_you_category: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    current_month_report_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    top_5_parts: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    total_time_saved_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    company: Mapped[Company] = relationship("Company", back_populates="admin_subscription_reminders")

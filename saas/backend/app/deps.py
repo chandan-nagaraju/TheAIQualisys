@@ -8,21 +8,36 @@ from app.config import get_settings
 from app.database import get_db
 from app.models import Company, CompanyUser, PlatformAdmin
 from app.security import decode_access_token, decode_admin_token
-from app.subscription_logic import can_access_app, can_create_invoice
+from app.dates import billing_today
+from app.subscription_logic import can_access_app, can_create_invoice, sync_subscription_status_from_dates
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def impersonated_by_admin_from_token(token: str) -> bool:
+    p = decode_access_token(token)
+    return bool(p and p.get("typ") == "company" and p.get("impersonated_by_admin"))
+
+
+def company_impersonated_by_admin(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> bool:
+    if not creds or creds.scheme.lower() != "bearer":
+        return False
+    return impersonated_by_admin_from_token(creds.credentials)
 
 
 def get_db_session() -> Generator[Session, None, None]:
     yield from get_db()
 
 
-def get_current_company_user(
-    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    db: Session = Depends(get_db_session),
-) -> CompanyUser:
+def _company_user_from_bearer(
+    creds: HTTPAuthorizationCredentials | None,
+    db: Session,
+) -> CompanyUser | None:
+    """Resolve a company user from Bearer credentials. None when auth header is absent."""
     if not creds or creds.scheme.lower() != "bearer":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        return None
     payload = decode_access_token(creds.credentials)
     if not payload or payload.get("typ") != "company":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
@@ -40,10 +55,54 @@ def get_current_company_user(
     return user
 
 
+def get_current_company_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db_session),
+) -> CompanyUser:
+    user = _company_user_from_bearer(creds, db)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return user
+
+
+def get_optional_company_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db_session),
+) -> CompanyUser | None:
+    """Optional company JWT — None when Authorization is omitted (key-only activate)."""
+    return _company_user_from_bearer(creds, db)
+
+
+def get_oauth_company_user(
+    user: CompanyUser = Depends(get_current_company_user),
+    impersonated: bool = Depends(company_impersonated_by_admin),
+) -> CompanyUser:
+    """Company user for desktop OAuth only.
+
+    Admin-impersonated company JWTs may access the SPA for support, but must never
+    authorize, preview, consent, or revoke desktop OAuth sessions.
+    """
+    if impersonated:
+        # Imported lazily to avoid circular imports (oauth → deps).
+        from app.oauth.constants import ERR_ACCESS_DENIED
+        from app.oauth.errors import OAuthError
+
+        raise OAuthError(
+            ERR_ACCESS_DENIED,
+            description="Desktop authorization requires a direct company login",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    return user
+
+
 def get_company_for_user(user: CompanyUser, db: Session) -> Company:
     company = db.get(Company, user.company_id)
     if not company:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company not found")
+    if sync_subscription_status_from_dates(company, billing_today()):
+        db.add(company)
+        db.commit()
+        db.refresh(company)
     return company
 
 
@@ -101,6 +160,12 @@ def get_bearer_token_or_query(
     if token:
         return token
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+
+def impersonated_by_admin_from_request(
+    token: str = Depends(get_bearer_token_or_query),
+) -> bool:
+    return impersonated_by_admin_from_token(token)
 
 
 def get_company_user_from_token_str(
