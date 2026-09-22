@@ -47,7 +47,9 @@ export type AdminBillingPayment = {
   rejection_reason: string | null;
   rejection_reason_label: string | null;
   whatsapp_number: string | null;
-  whatsapp_url: string | null;
+  invoice_id?: number | null;
+  invoice_number?: string | null;
+  invoice_status?: string | null;
 };
 
 type ListResponse = {

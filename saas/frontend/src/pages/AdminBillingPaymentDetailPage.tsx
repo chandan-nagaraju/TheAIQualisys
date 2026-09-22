@@ -10,6 +10,7 @@ import {
   statusLabel,
   type AdminBillingPayment,
 } from "./AdminBillingPaymentsPage";
+import { formatInr, type AdminBillingInvoice } from "./AdminBillingInvoicesPage";
 
 const REJECT_REASONS = [
   { value: "payment_not_received", label: "Payment not received" },
@@ -28,6 +29,8 @@ export default function AdminBillingPaymentDetailPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [invoicePreview, setInvoicePreview] = useState<AdminBillingInvoice | null>(null);
   const [rejectReason, setRejectReason] = useState<(typeof REJECT_REASONS)[number]["value"]>("payment_not_received");
   const [rejectNote, setRejectNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -93,6 +96,44 @@ export default function AdminBillingPaymentDetailPage() {
     }
   }
 
+  async function openInvoicePreview() {
+    if (!row) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const preview = await apiFetch<AdminBillingInvoice>("/admin/billing/invoices/preview", {
+        method: "POST",
+        token: "admin",
+        body: JSON.stringify({ payment_id: row.id }),
+      });
+      setInvoicePreview(preview);
+      setInvoiceOpen(true);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Invoice preview failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmInvoice() {
+    if (!row) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const created = await apiFetch<AdminBillingInvoice>("/admin/billing/invoices", {
+        method: "POST",
+        token: "admin",
+        body: JSON.stringify({ payment_id: row.id }),
+      });
+      setInvoiceOpen(false);
+      nav(`/admin/billing/invoices/${created.id}`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Invoice generation failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <AdminBillingShell title="Payment details">
       <Link to="/admin/billing/payments" className="text-sm text-brand-500 hover:underline">
@@ -126,8 +167,23 @@ export default function AdminBillingPaymentDetailPage() {
                   </button>
                 </>
               )}
-              {row.status === "verified" && (
-                <span className="text-sm text-slate-500">View Payment · invoice generation comes next</span>
+              {row.status === "verified" && row.invoice_id && (
+                <Link
+                  className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm text-white hover:bg-emerald-600"
+                  to={`/admin/billing/invoices/${row.invoice_id}`}
+                >
+                  View Invoice
+                </Link>
+              )}
+              {row.status === "verified" && !row.invoice_id && (
+                <button
+                  type="button"
+                  className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm text-white hover:bg-emerald-600 disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() => void openInvoicePreview()}
+                >
+                  Generate Invoice
+                </button>
               )}
               {row.status === "rejected" && <span className="text-sm text-slate-500">View Details</span>}
             </div>
@@ -175,6 +231,11 @@ export default function AdminBillingPaymentDetailPage() {
             <DetailRow label="Payment verified at" value={formatWhen(row.payment_verified_at || row.verified_at)} />
             <DetailRow label="Current status" value={statusLabel(row.status)} />
             {row.rejection_reason_label ? <DetailRow label="Rejection reason" value={row.rejection_reason_label} /> : null}
+            {row.invoice_number ? (
+              <DetailRow label="Invoice" value={row.invoice_number} />
+            ) : (
+              <DetailRow label="Invoice" value="Not generated" />
+            )}
           </Section>
 
           <Section title="Pricing snapshot">
@@ -305,6 +366,53 @@ export default function AdminBillingPaymentDetailPage() {
               onClick={() => void confirmReject()}
             >
               Reject Payment
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+
+      {invoiceOpen && row && invoicePreview ? (
+        <Modal onClose={() => !busy && setInvoiceOpen(false)}>
+          <h3 className="text-lg font-semibold text-white">Generate invoice</h3>
+          <div className="mt-4 space-y-1 text-sm text-slate-300">
+            <p>Customer: {invoicePreview.customer_name}</p>
+            <p>Module: {invoicePreview.module_name}</p>
+            <p>Plan: {invoicePreview.plan_name}</p>
+            <p>Billing period: {invoicePreview.billing_period_label}</p>
+            <p>
+              Subscription: {formatDateOnly(invoicePreview.subscription_start_date)} to{" "}
+              {formatDateOnly(invoicePreview.subscription_end_date)}
+            </p>
+            <p>Taxable: {formatInr(invoicePreview.taxable_amount)}</p>
+            {invoicePreview.tax_mode === "cgst_sgst" ? (
+              <p>
+                CGST {invoicePreview.cgst_rate}% {formatInr(invoicePreview.cgst)} · SGST {invoicePreview.sgst_rate}%{" "}
+                {formatInr(invoicePreview.sgst)}
+              </p>
+            ) : (
+              <p>
+                IGST {invoicePreview.igst_rate}% {formatInr(invoicePreview.igst)}
+              </p>
+            )}
+            <p>Grand total: {formatInr(invoicePreview.grand_total)}</p>
+          </div>
+          <p className="mt-4 text-sm text-slate-400">Generate invoice for this verified payment?</p>
+          <div className="mt-6 flex justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200"
+              disabled={busy}
+              onClick={() => setInvoiceOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void confirmInvoice()}
+            >
+              Generate Invoice
             </button>
           </div>
         </Modal>
