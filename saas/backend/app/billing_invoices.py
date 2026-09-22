@@ -29,6 +29,12 @@ TAX_IGST = "igst"
 
 _MISSING_INVOICEABLE = "Invoice can only be generated after payment verification."
 _DUPLICATE = "Invoice already generated for this payment."
+_SELLER_INCOMPLETE = (
+    "Seller billing information is incomplete. Please complete Billing Settings before generating the invoice."
+)
+_CUSTOMER_INCOMPLETE = (
+    "Customer billing information is incomplete. Please update the customer/company profile before generating the invoice."
+)
 
 
 def _money(value: Decimal | int | float | str) -> Decimal:
@@ -47,25 +53,55 @@ def _blank(raw: str | None) -> bool:
     return not (raw or "").strip()
 
 
+def _compose_seller_address(row: BillingSettings) -> str | None:
+    parts = [
+        (getattr(row, "address_line1", None) or "").strip(),
+        (getattr(row, "address_line2", None) or "").strip(),
+        (getattr(row, "city", None) or "").strip(),
+        (getattr(row, "pincode", None) or "").strip(),
+        (getattr(row, "country", None) or "").strip(),
+    ]
+    composed = ", ".join(p for p in parts if p)
+    return composed or (row.business_address or None)
+
+
 def get_billing_settings(db: Session) -> BillingSettings:
     row = db.get(BillingSettings, 1)
     if row:
         return row
-    row = BillingSettings(id=1, invoice_prefix="INV-", cgst_rate=9, sgst_rate=9, igst_rate=18)
+    row = BillingSettings(
+        id=1,
+        invoice_prefix="INV-",
+        cgst_rate=9,
+        sgst_rate=9,
+        igst_rate=18,
+        country="India",
+    )
     db.add(row)
     db.flush()
     return row
 
 
 def serialize_billing_settings(row: BillingSettings) -> dict[str, Any]:
+    address_line1 = getattr(row, "address_line1", None)
+    if _blank(address_line1) and not _blank(row.business_address) and _blank(getattr(row, "city", None)):
+        address_line1 = row.business_address
     return {
         "business_name": row.business_name,
-        "business_address": row.business_address,
+        "legal_business_name": getattr(row, "legal_business_name", None),
+        "business_address": row.business_address or _compose_seller_address(row),
+        "address_line1": address_line1,
+        "address_line2": getattr(row, "address_line2", None),
+        "city": getattr(row, "city", None),
         "gstin": row.gstin,
         "state": row.state,
         "state_code": row.state_code,
+        "pincode": getattr(row, "pincode", None),
+        "country": getattr(row, "country", None) or "India",
         "email": row.email,
         "phone": row.phone,
+        "website": getattr(row, "website", None),
+        "pan": getattr(row, "pan", None),
         "logo_path": row.logo_path,
         "invoice_prefix": row.invoice_prefix or "INV-",
         "cgst_rate": float(row.cgst_rate) if row.cgst_rate is not None else 9,
@@ -76,15 +112,24 @@ def serialize_billing_settings(row: BillingSettings) -> dict[str, Any]:
 
 
 def update_billing_settings(db: Session, body: dict[str, Any]) -> BillingSettings:
+    """Upsert the singleton seller row (id=1). Never inserts a second record."""
     row = get_billing_settings(db)
     allowed = {
         "business_name",
+        "legal_business_name",
         "business_address",
+        "address_line1",
+        "address_line2",
+        "city",
         "gstin",
         "state",
         "state_code",
+        "pincode",
+        "country",
         "email",
         "phone",
+        "website",
+        "pan",
         "logo_path",
         "invoice_prefix",
         "cgst_rate",
@@ -99,8 +144,12 @@ def update_billing_settings(db: Session, body: dict[str, Any]) -> BillingSetting
             setattr(row, key, str(val).strip()[:16] or "INV-")
         elif key in {"cgst_rate", "sgst_rate", "igst_rate"} and val is not None:
             setattr(row, key, _rate(val))
+        elif key == "state_code" and val is not None:
+            setattr(row, key, _norm_state_code(str(val)) or None)
         else:
             setattr(row, key, (str(val).strip() if isinstance(val, str) else val) or None)
+    if _blank(row.business_address):
+        row.business_address = _compose_seller_address(row)
     db.add(row)
     db.flush()
     return row
@@ -172,13 +221,22 @@ def _next_invoice_number(db: Session, prefix: str) -> str:
 def _seller_gaps(settings: BillingSettings) -> list[str]:
     missing: list[str] = []
     if _blank(settings.business_name):
-        missing.append("seller business name")
-    if _blank(settings.business_address):
-        missing.append("seller business address")
-    if _blank(settings.gstin):
-        missing.append("seller GSTIN")
+        missing.append("business name")
+    address = settings.business_address or _compose_seller_address(settings)
+    if _blank(address) and _blank(getattr(settings, "address_line1", None)):
+        missing.append("business address")
+    if _blank(getattr(settings, "city", None)) and _blank(address):
+        missing.append("city")
     if _blank(settings.state) or _blank(settings.state_code):
-        missing.append("seller state / state code")
+        missing.append("state / state code")
+    if _blank(getattr(settings, "pincode", None)) and _blank(address):
+        missing.append("pincode")
+    if _blank(settings.email):
+        missing.append("email")
+    if _blank(settings.phone):
+        missing.append("phone")
+    if _blank(settings.gstin):
+        missing.append("GSTIN")
     return missing
 
 
@@ -187,9 +245,15 @@ def _customer_gaps(company: Company | None) -> list[str]:
         return ["customer company"]
     missing: list[str] = []
     if _blank(company.company_name):
-        missing.append("customer company name")
+        missing.append("company name")
+    if _blank(company.billing_address):
+        missing.append("address")
+    if _blank(company.billing_city):
+        missing.append("city")
     if _blank(company.billing_state) or _blank(company.billing_state_code):
-        missing.append("customer billing state / state code")
+        missing.append("state / state code")
+    if _blank(company.billing_pincode):
+        missing.append("pincode")
     return missing
 
 
@@ -252,12 +316,10 @@ def preview_invoice(db: Session, *, payment_id: int) -> dict[str, Any]:
 
     settings = get_billing_settings(db)
     company = payment.company
-    missing = _seller_gaps(settings) + _customer_gaps(company)
-    if missing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot generate invoice. Missing: " + ", ".join(missing) + ".",
-        )
+    if _seller_gaps(settings):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_SELLER_INCOMPLETE)
+    if _customer_gaps(company):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_CUSTOMER_INCOMPLETE)
 
     taxable = _money(payment.amount_inr)
     tax = compute_tax(
@@ -476,14 +538,32 @@ def render_invoice_pdf(data: dict[str, Any]) -> bytes:
     pdf.cell(0, 10, "TAX INVOICE", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     seller = data.get("seller") or {}
     line(6, seller.get("business_name") or "Seller", bold=True, size=11)
+    legal = (seller.get("legal_business_name") or "").strip()
+    if legal and legal != (seller.get("business_name") or "").strip():
+        line(5, legal)
     pdf.set_font("Helvetica", "", 9)
+    addr = seller.get("business_address") or ", ".join(
+        p
+        for p in (
+            seller.get("address_line1"),
+            seller.get("address_line2"),
+            seller.get("city"),
+            seller.get("pincode"),
+            seller.get("country"),
+        )
+        if p
+    )
     for item in (
-        seller.get("business_address"),
+        addr,
+        f"{seller.get('city') or ''} {seller.get('pincode') or ''}  {seller.get('state') or ''} ({seller.get('state_code') or ''})".strip(),
+        f"Country: {seller.get('country') or '-'}" if seller.get("country") else None,
         f"GSTIN: {seller.get('gstin') or '-'}",
-        f"State: {seller.get('state') or '-'} ({seller.get('state_code') or '-'})",
+        f"PAN: {seller.get('pan')}" if seller.get("pan") else None,
         f"Email: {seller.get('email') or '-'}  Phone: {seller.get('phone') or '-'}",
+        f"Website: {seller.get('website')}" if seller.get("website") else None,
     ):
-        line(5, item)
+        if item:
+            line(5, item)
     pdf.ln(3)
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(95, 6, _pdf_text(f"Invoice: {data.get('invoice_number') or ''}"))

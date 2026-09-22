@@ -938,14 +938,21 @@ def admin_reject_billing_payment(
     return AdminBillingPaymentOut.model_validate(serialize_billing_payment(row))
 
 
+@router.get("/billing/settings/", response_model=AdminBillingSettingsOut, include_in_schema=False)
 @router.get("/billing/settings", response_model=AdminBillingSettingsOut)
 def admin_get_billing_settings(
     _: PlatformAdmin = Depends(get_platform_admin),
     db: Session = Depends(get_db_session),
 ):
-    return AdminBillingSettingsOut.model_validate(serialize_billing_settings(get_billing_settings(db)))
+    # redirect_slashes is off (CORS-safe). Register both paths like payments/invoices.
+    # Missing singleton is created; never 404 merely because billing_settings is empty.
+    row = get_billing_settings(db)
+    db.commit()
+    db.refresh(row)
+    return AdminBillingSettingsOut.model_validate(serialize_billing_settings(row))
 
 
+@router.put("/billing/settings/", response_model=AdminBillingSettingsOut, include_in_schema=False)
 @router.put("/billing/settings", response_model=AdminBillingSettingsOut)
 def admin_put_billing_settings(
     body: AdminBillingSettingsIn,

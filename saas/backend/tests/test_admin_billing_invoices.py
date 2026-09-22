@@ -147,6 +147,12 @@ def test_preview_and_pdf_for_pay_00002_monthly(monkeypatch):
     assert out["invoice_date"] == "2026-09-22"
     assert out["taxable_amount"] == 6799.0
     assert out["tax_mode"] == TAX_CGST_SGST
+    assert out["seller"]["business_name"] == "TheAIQualisys"
+    assert out["seller"]["gstin"] == "29AAAAA0000A1Z5"
+    assert out["seller"]["state_code"] == "29"
+    assert out["company_name"] == "Sri Balaji fabrication works"
+    assert out["gstin"] == "29BBBBB0000B1Z5"
+    assert out["state_code"] == "29"
     pdf = render_invoice_pdf({**out, "invoice_number": "INV-00001"})
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 400
@@ -179,4 +185,18 @@ def test_preview_requires_seller_and_customer_state(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         preview_invoice(db, payment_id=2)
     assert exc.value.status_code == 400
-    assert "customer billing state" in str(exc.value.detail).lower()
+    assert "customer billing information is incomplete" in str(exc.value.detail).lower()
+
+
+def test_preview_blocks_incomplete_seller(monkeypatch):
+    payment = _verified_payment()
+    settings = _settings(business_name="", gstin="")
+    db = MagicMock()
+    monkeypatch.setattr("app.billing_invoices.get_billing_payment", lambda _db, _id: payment)
+    monkeypatch.setattr("app.billing_invoices.generated_invoice_for_payment", lambda _db, _id: None)
+    monkeypatch.setattr("app.billing_invoices.get_billing_settings", lambda _db: settings)
+    with pytest.raises(HTTPException) as exc:
+        preview_invoice(db, payment_id=2)
+    assert exc.value.status_code == 400
+    assert "seller billing information is incomplete" in str(exc.value.detail).lower()
+    assert "billing settings" in str(exc.value.detail).lower()

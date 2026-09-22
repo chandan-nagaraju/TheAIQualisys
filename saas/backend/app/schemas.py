@@ -529,12 +529,20 @@ class BillingOverviewResponse(BaseModel):
 
 class AdminBillingSettingsIn(BaseModel):
     business_name: str | None = None
+    legal_business_name: str | None = None
     business_address: str | None = None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
     gstin: str | None = None
     state: str | None = None
     state_code: str | None = None
+    pincode: str | None = None
+    country: str | None = None
     email: str | None = None
     phone: str | None = None
+    website: str | None = None
+    pan: str | None = None
     logo_path: str | None = None
     invoice_prefix: str | None = None
     cgst_rate: float | None = None
