@@ -77,6 +77,19 @@ class CompanyOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CompanyBillingProfileIn(BaseModel):
+    """Buyer (customer company) details stored on companies — used on subscription invoices."""
+
+    company_name: str = Field(min_length=1, max_length=255)
+    billing_address: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_state_code: str | None = None
+    billing_pincode: str | None = None
+    gstin: str | None = None
+    phone: str | None = None
+
+
 class MeResponse(BaseModel):
     user: CompanyUserOut
     company: CompanyOut

@@ -18,6 +18,7 @@ from app.email_util import (
 from app.models import Company, CompanyUser, PasswordResetToken, PendingSignup, PlanType, PlatformAdmin, SubscriptionStatus
 from app.schemas import (
     ChangePasswordRequest,
+    CompanyBillingProfileIn,
     CompanyOut,
     CompanyUserOut,
     CompleteSignupBody,
@@ -431,3 +432,38 @@ def change_password(
     revoke_on_password_change(db, int(user.id))
     db.commit()
     return {"ok": True}
+
+
+def _apply_company_billing_profile(company: Company, body: CompanyBillingProfileIn) -> None:
+    company.company_name = body.company_name.strip()
+    company.billing_address = (body.billing_address or "").strip() or None
+    company.billing_city = (body.billing_city or "").strip() or None
+    company.billing_state = (body.billing_state or "").strip() or None
+    company.billing_state_code = (body.billing_state_code or "").strip().upper() or None
+    company.billing_pincode = (body.billing_pincode or "").strip() or None
+    company.gstin = (body.gstin or "").strip().upper() or None
+    company.phone = (body.phone or "").strip() or None
+
+
+@router.get("/company-profile/", response_model=CompanyOut, include_in_schema=False)
+@router.get("/company-profile", response_model=CompanyOut)
+def get_company_profile(
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+):
+    return CompanyOut.model_validate(get_company_for_user(user, db))
+
+
+@router.put("/company-profile/", response_model=CompanyOut, include_in_schema=False)
+@router.put("/company-profile", response_model=CompanyOut)
+def put_company_profile(
+    body: CompanyBillingProfileIn,
+    user: CompanyUser = Depends(get_current_company_user),
+    db: Session = Depends(get_db_session),
+):
+    company = get_company_for_user(user, db)
+    _apply_company_billing_profile(company, body)
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    return CompanyOut.model_validate(company)
