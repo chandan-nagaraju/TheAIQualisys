@@ -84,11 +84,22 @@ export default function AdminBillingInvoiceDetailPage() {
               <div>
                 <p className="font-semibold">Seller</p>
                 <p>{seller.business_name || "—"}</p>
-                <p className="whitespace-pre-line">{seller.business_address || ""}</p>
-                <p>GSTIN: {seller.gstin || "—"}</p>
-                <p>
-                  State: {seller.state || "—"} ({seller.state_code || "—"})
+                {seller.legal_business_name && seller.legal_business_name !== seller.business_name ? (
+                  <p>{seller.legal_business_name}</p>
+                ) : null}
+                <p className="whitespace-pre-line">
+                  {seller.business_address || [seller.address_line1, seller.address_line2].filter(Boolean).join(", ") || ""}
                 </p>
+                <p>
+                  {seller.city || ""} {seller.pincode || ""} {seller.state || "—"} ({seller.state_code || "—"})
+                </p>
+                {seller.country ? <p>{seller.country}</p> : null}
+                <p>GSTIN: {seller.gstin || "—"}</p>
+                {seller.pan ? <p>PAN: {seller.pan}</p> : null}
+                <p>
+                  {seller.email || "—"} · {seller.phone || "—"}
+                </p>
+                {seller.website ? <p>{seller.website}</p> : null}
               </div>
               <div>
                 <p className="font-semibold">Bill to</p>
