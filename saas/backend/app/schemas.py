@@ -612,6 +612,9 @@ class AdminBillingInvoiceOut(BaseModel):
     payment_reference: str | None = None
     payment_verified_at: str | None = None
     seller: dict | None = None
+    vendor_code: str | None = None
+    hsn_sac: str | None = None
+    uom: str | None = None
     quantity: int | None = 1
     rate: float | None = None
     terms_notes: str | None = None

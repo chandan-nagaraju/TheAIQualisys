@@ -29,6 +29,8 @@ TAX_IGST = "igst"
 
 _MISSING_INVOICEABLE = "Invoice can only be generated after payment verification."
 _DUPLICATE = "Invoice already generated for this payment."
+# SAC for IT design and development / SaaS subscription (not configured on Billing Settings).
+SAAS_SAC = "998314"
 
 
 def _money(value: Decimal | int | float | str) -> Decimal:
@@ -313,6 +315,9 @@ def preview_invoice(db: Session, *, payment_id: int) -> dict[str, Any]:
         "sgst_rate": float(tax["sgst_rate"]),
         "igst_rate": float(tax["igst_rate"]),
         "seller": serialize_billing_settings(settings),
+        "vendor_code": company.vendor_code if company else None,
+        "hsn_sac": SAAS_SAC,
+        "uom": "Nos",
     }
 
 
@@ -443,9 +448,37 @@ def serialize_billing_invoice(row: BillingInvoice, *, db: Session | None = None)
         "quantity": snap.get("quantity") or 1,
         "rate": snap.get("rate") if snap.get("rate") is not None else float(row.subtotal),
         "terms_notes": (snap.get("seller") or {}).get("terms_notes") if isinstance(snap.get("seller"), dict) else None,
+        "vendor_code": snap.get("vendor_code") or (company.vendor_code if company else None),
+        "hsn_sac": snap.get("hsn_sac") or SAAS_SAC,
+        "uom": snap.get("uom") or "Nos",
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
+
+
+_ONES = (
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+)
+_TENS = ("", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety")
 
 
 def _pdf_text(value: Any) -> str:
@@ -453,95 +486,355 @@ def _pdf_text(value: Any) -> str:
     return (
         s.replace("\u2014", "-")
         .replace("\u2013", "-")
-        .replace("₹", "INR ")
+        .replace("₹", "Rs. ")
         .encode("latin-1", "replace")
         .decode("latin-1")
     )
 
 
-def render_invoice_pdf(data: dict[str, Any]) -> bytes:
-    """Selectable-text PDF (Helvetica). No screenshot/image invoice."""
-    from fpdf import FPDF
-    from fpdf.enums import XPos, YPos
+def _display_date(raw: Any) -> str:
+    if raw is None or raw == "":
+        return ""
+    text = str(raw)
+    try:
+        d = date.fromisoformat(text[:10])
+        return d.strftime("%d-%b-%y")
+    except ValueError:
+        return text[:12]
 
-    pdf = FPDF(orientation="P", unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
 
-    def line(h: float, text: str, *, bold: bool = False, size: int = 9) -> None:
-        pdf.set_font("Helvetica", "B" if bold else "", size)
-        pdf.cell(0, h, _pdf_text(text), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, "TAX INVOICE", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    seller = data.get("seller") or {}
-    line(6, seller.get("business_name") or "Seller", bold=True, size=11)
-    pdf.set_font("Helvetica", "", 9)
-    for item in (
-        seller.get("business_address"),
-        f"GSTIN: {seller.get('gstin') or '-'}",
-        f"State: {seller.get('state') or '-'} ({seller.get('state_code') or '-'})",
-        f"Email: {seller.get('email') or '-'}  Phone: {seller.get('phone') or '-'}",
-    ):
-        line(5, item)
-    pdf.ln(3)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(95, 6, _pdf_text(f"Invoice: {data.get('invoice_number') or ''}"))
-    pdf.cell(95, 6, _pdf_text(f"Date: {data.get('invoice_date') or ''}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    line(5, f"Payment: {data.get('payment_code') or ''}  Method: {data.get('payment_method') or ''}  Ref: {data.get('payment_reference') or '-'}")
-    line(5, f"Payment verified: {data.get('payment_verified_at') or '-'}")
-    pdf.ln(2)
-    line(6, "Bill To", bold=True, size=10)
-    line(5, data.get("customer_name") or data.get("company_name") or "")
-    line(5, data.get("company_name") or "")
-    line(5, data.get("billing_address") or "")
-    line(5, f"{data.get('city') or ''} {data.get('pincode') or ''}  {data.get('state') or ''} ({data.get('state_code') or ''})")
-    line(5, f"GSTIN: {data.get('gstin') or '-'}  Email: {data.get('email') or '-'}  Phone: {data.get('phone') or '-'}")
-    start = data.get("subscription_start_date") or "-"
-    end = data.get("subscription_end_date") or "-"
-    pdf.ln(2)
-    line(5, f"Subscription period: {start} to {end}")
-    line(5, f"Billing period: {data.get('billing_period_label') or data.get('billing_period') or ''}")
-    pdf.ln(3)
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.cell(100, 7, "Description", border=1)
-    pdf.cell(20, 7, "Qty", border=1)
-    pdf.cell(35, 7, "Rate", border=1)
-    pdf.cell(35, 7, "Amount", border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_font("Helvetica", "", 9)
-    desc = _pdf_text(data.get("line_description") or "")[:90]
-    pdf.cell(100, 7, desc, border=1)
-    pdf.cell(20, 7, str(data.get("quantity") or 1), border=1)
-    pdf.cell(35, 7, _inr(data.get("rate")), border=1)
-    pdf.cell(35, 7, _inr(data.get("subtotal")), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(2)
-    pdf.cell(155, 6, "Taxable value")
-    pdf.cell(35, 6, _inr(data.get("taxable_amount")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    mode = data.get("tax_mode")
-    if mode == TAX_CGST_SGST:
-        pdf.cell(155, 6, _pdf_text(f"CGST @ {data.get('cgst_rate')}%"))
-        pdf.cell(35, 6, _inr(data.get("cgst")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.cell(155, 6, _pdf_text(f"SGST @ {data.get('sgst_rate')}%"))
-        pdf.cell(35, 6, _inr(data.get("sgst")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+def _indian_comma(value: Any) -> str:
+    n = _money(value or 0)
+    sign = "-" if n < 0 else ""
+    n = abs(n)
+    rupees, paise = f"{n:.2f}".split(".")
+    if len(rupees) <= 3:
+        body = rupees
     else:
-        pdf.cell(155, 6, _pdf_text(f"IGST @ {data.get('igst_rate')}%"))
-        pdf.cell(35, 6, _inr(data.get("igst")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.cell(155, 6, "Total tax")
-    pdf.cell(35, 6, _inr(data.get("total_tax")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(155, 7, "Grand total")
-    pdf.cell(35, 7, _inr(data.get("grand_total")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    notes = data.get("terms_notes") or (seller.get("terms_notes") if isinstance(seller, dict) else None)
-    if notes:
-        pdf.ln(4)
-        pdf.set_font("Helvetica", "", 8)
-        pdf.multi_cell(0, 4, _pdf_text(notes))
-    return bytes(pdf.output())
+        last3 = rupees[-3:]
+        rest = rupees[:-3]
+        groups: list[str] = []
+        while rest:
+            groups.append(rest[-2:])
+            rest = rest[:-2]
+        body = ",".join([*reversed(groups), last3])
+    return f"{sign}{body}.{paise}"
+
+
+def _two_digit_words(n: int) -> str:
+    if n < 20:
+        return _ONES[n]
+    tens, ones = divmod(n, 10)
+    return f"{_TENS[tens]} {_ONES[ones]}".strip()
+
+
+def _amount_in_words(value: Any) -> str:
+    n = _money(value or 0)
+    rupees = int(n)
+    paise = int((n - rupees) * 100)
+    if rupees == 0:
+        words = "Zero"
+    else:
+        crore, rem = divmod(rupees, 10000000)
+        lakh, rem = divmod(rem, 100000)
+        thousand, rem = divmod(rem, 1000)
+        hundred, rem = divmod(rem, 100)
+        parts: list[str] = []
+        if crore:
+            parts.append(f"{_two_digit_words(crore)} Crore")
+        if lakh:
+            parts.append(f"{_two_digit_words(lakh)} Lakh")
+        if thousand:
+            parts.append(f"{_two_digit_words(thousand)} Thousand")
+        if hundred:
+            parts.append(f"{_ONES[hundred]} Hundred")
+        if rem:
+            parts.append(_two_digit_words(rem))
+        words = " ".join(parts)
+    result = f"Indian Rupees {words}"
+    if paise:
+        result += f" and {_two_digit_words(paise)} Paise"
+    return result + " Only"
 
 
 def _inr(value: Any) -> str:
-    try:
-        n = _money(value or 0)
-    except Exception:
-        n = _money(0)
-    return f"INR {n:,.2f}"
+    return _indian_comma(value)
+
+
+def _party_lines(data: dict[str, Any], *, seller: bool = False) -> list[str]:
+    if seller:
+        s = data.get("seller") or {}
+        name = s.get("business_name") or "TheAIQualisys"
+        legal = (s.get("legal_business_name") or "").strip()
+        addr = s.get("business_address") or ", ".join(
+            p for p in (s.get("address_line1"), s.get("address_line2"), s.get("city"), s.get("pincode")) if p
+        )
+        lines = [name]
+        if legal and legal != name:
+            lines.append(legal)
+        if addr:
+            lines.append(str(addr))
+        lines.append(f"GSTIN/UIN: {s.get('gstin') or '-'}")
+        lines.append(f"State Name : {s.get('state') or '-'} , Code : {s.get('state_code') or '-'}")
+        if s.get("email") or s.get("phone"):
+            lines.append(f"E-Mail : {s.get('email') or '-'}  Ph: {s.get('phone') or '-'}")
+        return [str(x) for x in lines if x]
+    name = data.get("company_name") or data.get("customer_name") or ""
+    addr_bits = [data.get("billing_address"), data.get("city"), data.get("pincode")]
+    lines = [name]
+    addr = ", ".join(str(p) for p in addr_bits if p)
+    if addr:
+        lines.append(addr)
+    lines.append(f"GSTIN/UIN : {data.get('gstin') or '-'}")
+    lines.append(f"State Name : {data.get('state') or '-'} , Code : {data.get('state_code') or '-'}")
+    return [str(x) for x in lines if x]
+
+
+def render_invoice_pdf(data: dict[str, Any]) -> bytes:
+    """Tally-style GST tax invoice. Selectable Helvetica text. No IRN/e-invoice QR."""
+    from fpdf import FPDF
+
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=False, margin=8)
+    pdf.add_page()
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_line_width(0.2)
+
+    x0, y0 = 8.0, 8.0
+    w = 194.0
+    x1 = x0 + w
+    mid = x0 + 108.0
+
+    def put(x: float, y: float, cw: float, ch: float, text: str, *, bold: bool = False, size: int = 7, align: str = "L") -> None:
+        pdf.set_xy(x, y)
+        pdf.set_font("Helvetica", "B" if bold else "", size)
+        pdf.cell(cw, ch, _pdf_text(text), align=align)
+
+    def wrap(x: float, y: float, cw: float, text: str, *, bold: bool = False, size: int = 7, lh: float = 3.4) -> float:
+        pdf.set_xy(x, y)
+        pdf.set_font("Helvetica", "B" if bold else "", size)
+        pdf.multi_cell(cw, lh, _pdf_text(text))
+        return float(pdf.get_y())
+
+    seller = data.get("seller") if isinstance(data.get("seller"), dict) else {}
+    mode = data.get("tax_mode")
+    hsn = str(data.get("hsn_sac") or SAAS_SAC)
+    qty = str(data.get("quantity") or 1)
+    uom = str(data.get("uom") or "Nos")
+    inv_no = str(data.get("invoice_number") or "")
+    inv_dt = _display_date(data.get("invoice_date"))
+    pay_ref = str(data.get("payment_code") or data.get("payment_reference") or "")
+    pay_method = str(data.get("payment_method") or "UPI")
+    vendor = str(data.get("vendor_code") or "")
+    start = _display_date(data.get("subscription_start_date"))
+    end = _display_date(data.get("subscription_end_date"))
+    period = str(data.get("billing_period_label") or data.get("billing_period") or "")
+    terms = f"{period}  {start} to {end}".strip()
+
+    # Outer title
+    pdf.rect(x0, y0, w, 8)
+    put(x0, y0 + 1.5, w, 5, "TAX INVOICE", bold=True, size=12, align="C")
+
+    header_y = y0 + 8
+    header_h = 42
+    pdf.rect(x0, header_y, mid - x0, header_h)
+    pdf.rect(mid, header_y, x1 - mid, header_h)
+
+    sy = header_y + 1.5
+    for i, line in enumerate(_party_lines(data, seller=True)):
+        sy = wrap(x0 + 1.5, sy, mid - x0 - 3, line, bold=i == 0, size=9 if i == 0 else 7, lh=3.6)
+        if sy > header_y + header_h - 2:
+            break
+
+    meta_rows = [
+        ("Invoice No.", inv_no, "Dated", inv_dt),
+        ("Delivery Note", "", "Mode/Terms of Payment", pay_method),
+        ("Reference No. & Date.", pay_ref, "Other References", ""),
+        ("Buyer's Order No.", "", "Dated", ""),
+        ("Dispatch Doc No.", "", "Delivery Note Date", ""),
+        ("Dispatched through", "", "Destination", ""),
+        ("Supplier / Vendor Code", vendor, "Terms of Delivery", terms),
+    ]
+    rh = header_h / len(meta_rows)
+    mw = x1 - mid
+    col = mw / 2
+    for i, (l1, v1, l2, v2) in enumerate(meta_rows):
+        y = header_y + i * rh
+        pdf.line(mid, y, x1, y)
+        pdf.line(mid + col, y, mid + col, y + rh)
+        put(mid + 0.6, y + 0.2, col - 1.2, 3, l1, size=5.5)
+        put(mid + 0.6, y + 2.6, col - 1.2, 3, v1, bold=True, size=6.5)
+        put(mid + col + 0.6, y + 0.2, col - 1.2, 3, l2, size=5.5)
+        put(mid + col + 0.6, y + 2.6, col - 1.2, 3, v2, bold=True, size=6.5)
+    pdf.line(mid, header_y + header_h, x1, header_y + header_h)
+
+    party_y = header_y + header_h
+    party_h = 32
+    split = x0 + w / 2
+    pdf.rect(x0, party_y, split - x0, party_h)
+    pdf.rect(split, party_y, x1 - split, party_h)
+    put(x0 + 1.5, party_y + 0.5, split - x0 - 3, 4, "Consignee (Ship to)", bold=True, size=7)
+    put(split + 1.5, party_y + 0.5, x1 - split - 3, 4, "Buyer (Bill to)", bold=True, size=7)
+    by = party_y + 5
+    wrap_y = by
+    for i, line in enumerate(_party_lines(data, seller=False)):
+        wrap_y = wrap(x0 + 1.5, wrap_y, split - x0 - 3, line, bold=i == 0, size=8 if i == 0 else 7, lh=3.4)
+    wrap_y = by
+    for i, line in enumerate(_party_lines(data, seller=False)):
+        wrap_y = wrap(split + 1.5, wrap_y, x1 - split - 3, line, bold=i == 0, size=8 if i == 0 else 7, lh=3.4)
+
+    # Line items
+    cols = [8, 78, 22, 16, 22, 14, 34]
+    headers = ["SI", "Description of Services", "HSN/SAC", "Quantity", "Rate", "per", "Amount"]
+    ty = party_y + party_h
+    th = 7
+    pdf.rect(x0, ty, w, th)
+    cx = x0
+    for i, (cw, label) in enumerate(zip(cols, headers, strict=True)):
+        if i:
+            pdf.line(cx, ty, cx, ty + th)
+        put(cx, ty + 1.5, cw, 4, label, bold=True, size=6.5, align="C")
+        cx += cw
+
+    row_h = 10
+    iy = ty + th
+    pdf.rect(x0, iy, w, row_h)
+    desc = str(data.get("line_description") or "")
+    vals = [
+        "1",
+        desc,
+        hsn,
+        f"{qty} {uom}",
+        _indian_comma(data.get("rate")),
+        uom,
+        _indian_comma(data.get("taxable_amount")),
+    ]
+    aligns = ["C", "L", "C", "C", "R", "C", "R"]
+    cx = x0
+    for i, (cw, val, al) in enumerate(zip(cols, vals, aligns, strict=True)):
+        if i:
+            pdf.line(cx, iy, cx, iy + row_h)
+        pad = 0.8 if al != "C" else 0
+        put(cx + pad, iy + 2.5, cw - pad * 2, 5, val, size=7, align=al)
+        cx += cw
+
+    tax_rows: list[tuple[str, str]] = []
+    if mode == TAX_CGST_SGST:
+        tax_rows.append((f"CGST @ {data.get('cgst_rate')}%", _indian_comma(data.get("cgst"))))
+        tax_rows.append((f"SGST @ {data.get('sgst_rate')}%", _indian_comma(data.get("sgst"))))
+    else:
+        tax_rows.append((f"IGST @ {data.get('igst_rate')}%", _indian_comma(data.get("igst"))))
+
+    gy = iy + row_h
+    for label, amt in tax_rows:
+        pdf.rect(x0, gy, w, 6)
+        cx = x0
+        for i, cw in enumerate(cols):
+            if i:
+                pdf.line(cx, gy, cx, gy + 6)
+            if i == 1:
+                put(cx + 8, gy + 1, cw - 10, 4, label, size=7, align="R")
+            if i == 6:
+                put(cx, gy + 1, cw - 1, 4, amt, size=7, align="R")
+            cx += cw
+        gy += 6
+
+    pdf.rect(x0, gy, w, 7)
+    cx = x0
+    for i, cw in enumerate(cols):
+        if i:
+            pdf.line(cx, gy, cx, gy + 7)
+        if i == 1:
+            put(cx + 1, gy + 1.5, cw - 2, 4, "Total", bold=True, size=8)
+        if i == 3:
+            put(cx, gy + 1.5, cw, 4, f"{qty} {uom}", bold=True, size=7, align="C")
+        if i == 6:
+            put(cx, gy + 1.5, cw - 1, 4, _indian_comma(data.get("grand_total")), bold=True, size=8, align="R")
+        cx += cw
+
+    words_y = gy + 7
+    pdf.rect(x0, words_y, w, 10)
+    put(x0 + 1.5, words_y + 0.5, w - 40, 4, "Amount Chargeable (in words)", size=6)
+    put(x0 + w - 22, words_y + 0.5, 20, 4, "E. & O.E", size=6, align="R")
+    put(x0 + 1.5, words_y + 4.5, w - 4, 5, _amount_in_words(data.get("grand_total")), bold=True, size=8)
+
+    # HSN tax summary
+    hy = words_y + 10
+    if mode == TAX_CGST_SGST:
+        tax_headers = ["HSN/SAC", "Taxable Value", "CGST Rate", "CGST Amount", "SGST Rate", "SGST Amount", "Total Tax Amount"]
+        tax_vals = [
+            hsn,
+            _indian_comma(data.get("taxable_amount")),
+            f"{data.get('cgst_rate')}%",
+            _indian_comma(data.get("cgst")),
+            f"{data.get('sgst_rate')}%",
+            _indian_comma(data.get("sgst")),
+            _indian_comma(data.get("total_tax")),
+        ]
+        tcols = [28, 30, 22, 28, 22, 28, 36]
+    else:
+        tax_headers = ["HSN/SAC", "Taxable Value", "IGST Rate", "IGST Amount", "Total Tax Amount"]
+        tax_vals = [
+            hsn,
+            _indian_comma(data.get("taxable_amount")),
+            f"{data.get('igst_rate')}%",
+            _indian_comma(data.get("igst")),
+            _indian_comma(data.get("total_tax")),
+        ]
+        tcols = [36, 40, 28, 40, 50]
+    pdf.rect(x0, hy, w, 6)
+    cx = x0
+    for i, (cw, label) in enumerate(zip(tcols, tax_headers, strict=True)):
+        if i:
+            pdf.line(cx, hy, cx, hy + 6)
+        put(cx, hy + 1.2, cw, 4, label, bold=True, size=6, align="C")
+        cx += cw
+    hy2 = hy + 6
+    pdf.rect(x0, hy2, w, 6)
+    cx = x0
+    for i, (cw, val) in enumerate(zip(tcols, tax_vals, strict=True)):
+        if i:
+            pdf.line(cx, hy2, cx, hy2 + 6)
+        put(cx, hy2 + 1.2, cw, 4, val, size=7, align="C")
+        cx += cw
+    hy3 = hy2 + 6
+    pdf.rect(x0, hy3, w, 6)
+    put(x0 + 1, hy3 + 1.2, 40, 4, "Total", bold=True, size=7)
+    put(x1 - 38, hy3 + 1.2, 36, 4, _indian_comma(data.get("total_tax")), bold=True, size=7, align="C")
+
+    tw = hy3 + 6
+    pdf.rect(x0, tw, w, 8)
+    put(x0 + 1.5, tw + 0.4, w - 3, 3.5, "Tax Amount (in words) :", size=6)
+    put(x0 + 1.5, tw + 3.6, w - 3, 4, _amount_in_words(data.get("total_tax")), bold=True, size=7)
+    pan = (seller or {}).get("pan") if isinstance(seller, dict) else None
+    if pan:
+        put(x0 + 1.5, tw + 8.2, w - 3, 4, f"Company's PAN : {pan}", size=7)
+
+    foot = tw + (14 if pan else 8)
+    split_f = x0 + 100
+    fh = 36
+    pdf.rect(x0, foot, split_f - x0, fh)
+    pdf.rect(split_f, foot, x1 - split_f, fh)
+    put(x0 + 1.5, foot + 1, 90, 4, "Declaration", bold=True, size=7)
+    wrap(
+        x0 + 1.5,
+        foot + 5.5,
+        split_f - x0 - 3,
+        "We declare that this invoice shows the actual price of the "
+        "services described and that all particulars are true and correct.",
+        size=6.5,
+        lh=3.3,
+    )
+    put(x0 + 1.5, foot + fh - 8, 90, 4, "Customer's Seal and Signature", size=6.5)
+    seller_name = (seller or {}).get("business_name") or "TheAIQualisys"
+    put(split_f + 1.5, foot + 1, x1 - split_f - 3, 4, f"for {seller_name}", bold=True, size=7, align="R")
+    put(split_f + 1.5, foot + fh - 8, x1 - split_f - 3, 4, "Authorised Signatory", size=6.5, align="R")
+
+    notes = data.get("terms_notes") or ((seller or {}).get("terms_notes") if isinstance(seller, dict) else None)
+    if notes:
+        wrap(x0, foot + fh + 1, w, str(notes), size=6, lh=3)
+
+    city = (seller or {}).get("city") or (seller or {}).get("state") or ""
+    if city:
+        put(x0, 285, w, 4, f"SUBJECT TO {str(city).upper()} JURISDICTION", bold=True, size=7, align="C")
+    return bytes(pdf.output())
