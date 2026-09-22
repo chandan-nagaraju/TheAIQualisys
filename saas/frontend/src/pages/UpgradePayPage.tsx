@@ -7,10 +7,13 @@ import {
   BILLING_OPTIONS,
   billingPeriodApi,
   billingTotalInr,
+  formatInrAmount,
+  GST_PERCENT,
   isEnterprisePlan,
   moduleDisplayName,
   moduleKeyFromSearch,
   parseBillingId,
+  payableWithGstInr,
   QR_REFRESH_MS,
   type UpgradeInfo,
   type PlanInfo,
@@ -38,6 +41,7 @@ export default function UpgradePayPage() {
     whatsapp_url: string;
   } | null>(null);
   const [quotedAmount, setQuotedAmount] = useState<number | null>(null);
+  const [quotedTaxable, setQuotedTaxable] = useState<number | null>(null);
 
   const selected = useSelectedPlan(plans);
   const enterprisePricing = useMemo(
@@ -45,11 +49,17 @@ export default function UpgradePayPage() {
     [selected],
   );
 
-  const payAmount = useMemo(() => {
-    if (quotedAmount != null) return quotedAmount;
+  const taxableAmount = useMemo(() => {
+    if (quotedTaxable != null) return quotedTaxable;
     if (!billingParam || selected?.price == null) return null;
     return billingTotalInr(selected.price, billingParam, enterprisePricing);
-  }, [quotedAmount, selected?.price, billingParam, enterprisePricing]);
+  }, [quotedTaxable, selected?.price, billingParam, enterprisePricing]);
+
+  const payAmount = useMemo(() => {
+    if (quotedAmount != null) return quotedAmount;
+    if (taxableAmount == null) return null;
+    return payableWithGstInr(taxableAmount);
+  }, [quotedAmount, taxableAmount]);
 
   const upgradeSearchStripped = useMemo(() => {
     const q = new URLSearchParams(location.search);
@@ -84,10 +94,18 @@ export default function UpgradePayPage() {
           billing_period: billingPeriodApi(billingParam),
         });
         if (planType) q.set("plan_type", planType);
-        const quote = await apiFetch<{ amount_inr: number }>(`/subscription/payment-quote?${q.toString()}`);
-        if (!cancelled) setQuotedAmount(quote.amount_inr);
+        const quote = await apiFetch<{ amount_inr: number; taxable_amount_inr?: number }>(
+          `/subscription/payment-quote?${q.toString()}`,
+        );
+        if (!cancelled) {
+          setQuotedAmount(quote.amount_inr);
+          setQuotedTaxable(quote.taxable_amount_inr ?? null);
+        }
       } catch {
-        if (!cancelled) setQuotedAmount(null);
+        if (!cancelled) {
+          setQuotedAmount(null);
+          setQuotedTaxable(null);
+        }
       }
     })();
     return () => {
@@ -135,7 +153,7 @@ export default function UpgradePayPage() {
     ? `${selected.planName}${selected.planType ? ` (${selected.planType})` : ""}`
     : "";
   const listPriceLine =
-    selected?.price != null ? `List price: ₹${selected.price}/month` : null;
+    selected?.price != null ? `List price: ₹${selected.price}/month + 18% GST` : null;
   const billingLabel = billingParam
     ? (BILLING_OPTIONS.find((o) => o.id === billingParam)?.label ?? "")
     : "";
@@ -168,7 +186,7 @@ export default function UpgradePayPage() {
     q.set("pa", info.upi_id);
     q.set("pn", "TheAIQualisys");
     q.set("cu", "INR");
-    q.set("am", String(payAmount));
+    q.set("am", Number(payAmount).toFixed(2));
     const period = BILLING_OPTIONS.find((o) => o.id === billingParam);
     const periodPart = period ? period.label.replace(/\s+/g, "") : billingParam;
     if (selected?.planName) {
@@ -277,7 +295,13 @@ export default function UpgradePayPage() {
           <p className={`text-[11px] font-semibold uppercase tracking-wide ${t.upiLabel}`}>
             Pay · {billingLabel}
           </p>
-          <p className={`mt-1 text-xl font-bold tabular-nums sm:text-2xl ${t.title}`}>₹{payAmount}</p>
+          <p className={`mt-1 text-xl font-bold tabular-nums sm:text-2xl ${t.title}`}>
+            ₹{formatInrAmount(taxableAmount ?? payAmount)}{" "}
+            <span className={`text-base font-semibold ${t.sub}`}>+ {GST_PERCENT}% GST</span>
+          </p>
+          <p className={`mt-1 text-sm font-semibold tabular-nums ${t.title}`}>
+            Pay ₹{formatInrAmount(payAmount)}
+          </p>
           <p className={`mt-1 text-xs ${t.sub}`}>
             {moduleDisplayName(moduleKey)}
             {selectedPlanText ? ` · ${selectedPlanText}` : ""}
@@ -299,7 +323,7 @@ export default function UpgradePayPage() {
         </div>
 
         <p className={`mt-2 text-center text-[11px] ${t.sub}`}>
-          New QR in ~{secondsToRefresh}s · {billingLabel} · ₹{payAmount}
+          New QR in ~{secondsToRefresh}s · {billingLabel} · ₹{formatInrAmount(payAmount)} incl. GST
         </p>
 
         <div className={`mt-3 rounded-lg border px-3 py-2 text-center ${t.upiBox}`}>

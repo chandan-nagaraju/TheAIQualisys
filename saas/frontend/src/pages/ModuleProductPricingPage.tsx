@@ -87,7 +87,7 @@ export default function ModuleProductPricingPage() {
             {priceRow ? (
               <>
                 ₹{priceRow.monthly_price.toLocaleString("en-IN")}
-                <span className="text-base font-normal text-slate-400">/month</span>
+                <span className="text-base font-normal text-slate-400">/month + 18% GST</span>
               </>
             ) : (
               <span className="text-slate-500">—</span>
@@ -95,7 +95,7 @@ export default function ModuleProductPricingPage() {
           </p>
           {priceRow?.yearly_price != null && (
             <p className="mt-2 text-sm text-slate-400">
-              Yearly catalog price: ₹{priceRow.yearly_price.toLocaleString("en-IN")}
+              Yearly catalog price: ₹{priceRow.yearly_price.toLocaleString("en-IN")} + 18% GST
             </p>
           )}
           <ul className="mt-6 space-y-2 text-sm text-slate-300">

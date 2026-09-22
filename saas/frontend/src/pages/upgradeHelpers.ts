@@ -36,6 +36,25 @@ export function billingTotalInr(monthly: number, id: BillingId, enterprise: bool
   }
 }
 
+/** Catalog prices are exclusive of GST. Payable UPI amount adds this rate. */
+export const GST_PERCENT = 18;
+
+export function gstAmountInr(taxable: number): number {
+  return Math.round(taxable * GST_PERCENT) / 100;
+}
+
+export function payableWithGstInr(taxable: number): number {
+  return Math.round(taxable * (100 + GST_PERCENT)) / 100;
+}
+
+export function formatInrAmount(n: number): string {
+  return n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
+export function formatPriceWithGst(taxable: number, suffix = "/month"): string {
+  return `₹${formatInrAmount(taxable)}${suffix} + ${GST_PERCENT}% GST`;
+}
+
 const BILLING_IDS: BillingId[] = ["1m", "3m", "6m", "12m"];
 
 export function parseBillingId(raw: string | null): BillingId | null {

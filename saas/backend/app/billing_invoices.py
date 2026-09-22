@@ -262,6 +262,11 @@ def preview_invoice(db: Session, *, payment_id: int) -> dict[str, Any]:
         )
 
     taxable = _money(payment.amount_inr)
+    snap = payment.pricing_snapshot if isinstance(payment.pricing_snapshot, dict) else {}
+    if snap.get("gst_inclusive") and snap.get("taxable_amount_inr") is not None:
+        taxable = _money(snap["taxable_amount_inr"])
+    elif snap.get("gst_inclusive"):
+        taxable = _money(Decimal(str(payment.amount_inr)) / Decimal("1.18"))
     tax = compute_tax(
         taxable=taxable,
         seller_state_code=settings.state_code or "",

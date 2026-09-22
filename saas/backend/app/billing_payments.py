@@ -21,7 +21,9 @@ from app.billing_period import (
     ALLOWED_PERIODS,
     PERIOD_MONTHLY,
     billing_total_inr,
+    gst_amount_inr,
     normalize_billing_period,
+    payable_with_gst_inr,
     period_duration,
     period_label,
     subscription_end_from_start,
@@ -122,20 +124,26 @@ def resolve_catalog_quote(
 def quote_payment(db: Session, *, module_key: str, plan_type: str | None, billing_period_raw: str) -> dict[str, Any]:
     period = normalize_billing_period(billing_period_raw)
     cat = resolve_catalog_quote(db, module_key=module_key, plan_type=plan_type)
-    amount = billing_total_inr(
+    taxable = billing_total_inr(
         cat["monthly_price"],
         period,
         enterprise=cat["enterprise"],
         yearly_price=cat["yearly_price"] if period == "YEARLY" else None,
     )
+    gst = gst_amount_inr(taxable)
+    payable = payable_with_gst_inr(taxable)
     return {
         **cat,
         "billing_period": period,
         "billing_period_label": period_label(period),
         "subscription_duration": period_duration(period),
-        "amount_inr": amount,
+        "taxable_amount_inr": float(taxable),
+        "gst_rate": 18,
+        "gst_amount_inr": float(gst),
+        "amount_inr": float(payable),
         "currency": "INR",
         "payment_method": "UPI",
+        "gst_inclusive": True,
     }
 
 
@@ -395,7 +403,11 @@ def submit_payment_done(
             "subscription_duration": quote["subscription_duration"],
             "monthly_price": quote["monthly_price"],
             "original_plan_price": quote["monthly_price"],
+            "taxable_amount_inr": quote["taxable_amount_inr"],
+            "gst_rate": quote["gst_rate"],
+            "gst_amount_inr": quote["gst_amount_inr"],
             "amount_inr": quote["amount_inr"],
+            "gst_inclusive": True,
             "currency": "INR",
         },
         payment_submitted_at=now,

@@ -123,7 +123,7 @@ class BillingPayment(Base):
         ForeignKey("company_users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     plan_name: Mapped[str] = mapped_column(String(64), nullable=False)
-    amount_inr: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_inr: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
     payment_method: Mapped[str] = mapped_column(String(64), nullable=False, default="UPI")
     reference_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     payment_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

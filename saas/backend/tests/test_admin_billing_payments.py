@@ -72,6 +72,9 @@ def test_billing_period_aliases():
     assert normalize_billing_period("monthly") == "MONTHLY"
     assert normalize_billing_period("3m") == "QUARTERLY"
     assert billing_total_inr(6799, "MONTHLY", enterprise=True) == 6799
+    from decimal import Decimal
+    from app.billing_period import payable_with_gst_inr
+    assert payable_with_gst_inr(6799) == Decimal("8022.82")
     assert period_length_days("MONTHLY") == 30
     assert period_length_days("QUARTERLY") == 90
     assert period_length_days("HALF_YEARLY") == 180

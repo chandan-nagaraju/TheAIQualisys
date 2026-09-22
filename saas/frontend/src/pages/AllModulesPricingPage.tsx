@@ -78,7 +78,7 @@ export default function AllModulesPricingPage() {
                     <span className="font-medium text-slate-200">{plan.name}</span>
                     <span className="text-lg font-bold text-white">
                       ₹{plan.price_inr.toLocaleString("en-IN")}
-                      <span className="text-sm font-normal text-slate-500">/month</span>
+                      <span className="text-sm font-normal text-slate-500">/mo + 18% GST</span>
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
@@ -117,7 +117,7 @@ export default function AllModulesPricingPage() {
                   >
                     <span className="font-medium text-slate-200">{m.title}</span>
                     <span className="text-sm font-semibold text-slate-300">
-                      {row ? `₹${row.monthly_price.toLocaleString("en-IN")}/mo` : "—"}
+                      {row ? `₹${row.monthly_price.toLocaleString("en-IN")}/mo + 18% GST` : "—"}
                     </span>
                   </Link>
                 </li>

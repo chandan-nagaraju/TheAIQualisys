@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
 
@@ -91,7 +92,7 @@ def billing_total_inr(
     enterprise: bool,
     yearly_price: int | None = None,
 ) -> int:
-    """Same rules as frontend upgradeHelpers.billingTotalInr, plus optional catalog yearly_price."""
+    """Catalog / taxable total (ex-GST). Same rules as frontend upgradeHelpers.billingTotalInr."""
     if period == PERIOD_MONTHLY:
         return monthly
     if period == PERIOD_QUARTERLY:
@@ -103,3 +104,16 @@ def billing_total_inr(
             return yearly_price
         return monthly * 11
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid billing period")
+
+
+GST_PERCENT = 18
+
+
+def gst_amount_inr(taxable: int | Decimal) -> Decimal:
+    return (Decimal(str(taxable)) * Decimal(GST_PERCENT) / Decimal(100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def payable_with_gst_inr(taxable: int | Decimal) -> Decimal:
+    """UPI / Payment Done amount: catalog total plus 18% GST."""
+    t = Decimal(str(taxable))
+    return t + gst_amount_inr(t)

@@ -80,7 +80,9 @@ export default function UpgradePage() {
     ? `${selected.planName}${selected.planType ? ` (${selected.planType})` : ""}`
     : null;
   const listPriceLine =
-    selected?.price != null ? `List price: ₹${selected.price}/month — choose how you want to pay.` : null;
+    selected?.price != null
+      ? `List price: ₹${selected.price}/month + 18% GST — choose how you want to pay.`
+      : null;
 
   const enterprisePricing = useMemo(() => {
     if (!selected) return false;

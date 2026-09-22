@@ -185,6 +185,21 @@ def test_preview_requires_seller_and_customer_state(monkeypatch):
     assert "customer billing state" in str(exc.value.detail).lower()
 
 
+def test_preview_gst_inclusive_payment_uses_catalog_taxable(monkeypatch):
+    payment = _verified_payment()
+    payment.amount_inr = 8022.82
+    payment.pricing_snapshot = {"gst_inclusive": True, "taxable_amount_inr": 6799}
+    settings = _settings()
+    db = MagicMock()
+    monkeypatch.setattr("app.billing_invoices.get_billing_payment", lambda _db, _id: payment)
+    monkeypatch.setattr("app.billing_invoices.generated_invoice_for_payment", lambda _db, _id: None)
+    monkeypatch.setattr("app.billing_invoices.get_billing_settings", lambda _db: settings)
+    monkeypatch.setattr("app.billing_invoices.billing_today", lambda: date(2026, 9, 22))
+    out = preview_invoice(db, payment_id=2)
+    assert out["taxable_amount"] == 6799.0
+    assert out["grand_total"] == 8022.82
+
+
 def test_amount_in_words_matches_gst_invoice_style():
     assert _amount_in_words(Decimal("1484.92")) == (
         "Indian Rupees One Thousand Four Hundred Eighty Four and Ninety Two Paise Only"
