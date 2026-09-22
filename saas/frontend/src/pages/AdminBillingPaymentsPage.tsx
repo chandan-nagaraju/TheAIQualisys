@@ -68,10 +68,10 @@ export function statusLabel(status: string) {
 }
 
 export function statusClass(status: string) {
-  if (isPendingStatus(status)) return "bg-amber-500/15 text-amber-300";
-  if (status === "verified") return "bg-emerald-500/15 text-emerald-300";
-  if (status === "rejected") return "bg-red-500/15 text-red-300";
-  return "bg-slate-700/40 text-slate-300";
+  if (isPendingStatus(status)) return "bg-amber-100 text-amber-800";
+  if (status === "verified") return "bg-emerald-100 text-emerald-800";
+  if (status === "rejected") return "bg-red-100 text-red-800";
+  return "bg-slate-200 text-slate-800";
 }
 
 export function formatWhen(iso: string | null | undefined) {
@@ -152,9 +152,9 @@ export default function AdminBillingPaymentsPage() {
       {err && <p className="text-sm text-red-400">{err}</p>}
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Pending Verification" value={data?.pending_count ?? 0} />
-        <Stat label="Verified" value={data?.verified_count ?? 0} />
-        <Stat label="Rejected" value={data?.rejected_count ?? 0} />
+        <Stat label="Pending Verification" value={data?.pending_count ?? 0} tone="pending" />
+        <Stat label="Verified" value={data?.verified_count ?? 0} tone="verified" />
+        <Stat label="Rejected" value={data?.rejected_count ?? 0} tone="rejected" />
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
@@ -263,11 +263,27 @@ export default function AdminBillingPaymentsPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "pending" | "verified" | "rejected";
+}) {
+  const colors =
+    tone === "pending"
+      ? "border-amber-300 bg-amber-50 text-amber-800"
+      : tone === "verified"
+        ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+        : "border-red-300 bg-red-50 text-red-800";
+  const valueColor =
+    tone === "pending" ? "text-amber-600" : tone === "verified" ? "text-emerald-600" : "text-red-600";
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-white">{value}</p>
+    <div className={`rounded-xl border p-4 ${colors}`}>
+      <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
+      <p className={`mt-1 text-2xl font-bold ${valueColor}`}>{value}</p>
     </div>
   );
 }
