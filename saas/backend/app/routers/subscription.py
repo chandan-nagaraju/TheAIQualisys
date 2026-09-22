@@ -183,7 +183,7 @@ def payment_done(
     notice = (
         "Your payment is already submitted for verification."
         if already
-        else "Please send your payment screenshot to our WhatsApp number for verification. Your subscription will be activated only after our Admin verifies the payment."
+        else "We have recorded your payment confirmation. Please send your payment screenshot to our WhatsApp number. Your subscription will be activated after Admin verifies the payment."
     )
     return PaymentDoneResponse(
         payment_id=row.id,

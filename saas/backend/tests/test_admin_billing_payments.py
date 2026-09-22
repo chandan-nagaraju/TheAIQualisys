@@ -19,7 +19,9 @@ from app.billing_payments import (
     serialize_billing_payment,
     submit_payment_done,
     verify_payment,
+    billing_payment_counts,
 )
+from app.schemas import AdminBillingPaymentListResponse
 from app.billing_period import billing_total_inr, normalize_billing_period
 from app.models import BillingPayment, Company, CompanyUser
 
@@ -70,6 +72,35 @@ def test_billing_period_aliases():
     assert normalize_billing_period("monthly") == "MONTHLY"
     assert normalize_billing_period("3m") == "QUARTERLY"
     assert billing_total_inr(6799, "MONTHLY", enterprise=True) == 6799
+
+
+def test_admin_billing_payments_routes_include_optional_trailing_slash():
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "app" / "routers" / "admin.py").read_text(encoding="utf-8")
+    assert '@router.get("/billing/payments"' in src
+    assert '@router.get("/billing/payments/"' in src
+    assert src.count('@router.get("/notifications"') >= 1
+    assert '@router.get("/notifications/"' not in src
+
+
+def test_billing_payment_counts_empty_list_payload():
+    db = MagicMock()
+    db.execute.return_value.all.return_value = []
+    counts = billing_payment_counts(db)
+    payload = AdminBillingPaymentListResponse(
+        pending_count=counts[STATUS_PENDING],
+        verified_count=counts[STATUS_VERIFIED],
+        rejected_count=counts[STATUS_REJECTED],
+        items=[],
+    )
+    assert payload.model_dump() == {
+        "pending_count": 0,
+        "verified_count": 0,
+        "rejected_count": 0,
+        "items": [],
+    }
+    assert counts["pending"] == 0
 
 
 def test_serialize_billing_payment_joins_company_and_user():
@@ -127,7 +158,9 @@ def test_submit_reuses_pending_duplicate():
     first.scalars.return_value.all.return_value = [fir_row]
     second = MagicMock()
     second.scalars.return_value.first.return_value = existing
-    db.execute.side_effect = [first, second]
+    third = MagicMock()
+    third.scalar_one_or_none.return_value = 1
+    db.execute.side_effect = [first, second, third]
     user = CompanyUser(company_id=1, email="ops@acme.test", password_hash="x", name="Priya")
     user.id = 2
     company = Company(company_name="Acme Tools", vendor_code="ACM", plan_type="enterprise", subscription_status="trial")

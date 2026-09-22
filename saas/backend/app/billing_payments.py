@@ -232,6 +232,8 @@ def billing_payment_counts(db: Session) -> dict[str, int]:
         key = STATUS_PENDING if status_val in (STATUS_PENDING, "pending") else status_val
         if key in counts:
             counts[key] += int(n)
+    # Alias so callers that still use "pending" do not 500.
+    counts["pending"] = counts[STATUS_PENDING]
     return counts
 
 
@@ -313,6 +315,16 @@ def _notify_admins(db: Session, row: BillingPayment, user: CompanyUser, company:
     )
 
 
+def _ensure_admin_notification(db: Session, row: BillingPayment, user: CompanyUser, company: Company) -> None:
+    """Idempotent: keep the payment even if a previous notification insert failed."""
+    found = db.execute(
+        select(AdminNotification.id).where(AdminNotification.payment_id == row.id)
+    ).scalar_one_or_none()
+    if found:
+        return
+    _notify_admins(db, row, user, company)
+
+
 def submit_payment_done(
     db: Session,
     *,
@@ -333,6 +345,7 @@ def submit_payment_done(
         billing_period=quote["billing_period"],
     )
     if existing:
+        _ensure_admin_notification(db, existing, user, company)
         return existing, True
 
     now = _utc_now()

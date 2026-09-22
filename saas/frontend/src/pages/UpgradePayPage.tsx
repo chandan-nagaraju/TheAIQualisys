@@ -232,8 +232,9 @@ export default function UpgradePayPage() {
       });
       setDoneResult(res);
       setDoneOpen(true);
-    } catch (e) {
-      setDoneErr(e instanceof Error ? e.message : "Could not submit payment");
+    } catch {
+      setDoneErr("Unable to submit your payment confirmation. Please try again.");
+      setDoneResult(null);
       setDoneOpen(true);
     } finally {
       setDoneBusy(false);
@@ -360,12 +361,16 @@ export default function UpgradePayPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className={`text-lg font-semibold ${t.title}`}>
-              {doneResult?.already_submitted ? "Payment already submitted" : "Payment marked as completed"}
+              {doneErr
+                ? "Unable to submit payment confirmation"
+                : doneResult?.already_submitted
+                  ? "Your payment is already submitted for verification."
+                  : "Payment submitted for verification"}
             </h3>
             <p className={`mt-3 text-sm leading-relaxed ${t.sub}`}>
               {doneErr ||
                 doneResult?.message ||
-                "Please send your payment screenshot to our WhatsApp number for verification. Your subscription will be activated only after our Admin verifies the payment."}
+                "We have recorded your payment confirmation. Please send your payment screenshot to our WhatsApp number. Your subscription will be activated after Admin verifies the payment."}
             </p>
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button
@@ -373,9 +378,9 @@ export default function UpgradePayPage() {
                 className="rounded-lg border border-slate-500 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
                 onClick={() => setDoneOpen(false)}
               >
-                Cancel
+                Close
               </button>
-              {doneResult?.whatsapp_url ? (
+              {!doneErr && doneResult?.whatsapp_url ? (
                 <a
                   href={doneResult.whatsapp_url}
                   target="_blank"
