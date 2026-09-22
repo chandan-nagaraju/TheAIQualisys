@@ -284,6 +284,8 @@ class AdminBillingPaymentOut(BaseModel):
     subscription_duration: str | None = None
     subscription_start: str | None
     subscription_end: str | None
+    subscription_start_date: str | None = None
+    subscription_end_date: str | None = None
     amount_inr: int
     currency: str | None = "INR"
     original_plan_price: int | None = None
@@ -295,6 +297,7 @@ class AdminBillingPaymentOut(BaseModel):
     has_proof: bool
     pricing_snapshot: dict | None = None
     verified_at: str | None = None
+    payment_verified_at: str | None = None
     rejected_at: str | None = None
     rejection_reason: str | None = None
     rejection_reason_label: str | None = None

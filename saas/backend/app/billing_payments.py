@@ -1,6 +1,8 @@
 """SaaS billing payments: customer Payment Done + Platform Admin verify/reject.
 
-Does not generate invoices or activate subscriptions.
+Does not generate invoices. Subscription dates are stored on the payment at
+Admin verification (not at plan select, UPI, or Payment Done). Company access
+activation stays a later step.
 Desktop license payments stay in desktop_payments.
 """
 
@@ -16,10 +18,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.billing_period import (
+    ALLOWED_PERIODS,
+    PERIOD_MONTHLY,
     billing_total_inr,
     normalize_billing_period,
     period_duration,
     period_label,
+    subscription_end_from_start,
 )
 from app.config import Settings, get_settings
 from app.models import AdminNotification, BillingPayment, Company, CompanyUser, PlatformAdmin
@@ -204,8 +209,10 @@ def serialize_billing_payment(row: BillingPayment, *, settings: Settings | None 
         "billing_period": row.billing_period or "MONTHLY",
         "billing_period_label": period_label(row.billing_period or "MONTHLY"),
         "subscription_duration": row.subscription_duration or period_duration(row.billing_period or "MONTHLY"),
-        "subscription_start": company.subscription_start.isoformat() if company and company.subscription_start else None,
-        "subscription_end": company.subscription_end.isoformat() if company and company.subscription_end else None,
+        "subscription_start": row.subscription_start.isoformat() if row.subscription_start else None,
+        "subscription_end": row.subscription_end.isoformat() if row.subscription_end else None,
+        "subscription_start_date": row.subscription_start.isoformat() if row.subscription_start else None,
+        "subscription_end_date": row.subscription_end.isoformat() if row.subscription_end else None,
         "amount_inr": row.amount_inr,
         "currency": row.currency or "INR",
         "original_plan_price": snap.get("monthly_price") or snap.get("original_plan_price"),
@@ -217,6 +224,7 @@ def serialize_billing_payment(row: BillingPayment, *, settings: Settings | None 
         "has_proof": bool(row.proof_path),
         "pricing_snapshot": snap or None,
         "verified_at": row.verified_at.isoformat() if row.verified_at else None,
+        "payment_verified_at": row.verified_at.isoformat() if row.verified_at else None,
         "rejected_at": row.rejected_at.isoformat() if row.rejected_at else None,
         "rejection_reason": row.rejection_reason,
         "rejection_reason_label": REJECT_REASON_LABELS.get(row.rejection_reason or "", row.rejection_reason),
@@ -410,13 +418,20 @@ def verify_payment(db: Session, *, admin: PlatformAdmin, payment_id: int) -> Bil
     row = get_billing_payment(db, payment_id)
     st = row.status if row.status != "pending" else STATUS_PENDING
     if st == STATUS_VERIFIED:
-        return row
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Payment already verified")
     if st != STATUS_PENDING:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only pending payments can be verified")
     now = _utc_now()
+    period = row.billing_period if row.billing_period in ALLOWED_PERIODS else PERIOD_MONTHLY
+    start = now.date()
     row.status = STATUS_VERIFIED
     row.verified_by_admin_id = admin.id
     row.verified_at = now
+    row.billing_period = period
+    if not row.subscription_duration:
+        row.subscription_duration = period_duration(period)
+    row.subscription_start = start
+    row.subscription_end = subscription_end_from_start(start, period)
     row.updated_at = now
     db.add(row)
     db.flush()

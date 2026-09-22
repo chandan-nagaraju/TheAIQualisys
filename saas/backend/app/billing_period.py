@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from fastapi import HTTPException, status
 
 # Stored values on billing_payments.billing_period
@@ -42,6 +44,15 @@ _DURATION = {
     PERIOD_YEARLY: "12 Months",
 }
 
+# Paid window length after Admin verification (same convention as admin activate:
+# subscription_end = start + timedelta(days=N). Monthly: 21-Sep + 30 days = 21-Oct).
+_PERIOD_DAYS = {
+    PERIOD_MONTHLY: 30,
+    PERIOD_QUARTERLY: 90,
+    PERIOD_HALF_YEARLY: 180,
+    PERIOD_YEARLY: 365,
+}
+
 
 def normalize_billing_period(raw: str | None) -> str:
     if not raw or not str(raw).strip():
@@ -59,6 +70,18 @@ def period_label(period: str) -> str:
 
 def period_duration(period: str) -> str:
     return _DURATION.get(period, period)
+
+
+def period_length_days(period: str) -> int:
+    days = _PERIOD_DAYS.get(period)
+    if days is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid billing period")
+    return days
+
+
+def subscription_end_from_start(start: date, period: str) -> date:
+    """End date is start plus the period length in days (inclusive last day via `today <= end`)."""
+    return start + timedelta(days=period_length_days(period))
 
 
 def billing_total_inr(

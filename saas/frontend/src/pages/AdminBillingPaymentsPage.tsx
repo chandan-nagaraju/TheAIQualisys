@@ -29,6 +29,8 @@ export type AdminBillingPayment = {
   subscription_duration: string | null;
   subscription_start: string | null;
   subscription_end: string | null;
+  subscription_start_date?: string | null;
+  subscription_end_date?: string | null;
   amount_inr: number;
   currency: string | null;
   original_plan_price: number | null;
@@ -40,6 +42,7 @@ export type AdminBillingPayment = {
   has_proof: boolean;
   pricing_snapshot: Record<string, unknown> | null;
   verified_at: string | null;
+  payment_verified_at?: string | null;
   rejected_at: string | null;
   rejection_reason: string | null;
   rejection_reason_label: string | null;
@@ -79,6 +82,13 @@ export function formatWhen(iso: string | null | undefined) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
+}
+
+export function formatDateOnly(iso: string | null | undefined) {
+  if (!iso) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return formatWhen(iso);
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString();
 }
 
 function paymentDateValue(iso: string | null) {

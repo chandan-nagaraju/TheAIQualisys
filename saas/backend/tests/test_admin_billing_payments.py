@@ -22,7 +22,7 @@ from app.billing_payments import (
     billing_payment_counts,
 )
 from app.schemas import AdminBillingPaymentListResponse
-from app.billing_period import billing_total_inr, normalize_billing_period
+from app.billing_period import billing_total_inr, normalize_billing_period, period_length_days, subscription_end_from_start
 from app.models import BillingPayment, Company, CompanyUser
 
 
@@ -44,7 +44,7 @@ def _payment(**kwargs) -> BillingPayment:
         currency="INR",
         pricing_snapshot={"monthly_price": 6799, "plan": "Enterprise"},
         payment_code="PAY-00009",
-        payment_submitted_at=datetime(2026, 9, 21, 10, 0, tzinfo=timezone.utc),
+        payment_submitted_at=datetime(2026, 9, 20, 16, 20, tzinfo=timezone.utc),
         customer_name_snapshot="Priya",
         company_name_snapshot="Acme Tools",
         email_snapshot="ops@acme.test",
@@ -72,6 +72,12 @@ def test_billing_period_aliases():
     assert normalize_billing_period("monthly") == "MONTHLY"
     assert normalize_billing_period("3m") == "QUARTERLY"
     assert billing_total_inr(6799, "MONTHLY", enterprise=True) == 6799
+    assert period_length_days("MONTHLY") == 30
+    assert period_length_days("QUARTERLY") == 90
+    assert period_length_days("HALF_YEARLY") == 180
+    assert period_length_days("YEARLY") == 365
+    assert subscription_end_from_start(date(2026, 9, 21), "MONTHLY") == date(2026, 10, 21)
+    assert subscription_end_from_start(date(2026, 9, 21), "QUARTERLY") == date(2026, 12, 20)
 
 
 def test_admin_billing_payments_routes_include_optional_trailing_slash():
@@ -114,6 +120,9 @@ def test_serialize_billing_payment_joins_company_and_user():
     assert out["billing_period"] == "MONTHLY"
     assert out["amount_inr"] == 6799
     assert out["status"] == STATUS_PENDING
+    assert out["subscription_start"] is None
+    assert out["subscription_end"] is None
+    assert out["payment_verified_at"] is None
     assert out["whatsapp_number"] == "917892007580"
 
 
@@ -173,14 +182,49 @@ def test_submit_reuses_pending_duplicate():
     db.add.assert_not_called()
 
 
-def test_verify_sets_verified_without_subscription_change():
+def test_verify_sets_dates_from_admin_verification_not_submit(monkeypatch):
+    submitted = datetime(2026, 9, 20, 16, 20, tzinfo=timezone.utc)
+    verified = datetime(2026, 9, 21, 17, 45, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.billing_payments._utc_now", lambda: verified)
     row = _payment(status=STATUS_PENDING)
+    row.payment_submitted_at = submitted
+    row.payment_date = submitted
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = row
     admin = SimpleNamespace(id=4)
     out = verify_payment(db, admin=admin, payment_id=9)
     assert out.status == STATUS_VERIFIED
     assert out.verified_by_admin_id == 4
+    assert out.verified_at == verified
+    assert out.payment_submitted_at == submitted
+    assert out.billing_period == "MONTHLY"
+    assert out.subscription_duration == "1 Month"
+    assert out.subscription_start == date(2026, 9, 21)
+    assert out.subscription_end == date(2026, 10, 21)
+    payload = serialize_billing_payment(out)
+    assert payload["payment_submitted_at"].startswith("2026-09-20")
+    assert payload["payment_verified_at"].startswith("2026-09-21T17:45")
+    assert payload["subscription_start"] == "2026-09-21"
+    assert payload["subscription_end"] == "2026-10-21"
+    assert payload["subscription_start_date"] == "2026-09-21"
+    assert payload["subscription_end_date"] == "2026-10-21"
+    assert out.company.subscription_start == date(2026, 9, 1)
+    assert out.company.subscription_end == date(2026, 10, 1)
+
+
+def test_verify_rejects_already_verified_without_recalculating():
+    row = _payment(status=STATUS_VERIFIED)
+    row.verified_at = datetime(2026, 9, 21, 17, 45, tzinfo=timezone.utc)
+    row.subscription_start = date(2026, 9, 21)
+    row.subscription_end = date(2026, 10, 21)
+    db = MagicMock()
+    db.execute.return_value.scalar_one_or_none.return_value = row
+    with pytest.raises(HTTPException) as exc:
+        verify_payment(db, admin=SimpleNamespace(id=4), payment_id=9)
+    assert exc.value.status_code == 409
+    assert row.subscription_start == date(2026, 9, 21)
+    assert row.subscription_end == date(2026, 10, 21)
+    assert row.verified_at == datetime(2026, 9, 21, 17, 45, tzinfo=timezone.utc)
 
 
 def test_reject_requires_reason():
