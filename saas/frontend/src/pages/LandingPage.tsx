@@ -155,7 +155,7 @@ export default function LandingPage() {
                       <span className="font-medium text-slate-200">{plan.name}</span>
                       <span className="text-lg font-bold text-white">
                         ₹{plan.price_inr.toLocaleString("en-IN")}
-                        <span className="text-sm font-normal text-slate-500">/month</span>
+                        <span className="text-sm font-normal text-slate-500">/mo + 18% GST</span>
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
@@ -188,7 +188,7 @@ export default function LandingPage() {
                   >
                     <span className="text-slate-300">{m.title}</span>
                     <span className="text-sm font-semibold text-slate-400">
-                      {p != null ? `₹${p.toLocaleString("en-IN")}/mo` : "—"}
+                      {p != null ? `₹${p.toLocaleString("en-IN")}/mo + 18% GST` : "—"}
                     </span>
                   </li>
                 );

@@ -306,7 +306,7 @@ class AdminBillingPaymentOut(BaseModel):
     subscription_end: str | None
     subscription_start_date: str | None = None
     subscription_end_date: str | None = None
-    amount_inr: int
+    amount_inr: float
     currency: str | None = "INR"
     original_plan_price: int | None = None
     payment_method: str
@@ -369,7 +369,7 @@ class PaymentDoneResponse(BaseModel):
     payment_code: str | None
     status: str
     already_submitted: bool
-    amount_inr: int
+    amount_inr: float
     currency: str
     module_label: str | None
     plan_name: str
@@ -387,7 +387,10 @@ class PaymentQuoteOut(BaseModel):
     billing_period: str
     billing_period_label: str
     subscription_duration: str
-    amount_inr: int
+    amount_inr: float
+    taxable_amount_inr: float
+    gst_rate: float = 18
+    gst_amount_inr: float
     currency: str
     monthly_price: int
     payment_method: str

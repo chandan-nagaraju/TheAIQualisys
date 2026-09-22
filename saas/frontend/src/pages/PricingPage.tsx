@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
-import { buildUpgradeSearch } from "./upgradeHelpers";
+import { buildUpgradeSearch, formatPriceWithGst } from "./upgradeHelpers";
 
 type Plan = {
   plan_type: string;
@@ -101,8 +101,7 @@ export default function PricingPage({ variant = "marketing" }: Props) {
               )}
               <h2 className={t.h2}>{plan.name}</h2>
               <p className={t.price}>
-                ₹{plan.price_inr}
-                <span className={t.priceSub}>/month</span>
+                {formatPriceWithGst(plan.price_inr)}
               </p>
               <p className={t.meta}>
                 {plan.max_invoices == null
