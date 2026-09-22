@@ -47,8 +47,11 @@ export function payableWithGstInr(taxable: number): number {
   return Math.round(taxable * (100 + GST_PERCENT)) / 100;
 }
 
-export function formatInrAmount(n: number): string {
-  return n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+export function formatInrAmount(n: number, fractionDigits = 0): string {
+  return n.toLocaleString("en-IN", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: 2,
+  });
 }
 
 export function formatPriceWithGst(taxable: number, suffix = "/month"): string {
