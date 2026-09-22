@@ -295,16 +295,15 @@ export default function UpgradePayPage() {
           <p className={`text-[11px] font-semibold uppercase tracking-wide ${t.upiLabel}`}>
             Pay · {billingLabel}
           </p>
-          <p className={`mt-1 text-xl font-bold tabular-nums sm:text-2xl ${t.title}`}>
-            ₹{formatInrAmount(taxableAmount ?? payAmount)}{" "}
-            <span className={`text-base font-semibold ${t.sub}`}>+ {GST_PERCENT}% GST</span>
-          </p>
-          <p className={`mt-1 text-sm font-semibold tabular-nums ${t.title}`}>
-            Pay ₹{formatInrAmount(payAmount)}
-          </p>
           <p className={`mt-1 text-xs ${t.sub}`}>
             {moduleDisplayName(moduleKey)}
             {selectedPlanText ? ` · ${selectedPlanText}` : ""}
+          </p>
+          <p className={`mt-3 text-xl font-bold tabular-nums sm:text-2xl ${t.title}`}>
+            ₹{formatInrAmount(taxableAmount ?? 0)} + {GST_PERCENT}% GST
+          </p>
+          <p className={`mt-1 text-2xl font-bold tabular-nums sm:text-3xl ${t.title}`}>
+            ₹{formatInrAmount(payAmount, 2)}
           </p>
         </div>
 
@@ -323,7 +322,7 @@ export default function UpgradePayPage() {
         </div>
 
         <p className={`mt-2 text-center text-[11px] ${t.sub}`}>
-          New QR in ~{secondsToRefresh}s · {billingLabel} · ₹{formatInrAmount(payAmount)} incl. GST
+          New QR in ~{secondsToRefresh}s · {billingLabel} · ₹{formatInrAmount(payAmount, 2)}
         </p>
 
         <div className={`mt-3 rounded-lg border px-3 py-2 text-center ${t.upiBox}`}>
