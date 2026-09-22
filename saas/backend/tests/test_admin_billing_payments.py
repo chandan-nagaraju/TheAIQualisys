@@ -208,8 +208,11 @@ def test_verify_sets_dates_from_admin_verification_not_submit(monkeypatch):
     assert payload["subscription_end"] == "2026-10-21"
     assert payload["subscription_start_date"] == "2026-09-21"
     assert payload["subscription_end_date"] == "2026-10-21"
-    assert out.company.subscription_start == date(2026, 9, 1)
-    assert out.company.subscription_end == date(2026, 10, 1)
+    assert out.company.subscription_start == date(2026, 9, 21)
+    assert out.company.subscription_end == date(2026, 10, 21)
+    assert out.company.subscription_status == "active"
+    assert out.company.plan_type == "enterprise"
+    assert out.payment_submitted_at == submitted
 
 
 def test_verify_rejects_already_verified_without_recalculating():
@@ -248,8 +251,19 @@ def test_verify_persists_monthly_dates_and_keeps_submitted_at(monkeypatch):
     monkeypatch.setattr("app.billing_payments._utc_now", lambda: verified)
 
     engine = create_engine("sqlite:///:memory:")
+    Company.__table__.create(engine)
     BillingPayment.__table__.create(engine)
     with Session(engine) as db:
+        company = Company(
+            id=1,
+            company_name="Acme Tools",
+            vendor_code="ACM",
+            plan_type="pro",
+            subscription_status="trial",
+            subscription_start=date(2026, 9, 12),
+            subscription_end=date(2026, 10, 12),
+        )
+        db.add(company)
         row = BillingPayment(
             company_id=1,
             user_id=2,
@@ -258,6 +272,7 @@ def test_verify_persists_monthly_dates_and_keeps_submitted_at(monkeypatch):
             payment_method="UPI",
             payment_date=submitted,
             status=STATUS_PENDING,
+            plan_type="enterprise",
             billing_period="MONTHLY",
             subscription_duration="1 Month",
             payment_submitted_at=submitted,
@@ -271,6 +286,7 @@ def test_verify_persists_monthly_dates_and_keeps_submitted_at(monkeypatch):
 
     with Session(engine) as db:
         stored = db.execute(select(BillingPayment).where(BillingPayment.id == payment_id)).scalar_one()
+        company = db.get(Company, 1)
         assert stored.status == STATUS_VERIFIED
         assert stored.payment_submitted_at.replace(tzinfo=timezone.utc) == submitted
         assert stored.verified_at.replace(tzinfo=timezone.utc) == verified
@@ -280,11 +296,17 @@ def test_verify_persists_monthly_dates_and_keeps_submitted_at(monkeypatch):
         assert stored.subscription_duration == "1 Month"
         assert stored.subscription_start_date.isoformat() == "2026-09-21"
         assert stored.subscription_end_date.isoformat() == "2026-10-21"
+        assert company.subscription_start == date(2026, 9, 21)
+        assert company.subscription_end == date(2026, 10, 21)
+        assert company.subscription_status == "active"
+        assert company.plan_type == "enterprise"
         with pytest.raises(HTTPException) as exc:
             verify_payment(db, admin=SimpleNamespace(id=4), payment_id=payment_id)
         assert exc.value.status_code == 409
         assert stored.subscription_start_date == date(2026, 9, 21)
         assert stored.subscription_end_date == date(2026, 10, 21)
+        assert company.subscription_start == date(2026, 9, 21)
+        assert company.subscription_end == date(2026, 10, 21)
         assert stored.verified_at.replace(tzinfo=timezone.utc) == verified
         assert stored.payment_submitted_at.replace(tzinfo=timezone.utc) == submitted
 

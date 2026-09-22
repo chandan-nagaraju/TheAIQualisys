@@ -65,7 +65,7 @@ export default function AdminBillingPaymentDetailPage() {
       });
       setRow(res);
       setVerifyOpen(false);
-      setMsg("Payment verified. Subscription dates are set from this verification. Invoice is not generated yet.");
+      setMsg("Payment verified. Company subscription dates are set from this verification. Invoice is not generated yet.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Verify failed");
     } finally {
@@ -240,7 +240,7 @@ export default function AdminBillingPaymentDetailPage() {
             Confirm that you have checked the payment in WhatsApp and verified that the payment has been received.
           </p>
           <p className="mt-2 text-xs text-slate-500">
-            Subscription start and end dates will be set from the time you confirm. Invoice generation comes later.
+            Subscription start and end dates will be set from the time you confirm and applied to the company. Invoice generation comes later.
           </p>
           <div className="mt-6 flex justify-end gap-2">
             <button
