@@ -3,9 +3,22 @@ from datetime import date, timedelta
 from app.dates import billing_month_year_english, billing_today
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.billing_invoices import (
+    generate_invoice,
+    get_billing_invoice,
+    get_billing_settings,
+    invoice_counts,
+    list_billing_invoices,
+    preview_invoice,
+    render_invoice_pdf,
+    serialize_billing_invoice,
+    serialize_billing_settings,
+    update_billing_settings,
+)
 from app.billing_payments import (
     STATUS_PENDING,
     STATUS_REJECTED,
@@ -48,9 +61,14 @@ from app.models import (
 from app.module_access import resync_qms_trials_after_pricing_change
 from app.pricing_catalog import list_all_pricing_rows
 from app.schemas import (
+    AdminBillingInvoiceGenerateBody,
+    AdminBillingInvoiceListResponse,
+    AdminBillingInvoiceOut,
     AdminBillingPaymentListResponse,
     AdminBillingPaymentOut,
     AdminBillingPaymentRejectBody,
+    AdminBillingSettingsIn,
+    AdminBillingSettingsOut,
     AdminCompanyPatch,
     AdminNotificationOut,
     AdminCompanySummary,
@@ -500,6 +518,15 @@ def patch_company(
         c.trial_start_date = None
         c.trial_end_date = None
 
+    elif body.action == "set_billing_profile":
+        c.billing_address = body.billing_address
+        c.billing_city = body.billing_city
+        c.billing_state = body.billing_state
+        c.billing_state_code = (body.billing_state_code or "").strip().upper() or None
+        c.billing_pincode = body.billing_pincode
+        c.gstin = (body.gstin or "").strip().upper() or None
+        c.phone = body.phone
+
     else:
         raise HTTPException(status_code=400, detail="Unknown action")
 
@@ -909,6 +936,97 @@ def admin_reject_billing_payment(
     db.commit()
     db.refresh(row)
     return AdminBillingPaymentOut.model_validate(serialize_billing_payment(row))
+
+
+@router.get("/billing/settings", response_model=AdminBillingSettingsOut)
+def admin_get_billing_settings(
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    return AdminBillingSettingsOut.model_validate(serialize_billing_settings(get_billing_settings(db)))
+
+
+@router.put("/billing/settings", response_model=AdminBillingSettingsOut)
+def admin_put_billing_settings(
+    body: AdminBillingSettingsIn,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = update_billing_settings(db, body.model_dump(exclude_unset=True))
+    db.commit()
+    db.refresh(row)
+    return AdminBillingSettingsOut.model_validate(serialize_billing_settings(row))
+
+
+@router.get("/billing/invoices/", response_model=AdminBillingInvoiceListResponse, include_in_schema=False)
+@router.get("/billing/invoices", response_model=AdminBillingInvoiceListResponse)
+def admin_list_billing_invoices(
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+    status: str | None = Query(default=None),
+):
+    counts = invoice_counts(db)
+    rows = list_billing_invoices(db, status_filter=status)
+    return AdminBillingInvoiceListResponse(
+        total_count=counts["total"],
+        draft_count=counts["draft"],
+        generated_count=counts["generated"],
+        cancelled_count=counts["cancelled"],
+        items=[AdminBillingInvoiceOut.model_validate(serialize_billing_invoice(r)) for r in rows],
+    )
+
+
+@router.post("/billing/invoices/preview", response_model=AdminBillingInvoiceOut)
+def admin_preview_billing_invoice(
+    body: AdminBillingInvoiceGenerateBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    data = preview_invoice(db, payment_id=body.payment_id)
+    data["id"] = 0
+    data["invoice_id"] = None
+    data["invoice_number"] = "(assigned on generate)"
+    data["status"] = "draft"
+    return AdminBillingInvoiceOut.model_validate(data)
+
+
+@router.post("/billing/invoices", response_model=AdminBillingInvoiceOut)
+def admin_generate_billing_invoice(
+    body: AdminBillingInvoiceGenerateBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = generate_invoice(db, payment_id=body.payment_id)
+    db.commit()
+    db.refresh(row)
+    return AdminBillingInvoiceOut.model_validate(serialize_billing_invoice(row))
+
+
+@router.get("/billing/invoices/{invoice_id}/pdf")
+def admin_download_billing_invoice_pdf(
+    invoice_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = get_billing_invoice(db, invoice_id)
+    data = serialize_billing_invoice(row)
+    pdf = render_invoice_pdf(data)
+    filename = f"{row.invoice_number}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/billing/invoices/{invoice_id}", response_model=AdminBillingInvoiceOut)
+def admin_get_billing_invoice(
+    invoice_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = get_billing_invoice(db, invoice_id)
+    return AdminBillingInvoiceOut.model_validate(serialize_billing_invoice(row))
 
 
 @router.get("/notifications", response_model=list[AdminNotificationOut])

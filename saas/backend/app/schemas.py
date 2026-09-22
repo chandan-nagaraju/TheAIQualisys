@@ -66,6 +66,13 @@ class CompanyOut(BaseModel):
     subscription_end: date | None
     plan_type: str
     subscription_status: str
+    billing_address: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_state_code: str | None = None
+    billing_pincode: str | None = None
+    gstin: str | None = None
+    phone: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -303,6 +310,9 @@ class AdminBillingPaymentOut(BaseModel):
     rejection_reason_label: str | None = None
     whatsapp_number: str | None = None
     whatsapp_url: str | None = None
+    invoice_id: int | None = None
+    invoice_number: str | None = None
+    invoice_status: str | None = None
 
 
 class AdminBillingPaymentListResponse(BaseModel):
@@ -386,7 +396,7 @@ class ChangePasswordRequest(BaseModel):
 
 class AdminCompanyPatch(BaseModel):
     action: str = Field(
-        description="activate | extend | extend_trial | set_plan | mark_expired",
+        description="activate | extend | extend_trial | set_plan | mark_expired | set_billing_profile",
     )
     subscription_end: date | None = None
     subscription_start: date | None = None
@@ -394,6 +404,13 @@ class AdminCompanyPatch(BaseModel):
     trial_end_date: date | None = None
     plan_type: str | None = None
     extend_days: int | None = None
+    billing_address: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_state_code: str | None = None
+    billing_pincode: str | None = None
+    gstin: str | None = None
+    phone: str | None = None
 
 
 ThankYouCategory = Literal["running", "regular", "occasional", "stranger", "new", "all"]
@@ -508,3 +525,90 @@ class BillingOverviewResponse(BaseModel):
     modules: list[BillingModuleRow]
     can_access_fir_workspace: bool
     subscription_message: str | None = None
+
+
+class AdminBillingSettingsIn(BaseModel):
+    business_name: str | None = None
+    business_address: str | None = None
+    gstin: str | None = None
+    state: str | None = None
+    state_code: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    logo_path: str | None = None
+    invoice_prefix: str | None = None
+    cgst_rate: float | None = None
+    sgst_rate: float | None = None
+    igst_rate: float | None = None
+    terms_notes: str | None = None
+
+
+class AdminBillingSettingsOut(AdminBillingSettingsIn):
+    pass
+
+
+class AdminBillingInvoiceGenerateBody(BaseModel):
+    payment_id: int
+
+
+class AdminBillingInvoiceOut(BaseModel):
+    id: int
+    invoice_id: str | None = None
+    invoice_number: str
+    payment_id: int
+    payment_code: str | None = None
+    customer_id: int | None = None
+    company_id: int
+    user_id: int | None = None
+    module_id: int | None = None
+    module_key: str | None = None
+    module_name: str | None = None
+    plan_id: int | None = None
+    plan_name: str
+    billing_period: str | None = None
+    billing_period_label: str | None = None
+    invoice_date: str | None = None
+    subscription_start_date: str | None = None
+    subscription_end_date: str | None = None
+    subtotal: float
+    taxable_amount: float
+    cgst: float
+    sgst: float
+    igst: float
+    total_tax: float
+    grand_total: float
+    currency: str | None = "INR"
+    tax_mode: str | None = None
+    cgst_rate: float | None = None
+    sgst_rate: float | None = None
+    igst_rate: float | None = None
+    status: str
+    pdf_path: str | None = None
+    line_description: str | None = None
+    customer_name: str | None = None
+    company_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    billing_address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    state_code: str | None = None
+    pincode: str | None = None
+    gstin: str | None = None
+    payment_method: str | None = None
+    payment_reference: str | None = None
+    payment_verified_at: str | None = None
+    seller: dict | None = None
+    quantity: int | None = 1
+    rate: float | None = None
+    terms_notes: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class AdminBillingInvoiceListResponse(BaseModel):
+    total_count: int
+    draft_count: int
+    generated_count: int
+    cancelled_count: int
+    items: list[AdminBillingInvoiceOut]

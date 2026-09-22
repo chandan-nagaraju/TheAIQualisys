@@ -185,6 +185,11 @@ def serialize_billing_payment(row: BillingPayment, *, settings: Settings | None 
     except Exception:
         phone_digits = None
     submitted = row.payment_submitted_at or row.payment_date
+    try:
+        invoices = list(row.invoices or [])
+    except Exception:
+        invoices = []
+    invoice = next((i for i in invoices if getattr(i, "status", None) == "generated"), None)
     return {
         "id": row.id,
         "payment_code": code,
@@ -195,13 +200,13 @@ def serialize_billing_payment(row: BillingPayment, *, settings: Settings | None 
         or ((user.name if user and user.name else None) or (company.company_name if company else None)),
         "company_name": row.company_name_snapshot or (company.company_name if company else None),
         "email": row.email_snapshot or (user.email if user else None),
-        "phone": None,
-        "billing_address": None,
-        "city": None,
-        "state": None,
-        "state_code": None,
-        "pincode": None,
-        "gstin": None,
+        "phone": (company.phone if company else None),
+        "billing_address": (company.billing_address if company else None),
+        "city": (company.billing_city if company else None),
+        "state": (company.billing_state if company else None),
+        "state_code": (company.billing_state_code if company else None),
+        "pincode": (company.billing_pincode if company else None),
+        "gstin": (company.gstin if company else None),
         "module_key": row.module_key or MODULE_FIR,
         "module_label": row.module_label or "FIR",
         "subscription_plan": row.plan_name,
@@ -231,6 +236,9 @@ def serialize_billing_payment(row: BillingPayment, *, settings: Settings | None 
         "rejection_reason_label": REJECT_REASON_LABELS.get(row.rejection_reason or "", row.rejection_reason),
         "whatsapp_number": phone_digits,
         "whatsapp_url": f"https://wa.me/{phone_digits}" if phone_digits and len(phone_digits) >= 10 else None,
+        "invoice_id": invoice.id if invoice else None,
+        "invoice_number": invoice.invoice_number if invoice else None,
+        "invoice_status": invoice.status if invoice else None,
     }
 
 
@@ -250,6 +258,7 @@ def list_billing_payments(db: Session, *, status_filter: str | None = None, limi
     q = select(BillingPayment).options(
         selectinload(BillingPayment.company).selectinload(Company.users),
         selectinload(BillingPayment.user),
+        selectinload(BillingPayment.invoices),
     )
     if status_filter:
         want = status_filter if status_filter != "pending" else STATUS_PENDING
@@ -272,6 +281,7 @@ def get_billing_payment(db: Session, payment_id: int) -> BillingPayment:
         .options(
             selectinload(BillingPayment.company).selectinload(Company.users),
             selectinload(BillingPayment.user),
+            selectinload(BillingPayment.invoices),
         )
         .where(BillingPayment.id == payment_id)
     ).scalar_one_or_none()

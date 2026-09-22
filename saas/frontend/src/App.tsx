@@ -7,7 +7,9 @@ import WorkspaceSubscriptionGate from "./components/WorkspaceSubscriptionGate";
 import WorkspaceLayout from "./layouts/WorkspaceLayout";
 import AdminBillingPaymentDetailPage from "./pages/AdminBillingPaymentDetailPage";
 import AdminBillingPaymentsPage from "./pages/AdminBillingPaymentsPage";
-import AdminBillingPlaceholderPage from "./pages/AdminBillingPlaceholderPage";
+import AdminBillingInvoiceDetailPage from "./pages/AdminBillingInvoiceDetailPage";
+import AdminBillingInvoicesPage from "./pages/AdminBillingInvoicesPage";
+import AdminBillingSettingsPage from "./pages/AdminBillingSettingsPage";
 import AdminCompanyFirIntelligencePage from "./pages/AdminCompanyFirIntelligencePage";
 import AdminCompanyPage from "./pages/AdminCompanyPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
@@ -245,7 +247,15 @@ export default function App() {
           path="/admin/billing/invoices"
           element={
             <AdminRoute>
-              <AdminBillingPlaceholderPage section="invoices" />
+              <AdminBillingInvoicesPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/billing/invoices/:id"
+          element={
+            <AdminRoute>
+              <AdminBillingInvoiceDetailPage />
             </AdminRoute>
           }
         />
@@ -253,7 +263,7 @@ export default function App() {
           path="/admin/billing/settings"
           element={
             <AdminRoute>
-              <AdminBillingPlaceholderPage section="settings" />
+              <AdminBillingSettingsPage />
             </AdminRoute>
           }
         />

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     JSON,
     LargeBinary,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -57,6 +58,13 @@ class Company(Base):
     subscription_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=SubscriptionStatus.trial.value
     )
+    billing_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    billing_city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    billing_state: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    billing_state_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    billing_pincode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    gstin: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -78,6 +86,9 @@ class Company(Base):
     )
     billing_payments: Mapped[list["BillingPayment"]] = relationship(
         "BillingPayment", back_populates="company"
+    )
+    billing_invoices: Mapped[list["BillingInvoice"]] = relationship(
+        "BillingInvoice", back_populates="company"
     )
 
 
@@ -147,6 +158,77 @@ class BillingPayment(Base):
 
     company: Mapped[Company] = relationship("Company", back_populates="billing_payments")
     user: Mapped[CompanyUser | None] = relationship("CompanyUser", back_populates="billing_payments")
+    invoices: Mapped[list["BillingInvoice"]] = relationship(
+        "BillingInvoice", back_populates="payment"
+    )
+
+
+class BillingSettings(Base):
+    """Singleton seller / GST configuration for SaaS subscription invoices (id=1)."""
+
+    __tablename__ = "billing_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    business_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    business_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gstin: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    state_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    logo_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    invoice_prefix: Mapped[str] = mapped_column(String(16), nullable=False, default="INV-")
+    cgst_rate: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, default=9)
+    sgst_rate: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, default=9)
+    igst_rate: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, default=18)
+    terms_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class BillingInvoice(Base):
+    """SaaS subscription tax invoice generated from a verified billing_payments row."""
+
+    __tablename__ = "billing_invoices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    invoice_number: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    payment_id: Mapped[int] = mapped_column(
+        ForeignKey("billing_payments.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("company_users.id", ondelete="SET NULL"), nullable=True
+    )
+    module_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    module_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    plan_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    billing_period: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    invoice_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    subscription_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    subscription_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    subtotal: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    taxable_amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    cgst: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    sgst: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    igst: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    total_tax: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    grand_total: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="INR")
+    tax_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    cgst_rate: Mapped[float | None] = mapped_column(Numeric(6, 3), nullable=True)
+    sgst_rate: Mapped[float | None] = mapped_column(Numeric(6, 3), nullable=True)
+    igst_rate: Mapped[float | None] = mapped_column(Numeric(6, 3), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="generated", index=True)
+    pdf_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    line_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    payment: Mapped[BillingPayment] = relationship("BillingPayment", back_populates="invoices")
+    company: Mapped[Company] = relationship("Company", back_populates="billing_invoices")
 
 
 class AdminNotification(Base):

@@ -13,6 +13,13 @@ type Company = {
   subscription_end: string | null;
   plan_type: string;
   subscription_status: string;
+  billing_address: string | null;
+  billing_city: string | null;
+  billing_state: string | null;
+  billing_state_code: string | null;
+  billing_pincode: string | null;
+  gstin: string | null;
+  phone: string | null;
 };
 
 type Usage = {
@@ -299,6 +306,63 @@ export default function AdminCompanyPage() {
           subscription by days, or mark expired (clears trial and subscription dates).
         </p>
         {msg && <p className="text-sm text-emerald-400">{msg}</p>}
+      </div>
+
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-3">
+        <h2 className="text-lg font-semibold text-white">Customer billing / GST</h2>
+        <p className="text-sm text-slate-400">Used on SaaS subscription invoices (seller GST is in Billing → Settings).</p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-xs text-slate-500">
+            Address
+            <input
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+              defaultValue={company.billing_address || ""}
+              id="billing_address"
+            />
+          </label>
+          <label className="text-xs text-slate-500">
+            City
+            <input className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" defaultValue={company.billing_city || ""} id="billing_city" />
+          </label>
+          <label className="text-xs text-slate-500">
+            State
+            <input className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" defaultValue={company.billing_state || ""} id="billing_state" />
+          </label>
+          <label className="text-xs text-slate-500">
+            State code
+            <input className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" defaultValue={company.billing_state_code || ""} id="billing_state_code" />
+          </label>
+          <label className="text-xs text-slate-500">
+            Pincode
+            <input className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" defaultValue={company.billing_pincode || ""} id="billing_pincode" />
+          </label>
+          <label className="text-xs text-slate-500">
+            GSTIN
+            <input className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" defaultValue={company.gstin || ""} id="billing_gstin" />
+          </label>
+          <label className="text-xs text-slate-500">
+            Phone
+            <input className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" defaultValue={company.phone || ""} id="billing_phone" />
+          </label>
+        </div>
+        <button
+          type="button"
+          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm text-white"
+          onClick={() =>
+            patch({
+              action: "set_billing_profile",
+              billing_address: (document.getElementById("billing_address") as HTMLInputElement)?.value || null,
+              billing_city: (document.getElementById("billing_city") as HTMLInputElement)?.value || null,
+              billing_state: (document.getElementById("billing_state") as HTMLInputElement)?.value || null,
+              billing_state_code: (document.getElementById("billing_state_code") as HTMLInputElement)?.value || null,
+              billing_pincode: (document.getElementById("billing_pincode") as HTMLInputElement)?.value || null,
+              gstin: (document.getElementById("billing_gstin") as HTMLInputElement)?.value || null,
+              phone: (document.getElementById("billing_phone") as HTMLInputElement)?.value || null,
+            })
+          }
+        >
+          Save billing profile
+        </button>
       </div>
 
       <div className="rounded-2xl border border-red-900/50 bg-red-950/15 p-6 space-y-3">
