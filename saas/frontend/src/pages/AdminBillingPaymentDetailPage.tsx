@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api";
 import AdminBillingShell from "../components/AdminBillingShell";
 import {
+  formatDateOnly,
   formatWhen,
   isPendingStatus,
   statusClass,
@@ -64,7 +65,7 @@ export default function AdminBillingPaymentDetailPage() {
       });
       setRow(res);
       setVerifyOpen(false);
-      setMsg("Payment verified. Subscription is not activated yet; invoice is not generated yet.");
+      setMsg("Payment verified. Subscription dates are set from this verification. Invoice is not generated yet.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Verify failed");
     } finally {
@@ -153,6 +154,14 @@ export default function AdminBillingPaymentDetailPage() {
             <DetailRow label="Plan type" value={row.plan_type || "—"} />
             <DetailRow label="Billing period" value={row.billing_period_label || row.billing_period || "—"} />
             <DetailRow label="Subscription duration" value={row.subscription_duration || "—"} />
+            <DetailRow
+              label="Subscription start date"
+              value={formatDateOnly(row.subscription_start_date || row.subscription_start)}
+            />
+            <DetailRow
+              label="Subscription end date"
+              value={formatDateOnly(row.subscription_end_date || row.subscription_end)}
+            />
           </Section>
 
           <Section title="Payment details">
@@ -163,6 +172,7 @@ export default function AdminBillingPaymentDetailPage() {
             <DetailRow label="Payment reference / transaction ID" value={row.reference_note || "—"} mono />
             <DetailRow label="Payment date" value={formatWhen(row.payment_date)} />
             <DetailRow label="Payment submitted at" value={formatWhen(row.payment_submitted_at || row.payment_date)} />
+            <DetailRow label="Payment verified at" value={formatWhen(row.payment_verified_at || row.verified_at)} />
             <DetailRow label="Current status" value={statusLabel(row.status)} />
             {row.rejection_reason_label ? <DetailRow label="Rejection reason" value={row.rejection_reason_label} /> : null}
           </Section>
@@ -229,7 +239,9 @@ export default function AdminBillingPaymentDetailPage() {
           <p className="mt-4 text-sm text-slate-400">
             Confirm that you have checked the payment in WhatsApp and verified that the payment has been received.
           </p>
-          <p className="mt-2 text-xs text-slate-500">This will not activate the subscription or generate an invoice.</p>
+          <p className="mt-2 text-xs text-slate-500">
+            Subscription start and end dates will be set from the time you confirm. Invoice generation comes later.
+          </p>
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
