@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.orm import Session, selectinload
 
 from app.billing_period import (
@@ -250,8 +250,18 @@ def serialize_billing_payment(row: BillingPayment, *, settings: Settings | None 
     }
 
 
+def _schema_not_ready() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Billing payments are still updating. Retry in a few seconds.",
+    )
+
+
 def billing_payment_counts(db: Session) -> dict[str, int]:
-    rows = db.execute(select(BillingPayment.status, func.count(BillingPayment.id)).group_by(BillingPayment.status)).all()
+    try:
+        rows = db.execute(select(BillingPayment.status, func.count(BillingPayment.id)).group_by(BillingPayment.status)).all()
+    except (ProgrammingError, OperationalError) as exc:
+        raise _schema_not_ready() from exc
     counts = {STATUS_PENDING: 0, STATUS_VERIFIED: 0, STATUS_REJECTED: 0}
     for status_val, n in rows:
         key = STATUS_PENDING if status_val in (STATUS_PENDING, "pending") else status_val
@@ -280,7 +290,10 @@ def list_billing_payments(db: Session, *, status_filter: str | None = None, limi
         func.coalesce(BillingPayment.payment_submitted_at, BillingPayment.payment_date).desc(),
         BillingPayment.id.desc(),
     ).limit(limit)
-    return list(db.execute(q).scalars().all())
+    try:
+        return list(db.execute(q).scalars().all())
+    except (ProgrammingError, OperationalError) as exc:
+        raise _schema_not_ready() from exc
 
 
 def get_billing_payment(db: Session, payment_id: int) -> BillingPayment:
@@ -524,7 +537,10 @@ def list_admin_notifications(db: Session, *, unread_only: bool = False, limit: i
     if unread_only:
         q = q.where(AdminNotification.is_read == 0)
     q = q.order_by(AdminNotification.created_at.desc()).limit(limit)
-    return list(db.execute(q).scalars().all())
+    try:
+        return list(db.execute(q).scalars().all())
+    except (ProgrammingError, OperationalError) as exc:
+        raise _schema_not_ready() from exc
 
 
 def mark_notification_read(db: Session, notification_id: int) -> AdminNotification:

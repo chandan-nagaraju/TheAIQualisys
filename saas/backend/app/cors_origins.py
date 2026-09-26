@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from urllib.parse import urlparse, urlunparse
 
+# Always allowed so Admin Billing (CloudFront SPA → Railway API) keeps working even if
+# Railway CORS_ORIGINS is only localhost. expand_cors_origins still adds apex ⟷ www.
+KNOWN_SPA_ORIGINS = (
+    "https://www.theaiqualisys.com",
+    "https://theaiqualisys.com",
+)
+
 
 def expand_cors_origins(entries: list[str]) -> list[str]:
     """
