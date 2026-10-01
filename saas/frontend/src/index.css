@@ -35,13 +35,14 @@ html[data-theme="light"] main.app-outlet .text-slate-500 {
   color: rgb(100 116 139);
 }
 
-html[data-theme="light"] main.app-outlet .text-white:not(.bg-brand-600):not(.bg-brand-500):not(.bg-emerald-600):not(.bg-green-600):not(.bg-blue-700):not(.bg-blue-600):not(.bg-zinc-700):not(.bg-red-600) {
+html[data-theme="light"] main.app-outlet .text-white:not(.bg-brand-600):not(.bg-brand-500):not(.bg-emerald-600):not(.bg-green-600):not(.bg-blue-700):not(.bg-blue-600):not(.bg-zinc-700):not(.bg-red-600):not(.bg-slate-800) {
   color: rgb(15 23 42);
 }
 
 html[data-theme="light"] main.app-outlet .bg-brand-600.text-white,
 html[data-theme="light"] main.app-outlet .bg-brand-500.text-white,
-html[data-theme="light"] main.app-outlet .hover\:bg-brand-500.text-white {
+html[data-theme="light"] main.app-outlet .hover\:bg-brand-500.text-white,
+html[data-theme="light"] main.app-outlet .bg-slate-800.text-white {
   color: rgb(255 255 255) !important;
 }
 
@@ -195,13 +196,14 @@ html[data-theme="grey"] main.app-outlet .text-slate-500 {
   color: rgb(113 113 122);
 }
 
-html[data-theme="grey"] main.app-outlet .text-white:not(.bg-brand-600):not(.bg-brand-500):not(.bg-emerald-600):not(.bg-green-600):not(.bg-blue-700):not(.bg-blue-600):not(.bg-zinc-700):not(.bg-red-600) {
+html[data-theme="grey"] main.app-outlet .text-white:not(.bg-brand-600):not(.bg-brand-500):not(.bg-emerald-600):not(.bg-green-600):not(.bg-blue-700):not(.bg-blue-600):not(.bg-zinc-700):not(.bg-red-600):not(.bg-slate-800) {
   color: rgb(24 24 27);
 }
 
 html[data-theme="grey"] main.app-outlet .bg-brand-600.text-white,
 html[data-theme="grey"] main.app-outlet .bg-brand-500.text-white,
-html[data-theme="grey"] main.app-outlet .hover\:bg-brand-500.text-white {
+html[data-theme="grey"] main.app-outlet .hover\:bg-brand-500.text-white,
+html[data-theme="grey"] main.app-outlet .bg-slate-800.text-white {
   color: rgb(255 255 255) !important;
 }
 

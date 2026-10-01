@@ -9,6 +9,7 @@ from app.models import ModulePricing, PlanType
 
 # Fallback if table empty / row missing (before migration).
 _FALLBACK_CAPS: dict[str, int | None] = {
+    PlanType.trial.value: 1000,
     PlanType.basic.value: 1000,
     PlanType.pro.value: 2000,
     PlanType.enterprise.value: None,
@@ -16,10 +17,11 @@ _FALLBACK_CAPS: dict[str, int | None] = {
 
 
 def invoice_cap_for_plan(db: Session, plan_type: str) -> int | None:
-    row = db.execute(select(ModulePricing).where(ModulePricing.fir_plan_type == plan_type)).scalar_one_or_none()
+    lookup = PlanType.basic.value if plan_type == PlanType.trial.value else plan_type
+    row = db.execute(select(ModulePricing).where(ModulePricing.fir_plan_type == lookup)).scalar_one_or_none()
     if row:
         return row.invoice_max
-    return _FALLBACK_CAPS.get(plan_type, 1000)
+    return _FALLBACK_CAPS.get(lookup, 1000)
 
 
 def list_fir_plan_rows(db: Session) -> list[ModulePricing]:

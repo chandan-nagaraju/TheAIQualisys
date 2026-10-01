@@ -1,5 +1,7 @@
 # How to run everything
 
+For **architecture, tech stack, API overview, and deployment**, see the repository [**README.md**](../README.md) at the project root.
+
 ## One command (Windows)
 
 From the repo root, **double‑click `start-dev.bat`** or run:
