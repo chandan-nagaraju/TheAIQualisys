@@ -584,7 +584,7 @@
       return Object.assign({ mode: "qualitative" }, ctx);
     }
 
-    var range = parseSpec(spec);
+    var range = parseSpec(spec, param);
     if (!range) {
       return Object.assign({ mode: "none" }, ctx);
     }
@@ -1085,10 +1085,75 @@
     };
   }
 
-  function parseSpec(specStr) {
+  /** Parameter column contains "slot" (e.g. "1 Slot Dimn"). */
+  function firIsSlotParam(paramStr) {
+    return /slot/i.test(paramStr || "");
+  }
+
+  /**
+   * Slot dimn spec: length × dia, e.g. 23X13, 23 X 13, (23X13).
+   * Length then dia; each always +0.5 (unilateral). Observed like 23.2X13.1.
+   */
+  function parseSlotDimSpec(specStr) {
+    const s = (specStr || "").trim();
+    if (!s) return null;
+    const m = s.match(/([0-9]+(?:\.[0-9]+)?)\s*[xX×]\s*([0-9]+(?:\.[0-9]+)?)/);
+    if (!m) return null;
+    const length = parseFloat(m[1]);
+    const dia = parseFloat(m[2]);
+    if (isNaN(length) || isNaN(dia)) return null;
+    const plus = 0.5;
+    return {
+      isSlot: true,
+      length: length,
+      dia: dia,
+      lengthMin: length,
+      lengthMax: length + plus,
+      diaMin: dia,
+      diaMax: dia + plus,
+      min: length,
+      max: length + plus,
+      nominal: length,
+      step: 0.1,
+      isRadius: false,
+      isAngle: false,
+    };
+  }
+
+  function parseSlotObserved(value) {
+    const m = String(value || "").match(/([0-9]+(?:\.[0-9]+)?)\s*[xX×]\s*([0-9]+(?:\.[0-9]+)?)/);
+    if (!m) return null;
+    const length = parseFloat(m[1]);
+    const dia = parseFloat(m[2]);
+    if (isNaN(length) || isNaN(dia)) return null;
+    return { length: length, dia: dia };
+  }
+
+  function isWithinSlotSpec(value, range) {
+    const pair = parseSlotObserved(value);
+    if (!pair || !range) return false;
+    return pair.length >= range.lengthMin && pair.length <= range.lengthMax
+        && pair.dia >= range.diaMin && pair.dia <= range.diaMax;
+  }
+
+  function formatSlotObserved(length, dia) {
+    return Number(length).toFixed(1) + "X" + Number(dia).toFixed(1);
+  }
+
+  function randomSlotObserved(range) {
+    const L = randomInRange(range.lengthMin, range.lengthMax, 0.1);
+    const D = randomInRange(range.diaMin, range.diaMax, 0.1);
+    return formatSlotObserved(L, D);
+  }
+
+  function parseSpec(specStr, paramStr) {
     const s = (specStr || "").trim();
     if (!s) return null;
     if (firIsMetricThreadSpecification(s)) return null;
+    if (firIsSlotParam(paramStr)) {
+      const slot = parseSlotDimSpec(s);
+      if (slot) return slot;
+    }
     const isRadius = /R\s*\d/i.test(s);
     const isAngle = /°|\bdeg(?:ree)?s?\b/i.test(s);
 
@@ -1334,6 +1399,7 @@
 
   function formatMeasuredValue(value, range) {
     if (!range) return String(value);
+    if (range.isSlot) return String(value);
     if (range.isRadius) {
       // Radius rows should look like R6, R6.5, R5
       const num = Number(value);
@@ -1410,7 +1476,7 @@
       if (!inpPre || inpPre.disabled) continue;
       if ((inpPre.value || "").trim().toUpperCase() === "OK") inpPre.value = "";
     }
-    var range = parseSpec(spec);
+    var range = parseSpec(spec, paramRaw);
     if (!range) {
       remarksEl.value = "";
       updateStatusButtons();
@@ -1427,6 +1493,10 @@
       if (!inp || inp.disabled) continue;
       var raw = (inp.value || "").trim();
       if (raw === "") { allOk = false; break; }
+      if (range.isSlot) {
+        if (!isWithinSlotSpec(raw, range)) allOk = false;
+        continue;
+      }
       var parsedNum = parseFloat(String(raw).replace(/[^\d.-]/g, ""));
       if (!isNaN(parsedNum) && !/^R/i.test(raw) && raw.indexOf("\u00B0") === -1) {
         var fmt = formatMeasuredValue(parsedNum, range);
@@ -1497,6 +1567,14 @@
       return;
     }
     var range = resolved.range;
+    if (range.isSlot) {
+      actualInputs.forEach(function(inp, idx) {
+        if (idx < nActive) inp.value = randomSlotObserved(range);
+        else inp.value = "";
+      });
+      firUpdateRowRemarksFromMeasurements(tr);
+      return;
+    }
     var min = range.min, max = range.max, step = range.step;
     var values = [];
     for (var i = 0; i < nActive; i++) values.push(randomInRange(min, max, step));
