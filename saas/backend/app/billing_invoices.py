@@ -663,6 +663,34 @@ def serialize_billing_invoice(row: BillingInvoice, *, db: Session | None = None)
     }
 
 
+def invoice_email_body(data: dict[str, Any], *, invoice_number: str, company_name: str) -> str:
+    amount = _indian_comma(data.get("grand_total"))
+    period = (data.get("billing_period_label") or data.get("billing_period") or "").strip()
+    start = _display_date(data.get("subscription_start_date"))
+    end = _display_date(data.get("subscription_end_date"))
+    cover = f"{period} ({start} to {end})" if period and start and end else period or ""
+    lines = [
+        "Hello,",
+        "",
+        f"Please find attached the GST tax invoice {invoice_number} issued to {company_name}.",
+        "",
+        f"Invoice amount: INR {amount}",
+    ]
+    if cover:
+        lines.append(f"Subscription period: {cover}")
+    lines.extend(
+        [
+            "",
+            "Kindly keep this invoice for your accounts records. For any billing questions, reply to this email.",
+            "",
+            "Team,",
+            "TheAIQualisys",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def email_invoice(db: Session, invoice_id: int, *, settings_app: Settings | None = None) -> dict[str, Any]:
     from app.email_util import is_email_configured, send_email_with_pdf_attachment
     from app.invoice_mail import normalize_cc_emails, normalize_invoice_email
@@ -691,13 +719,7 @@ def email_invoice(db: Session, invoice_id: int, *, settings_app: Settings | None
     company_name = data.get("company_name") or "customer"
     filename = f"{number}.pdf"
     subject = f"Tax Invoice {number} — {company_name}"
-    cc_note = f"\nCC: {', '.join(cc)}" if cc else ""
-    text = (
-        f"Please find attached tax invoice {number} for {company_name}.\n"
-        f"Amount: INR {data.get('grand_total')}\n"
-        f"{cc_note}\n\n"
-        "Team,\nTheAIQualisys\n"
-    )
+    text = invoice_email_body(data, invoice_number=number, company_name=company_name)
     try:
         send_email_with_pdf_attachment(
             app_settings,

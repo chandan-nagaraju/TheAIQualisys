@@ -51,7 +51,13 @@ def test_email_invoice_sends_pdf_to_accounts_and_cc(monkeypatch):
     monkeypatch.setattr("app.billing_invoices.get_billing_invoice", lambda _db, _id: invoice)
     monkeypatch.setattr(
         "app.billing_invoices.serialize_billing_invoice",
-        lambda _row, db=None: {"company_name": "Acme", "grand_total": 5662.82},
+        lambda _row, db=None: {
+            "company_name": "Acme",
+            "grand_total": 5662.82,
+            "billing_period_label": "Monthly",
+            "subscription_start_date": "2026-09-22",
+            "subscription_end_date": "2026-10-22",
+        },
     )
     monkeypatch.setattr("app.billing_invoices.render_invoice_pdf", lambda _data: b"%PDF-fake")
     monkeypatch.setattr("app.billing_invoices.get_settings", lambda: SimpleNamespace())
@@ -66,6 +72,14 @@ def test_email_invoice_sends_pdf_to_accounts_and_cc(monkeypatch):
     assert sent["cc"] == ["cfo@acme.test", "ops@acme.test"]
     assert sent["filename"] == "INV-00003.pdf"
     assert sent["pdf_bytes"].startswith(b"%PDF")
+    body = sent["text"]
+    assert body.startswith("Hello,")
+    assert "GST tax invoice INV-00003 issued to Acme" in body
+    assert "Invoice amount: INR 5,662.82" in body
+    assert "Subscription period: Monthly (22-Sep-26 to 22-Oct-26)" in body
+    assert "accounts records" in body
+    assert "Team,\nTheAIQualisys" in body
+    assert "CC:" not in body
 
 
 def test_email_route_and_mail_fields_exist():
