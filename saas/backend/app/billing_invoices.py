@@ -730,7 +730,10 @@ def email_invoice(db: Session, invoice_id: int, *, settings_app: Settings | None
     from app.invoice_mail import normalize_cc_emails, normalize_invoice_email
 
     row = get_billing_invoice(db, invoice_id)
-    company = row.company or (row.payment.company if row.payment else None)
+    cid = getattr(row, "company_id", None)
+    company = db.get(Company, cid) if cid else None
+    if company is None:
+        company = row.company or (row.payment.company if row.payment else None)
     to_email = normalize_invoice_email(getattr(company, "invoice_accounts_email", None) if company else None)
     if not to_email:
         raise HTTPException(

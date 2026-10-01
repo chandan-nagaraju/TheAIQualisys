@@ -1,7 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../../api";
-import InvoiceMailFields from "../../components/InvoiceMailFields";
+import InvoiceMailFields, { type InvoiceMailHandle } from "../../components/InvoiceMailFields";
 
 type CompanyProfile = {
   id: number;
@@ -53,6 +53,7 @@ function fromCompany(c: CompanyProfile): FormState {
 
 export default function ProfilePage() {
   const [form, setForm] = useState<FormState | null>(null);
+  const mailRef = useRef<InvoiceMailHandle>(null);
   const [email, setEmail] = useState("");
   const [vendor, setVendor] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -84,6 +85,7 @@ export default function ProfilePage() {
     }
     setSaving(true);
     try {
+      const cc = mailRef.current?.commitDraft() ?? form.invoice_cc_emails;
       const saved = await apiFetch<CompanyProfile>("/auth/company-profile", {
         method: "PUT",
         body: JSON.stringify({
@@ -96,7 +98,7 @@ export default function ProfilePage() {
           gstin: form.gstin.trim() || null,
           phone: form.phone.trim() || null,
           invoice_accounts_email: form.invoice_accounts_email.trim() || null,
-          invoice_cc_emails: form.invoice_cc_emails,
+          invoice_cc_emails: cc,
         }),
       });
       setForm(fromCompany(saved));
@@ -155,6 +157,7 @@ export default function ProfilePage() {
               </p>
             </div>
             <InvoiceMailFields
+              ref={mailRef}
               accountsEmail={form.invoice_accounts_email}
               ccEmails={form.invoice_cc_emails}
               onAccountsEmail={(v) => set("invoice_accounts_email", v)}

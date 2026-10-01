@@ -53,7 +53,7 @@ def _send_via_resend(
     if reply_to:
         payload["reply_to"] = reply_to
     if cc:
-        payload["cc"] = list(cc)
+        payload["cc"] = [str(e).strip() for e in cc if e]
     if attachments:
         payload["attachments"] = attachments
 

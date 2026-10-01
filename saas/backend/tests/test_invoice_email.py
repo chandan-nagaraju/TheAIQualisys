@@ -17,6 +17,7 @@ def test_normalize_cc_emails_dedupes_and_lowercases():
     assert normalize_invoice_email("Accounts@Firm.IN") == "accounts@firm.in"
     assert normalize_cc_emails(["A@x.com", "a@x.com", "b@x.com"]) == ["a@x.com", "b@x.com"]
     assert normalize_cc_emails("cfo@x.com, ops@x.com") == ["cfo@x.com", "ops@x.com"]
+    assert normalize_cc_emails('["cfo@x.com", "ops@x.com"]') == ["cfo@x.com", "ops@x.com"]
     assert normalize_cc_emails(["accounts@x.com", "cfo@x.com"], exclude="accounts@x.com") == ["cfo@x.com"]
     with pytest.raises(HTTPException):
         normalize_invoice_email("not-an-email")
@@ -27,6 +28,7 @@ def test_email_invoice_requires_accounts_address(monkeypatch):
     invoice = SimpleNamespace(id=3, invoice_number="INV-00003", company=company, payment=None)
     monkeypatch.setattr("app.billing_invoices.get_billing_invoice", lambda _db, _id: invoice)
     db = MagicMock()
+    db.get = lambda *_a, **_k: None
     with pytest.raises(HTTPException) as exc:
         email_invoice(db, 3)
     assert exc.value.status_code == 400
@@ -149,3 +151,7 @@ def test_email_route_and_mail_fields_exist():
     assert "/email" in detail
     assert "invoice_accounts_email" in mig
     assert "invoice_cc_emails" in mig
+    mail = (
+        Path(__file__).resolve().parents[2] / "frontend" / "src" / "components" / "InvoiceMailFields.tsx"
+    ).read_text(encoding="utf-8")
+    assert "commitDraft" in mail

@@ -1,8 +1,8 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api";
 import { AdminSubscriptionReminderButton } from "../components/AdminSubscriptionReminderButton";
-import InvoiceMailFields from "../components/InvoiceMailFields";
+import InvoiceMailFields, { type InvoiceMailHandle } from "../components/InvoiceMailFields";
 
 type Company = {
   id: number;
@@ -53,6 +53,7 @@ export default function AdminCompanyPage() {
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [accountsEmail, setAccountsEmail] = useState("");
   const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const mailRef = useRef<InvoiceMailHandle>(null);
 
   const loadCore = useCallback(async () => {
     if (!id) return;
@@ -356,6 +357,7 @@ export default function AdminCompanyPage() {
           </label>
         </div>
         <InvoiceMailFields
+          ref={mailRef}
           accountsEmail={accountsEmail}
           ccEmails={ccEmails}
           onAccountsEmail={setAccountsEmail}
@@ -366,7 +368,8 @@ export default function AdminCompanyPage() {
         <button
           type="button"
           className="rounded-lg bg-emerald-700 px-4 py-2 text-sm text-white"
-          onClick={() =>
+          onClick={() => {
+            const cc = mailRef.current?.commitDraft() ?? ccEmails;
             patch({
               action: "set_billing_profile",
               billing_address: (document.getElementById("billing_address") as HTMLInputElement)?.value || null,
@@ -377,9 +380,9 @@ export default function AdminCompanyPage() {
               gstin: (document.getElementById("billing_gstin") as HTMLInputElement)?.value || null,
               phone: (document.getElementById("billing_phone") as HTMLInputElement)?.value || null,
               invoice_accounts_email: accountsEmail.trim() || null,
-              invoice_cc_emails: ccEmails,
-            })
-          }
+              invoice_cc_emails: cc,
+            });
+          }}
         >
           Save billing profile
         </button>
