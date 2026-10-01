@@ -56,10 +56,14 @@ def test_customer_profile_page_asks_for_company_and_gstin():
     page = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "workspace" / "ProfilePage.tsx").read_text(
         encoding="utf-8"
     )
+    mail = (
+        Path(__file__).resolve().parents[2] / "frontend" / "src" / "components" / "InvoiceMailFields.tsx"
+    ).read_text(encoding="utf-8")
     assert "GSTIN" in page
     assert "Company name" in page
-    assert "Accounts email" in page
-    assert "CC email" in page
+    assert "InvoiceMailFields" in page
+    assert "Accounts email" in mail
+    assert "CC email" in mail
     assert "/auth/company-profile" in page
     assert "Save company details" in page
 
