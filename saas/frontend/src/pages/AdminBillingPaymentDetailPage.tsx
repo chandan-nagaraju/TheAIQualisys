@@ -34,6 +34,7 @@ export default function AdminBillingPaymentDetailPage() {
   const [rejectReason, setRejectReason] = useState<(typeof REJECT_REASONS)[number]["value"]>("payment_not_received");
   const [rejectNote, setRejectNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     if (!localStorage.getItem("fir_admin_token")) {
@@ -54,7 +55,7 @@ export default function AdminBillingPaymentDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, nav]);
+  }, [id, nav, reloadTick]);
 
   async function confirmVerify() {
     if (!row) return;
@@ -139,7 +140,18 @@ export default function AdminBillingPaymentDetailPage() {
       <Link to="/admin/billing/payments" className="text-sm text-brand-500 hover:underline">
         ← Payments
       </Link>
-      {err && <p className="text-sm text-red-400">{err}</p>}
+      {err && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <p className="text-sm text-red-400">{err}</p>
+          <button
+            type="button"
+            className="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-200 hover:bg-slate-800"
+            onClick={() => setReloadTick((n) => n + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {msg && <p className="text-sm text-emerald-400">{msg}</p>}
       {!row && !err && <p className="text-sm text-slate-400">Loading payment…</p>}
       {row && (
