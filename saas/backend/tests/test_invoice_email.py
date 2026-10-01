@@ -55,6 +55,7 @@ def test_email_invoice_sends_pdf_to_accounts_and_cc(monkeypatch):
             "company_name": "Acme",
             "grand_total": 5662.82,
             "billing_period_label": "Monthly",
+            "invoice_date": "2026-09-22",
             "subscription_start_date": "2026-09-22",
             "subscription_end_date": "2026-10-22",
         },
@@ -73,13 +74,19 @@ def test_email_invoice_sends_pdf_to_accounts_and_cc(monkeypatch):
     assert sent["filename"] == "INV-00003.pdf"
     assert sent["pdf_bytes"].startswith(b"%PDF")
     body = sent["text"]
-    assert body.startswith("Hello,")
-    assert "GST tax invoice INV-00003 issued to Acme" in body
-    assert "Invoice amount: INR 5,662.82" in body
-    assert "Subscription period: Monthly (22-Sep-26 to 22-Oct-26)" in body
-    assert "accounts records" in body
-    assert "Team,\nTheAIQualisys" in body
+    assert body.startswith("Dear Customer,")
+    assert "Payment Invoice INV-00003" in body
+    assert "subscription with TheAIQualisys for the month of September 2026" in body
+    assert "- Invoice Amount: INR 5,662.82" in body
+    assert "- Billing Cycle: Monthly" in body
+    assert "- Subscription Period: 22-Sep-2026 to 22-Oct-2026" in body
+    assert "accounting and records" in body
+    assert "Regards,\nTeam TheAIQualisys" in body
     assert "CC:" not in body
+    html = sent["html"]
+    assert "<strong>Payment Invoice INV-00003</strong>" in html
+    assert "<strong>Team TheAIQualisys</strong>" in html
+    assert sent["subject"] == "Payment Invoice INV-00003 — TheAIQualisys"
 
 
 def test_email_route_and_mail_fields_exist():

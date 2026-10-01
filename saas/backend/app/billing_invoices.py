@@ -663,32 +663,66 @@ def serialize_billing_invoice(row: BillingInvoice, *, db: Session | None = None)
     }
 
 
-def invoice_email_body(data: dict[str, Any], *, invoice_number: str, company_name: str) -> str:
+def _invoice_mail_date(raw: Any) -> str:
+    if raw is None or raw == "":
+        return ""
+    text = str(raw)
+    try:
+        return date.fromisoformat(text[:10]).strftime("%d-%b-%Y")
+    except ValueError:
+        return text[:12]
+
+
+def _invoice_mail_month(raw: Any) -> str:
+    if raw is None or raw == "":
+        return ""
+    try:
+        return date.fromisoformat(str(raw)[:10]).strftime("%B %Y")
+    except ValueError:
+        return ""
+
+
+def invoice_email_body(data: dict[str, Any], *, invoice_number: str) -> tuple[str, str]:
+    from html import escape
+
     amount = _indian_comma(data.get("grand_total"))
-    period = (data.get("billing_period_label") or data.get("billing_period") or "").strip()
-    start = _display_date(data.get("subscription_start_date"))
-    end = _display_date(data.get("subscription_end_date"))
-    cover = f"{period} ({start} to {end})" if period and start and end else period or ""
-    lines = [
-        "Hello,",
-        "",
-        f"Please find attached the GST tax invoice {invoice_number} issued to {company_name}.",
-        "",
-        f"Invoice amount: INR {amount}",
-    ]
-    if cover:
-        lines.append(f"Subscription period: {cover}")
-    lines.extend(
-        [
-            "",
-            "Kindly keep this invoice for your accounts records. For any billing questions, reply to this email.",
-            "",
-            "Team,",
-            "TheAIQualisys",
-            "",
-        ]
+    cycle = (data.get("billing_period_label") or data.get("billing_period") or "").strip()
+    start = _invoice_mail_date(data.get("subscription_start_date"))
+    end = _invoice_mail_date(data.get("subscription_end_date"))
+    month = _invoice_mail_month(data.get("invoice_date") or data.get("subscription_start_date"))
+    month_clause = f" for the month of {month}" if month else ""
+    details: list[str] = [f"Invoice Amount: INR {amount}"]
+    if cycle:
+        details.append(f"Billing Cycle: {cycle}")
+    if start and end:
+        details.append(f"Subscription Period: {start} to {end}")
+    text = (
+        "Dear Customer,\n\n"
+        f"Please find attached the Payment Invoice {invoice_number} for your subscription with "
+        f"TheAIQualisys{month_clause}.\n\n"
+        "Invoice Details:\n"
+        + "".join(f"- {line}\n" for line in details)
+        + "\nKindly keep the attached invoice for your accounting and records.\n\n"
+        "For any billing-related queries or assistance, please reply to this email.\n\n"
+        "Regards,\n"
+        "Team TheAIQualisys\n"
     )
-    return "\n".join(lines)
+    inv = escape(invoice_number)
+    month_html = f" for the month of <strong>{escape(month)}</strong>" if month else ""
+    detail_html = "".join(
+        f"<li><strong>{escape(line.split(': ', 1)[0])}:</strong> {escape(line.split(': ', 1)[1])}</li>" for line in details
+    )
+    html = (
+        "<p>Dear Customer,</p>"
+        f"<p>Please find attached the <strong>Payment Invoice {inv}</strong> for your subscription with "
+        f"<strong>TheAIQualisys</strong>{month_html}.</p>"
+        "<p><strong>Invoice Details:</strong></p>"
+        f"<ul>{detail_html}</ul>"
+        "<p>Kindly keep the attached invoice for your accounting and records.</p>"
+        "<p>For any billing-related queries or assistance, please reply to this email.</p>"
+        "<p>Regards,<br /><strong>Team TheAIQualisys</strong></p>"
+    )
+    return text, html
 
 
 def email_invoice(db: Session, invoice_id: int, *, settings_app: Settings | None = None) -> dict[str, Any]:
@@ -716,10 +750,9 @@ def email_invoice(db: Session, invoice_id: int, *, settings_app: Settings | None
     data = serialize_billing_invoice(row, db=db)
     pdf_bytes = render_invoice_pdf(data)
     number = row.invoice_number
-    company_name = data.get("company_name") or "customer"
     filename = f"{number}.pdf"
-    subject = f"Tax Invoice {number} — {company_name}"
-    text = invoice_email_body(data, invoice_number=number, company_name=company_name)
+    subject = f"Payment Invoice {number} — TheAIQualisys"
+    text, html = invoice_email_body(data, invoice_number=number)
     try:
         send_email_with_pdf_attachment(
             app_settings,
@@ -727,6 +760,7 @@ def email_invoice(db: Session, invoice_id: int, *, settings_app: Settings | None
             cc=cc,
             subject=subject,
             text=text,
+            html=html,
             filename=filename,
             pdf_bytes=pdf_bytes,
         )

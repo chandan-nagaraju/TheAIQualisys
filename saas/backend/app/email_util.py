@@ -169,6 +169,7 @@ def send_email_with_pdf_attachment(
     text: str,
     filename: str,
     pdf_bytes: bytes,
+    html: str | None = None,
 ) -> None:
     """Send one To address, optional CC list, and a PDF attachment (Resend or SMTP)."""
     cc_list = [e for e in (cc or []) if e and e.lower() != to_email.lower()]
@@ -180,6 +181,7 @@ def send_email_with_pdf_attachment(
             to_email,
             subject,
             text,
+            html=html,
             cc=cc_list or None,
             attachments=[
                 {
@@ -200,6 +202,8 @@ def send_email_with_pdf_attachment(
     if cc_list:
         msg["Cc"] = ", ".join(cc_list)
     msg.set_content(text)
+    if html:
+        msg.add_alternative(html, subtype="html")
     msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=filename)
 
     envelope_from = (settings.smtp_user or settings.email_from or "").strip()
