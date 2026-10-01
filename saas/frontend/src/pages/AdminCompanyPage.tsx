@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api";
 import { AdminSubscriptionReminderButton } from "../components/AdminSubscriptionReminderButton";
+import InvoiceMailFields from "../components/InvoiceMailFields";
 
 type Company = {
   id: number;
@@ -20,6 +21,8 @@ type Company = {
   billing_pincode: string | null;
   gstin: string | null;
   phone: string | null;
+  invoice_accounts_email: string | null;
+  invoice_cc_emails: string[] | null;
 };
 
 type Usage = {
@@ -48,6 +51,8 @@ export default function AdminCompanyPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const [accountsEmail, setAccountsEmail] = useState("");
+  const [ccEmails, setCcEmails] = useState<string[]>([]);
 
   const loadCore = useCallback(async () => {
     if (!id) return;
@@ -65,6 +70,8 @@ export default function AdminCompanyPage() {
     setPlan(c.plan_type);
     setTrialFrom(c.trial_start_date ?? "");
     setTrialTo(c.trial_end_date ?? "");
+    setAccountsEmail(c.invoice_accounts_email || "");
+    setCcEmails(Array.isArray(c.invoice_cc_emails) ? c.invoice_cc_emails : []);
   }, [id]);
 
   useEffect(() => {
@@ -310,7 +317,10 @@ export default function AdminCompanyPage() {
 
       <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-3">
         <h2 className="text-lg font-semibold text-white">Customer billing / GST</h2>
-        <p className="text-sm text-slate-400">Used on SaaS subscription invoices (seller GST is in Billing → Settings).</p>
+        <p className="text-sm text-slate-400">
+          Used on SaaS subscription invoices (seller GST is in Billing → Settings). Save accounts To and CC emails
+          so Email on an invoice sends the PDF automatically.
+        </p>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-xs text-slate-500">
             Address
@@ -345,6 +355,14 @@ export default function AdminCompanyPage() {
             <input className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" defaultValue={company.phone || ""} id="billing_phone" />
           </label>
         </div>
+        <InvoiceMailFields
+          accountsEmail={accountsEmail}
+          ccEmails={ccEmails}
+          onAccountsEmail={setAccountsEmail}
+          onCcEmails={setCcEmails}
+          inputClass="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
+          labelClass="block text-xs text-slate-500"
+        />
         <button
           type="button"
           className="rounded-lg bg-emerald-700 px-4 py-2 text-sm text-white"
@@ -358,6 +376,8 @@ export default function AdminCompanyPage() {
               billing_pincode: (document.getElementById("billing_pincode") as HTMLInputElement)?.value || null,
               gstin: (document.getElementById("billing_gstin") as HTMLInputElement)?.value || null,
               phone: (document.getElementById("billing_phone") as HTMLInputElement)?.value || null,
+              invoice_accounts_email: accountsEmail.trim() || null,
+              invoice_cc_emails: ccEmails,
             })
           }
         >

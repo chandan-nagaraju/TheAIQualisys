@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../../api";
+import InvoiceMailFields from "../../components/InvoiceMailFields";
 
 type CompanyProfile = {
   id: number;
@@ -13,6 +14,8 @@ type CompanyProfile = {
   billing_pincode: string | null;
   gstin: string | null;
   phone: string | null;
+  invoice_accounts_email: string | null;
+  invoice_cc_emails: string[] | null;
 };
 
 type Me = {
@@ -29,6 +32,8 @@ type FormState = {
   billing_pincode: string;
   gstin: string;
   phone: string;
+  invoice_accounts_email: string;
+  invoice_cc_emails: string[];
 };
 
 function fromCompany(c: CompanyProfile): FormState {
@@ -41,6 +46,8 @@ function fromCompany(c: CompanyProfile): FormState {
     billing_pincode: c.billing_pincode || "",
     gstin: c.gstin || "",
     phone: c.phone || "",
+    invoice_accounts_email: c.invoice_accounts_email || "",
+    invoice_cc_emails: Array.isArray(c.invoice_cc_emails) ? c.invoice_cc_emails : [],
   };
 }
 
@@ -88,6 +95,8 @@ export default function ProfilePage() {
           billing_pincode: form.billing_pincode.trim() || null,
           gstin: form.gstin.trim() || null,
           phone: form.phone.trim() || null,
+          invoice_accounts_email: form.invoice_accounts_email.trim() || null,
+          invoice_cc_emails: form.invoice_cc_emails,
         }),
       });
       setForm(fromCompany(saved));
@@ -139,6 +148,19 @@ export default function ProfilePage() {
               </p>
             </div>
             <Field label="GSTIN" value={form.gstin} onChange={(v) => set("gstin", v)} />
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Invoice email</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Tax invoices are emailed to the accounts address. Saved CC ids are included automatically.
+              </p>
+            </div>
+            <InvoiceMailFields
+              accountsEmail={form.invoice_accounts_email}
+              ccEmails={form.invoice_cc_emails}
+              onAccountsEmail={(v) => set("invoice_accounts_email", v)}
+              onCcEmails={(v) => set("invoice_cc_emails", v)}
+              inputClass="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            />
             <button
               type="submit"
               disabled={saving}

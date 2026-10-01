@@ -31,6 +31,25 @@ def test_apply_company_billing_profile_writes_companies_not_seller_settings():
     assert company.gstin == "29BBBBB0000B1Z5"
     assert company.billing_state_code == "29"
     assert company.billing_city == "Bengaluru"
+    assert company.invoice_accounts_email is None
+    assert company.invoice_cc_emails == []
+
+
+def test_apply_company_billing_profile_saves_accounts_and_cc():
+    company = Company(
+        company_name="Acme",
+        vendor_code="ACM",
+        plan_type="pro",
+        subscription_status="active",
+    )
+    body = CompanyBillingProfileIn(
+        company_name="Acme",
+        invoice_accounts_email="Accounts@acme.test",
+        invoice_cc_emails=["cfo@acme.test", "ACCOUNTS@acme.test", "ops@acme.test"],
+    )
+    _apply_company_billing_profile(company, body)
+    assert company.invoice_accounts_email == "accounts@acme.test"
+    assert company.invoice_cc_emails == ["cfo@acme.test", "ops@acme.test"]
 
 
 def test_customer_profile_page_asks_for_company_and_gstin():
@@ -39,6 +58,8 @@ def test_customer_profile_page_asks_for_company_and_gstin():
     )
     assert "GSTIN" in page
     assert "Company name" in page
+    assert "Accounts email" in page
+    assert "CC email" in page
     assert "/auth/company-profile" in page
     assert "Save company details" in page
 

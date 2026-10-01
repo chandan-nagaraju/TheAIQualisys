@@ -435,6 +435,8 @@ def change_password(
 
 
 def _apply_company_billing_profile(company: Company, body: CompanyBillingProfileIn) -> None:
+    from app.invoice_mail import stored_invoice_mail
+
     company.company_name = body.company_name.strip()
     company.billing_address = (body.billing_address or "").strip() or None
     company.billing_city = (body.billing_city or "").strip() or None
@@ -443,6 +445,9 @@ def _apply_company_billing_profile(company: Company, body: CompanyBillingProfile
     company.billing_pincode = (body.billing_pincode or "").strip() or None
     company.gstin = (body.gstin or "").strip().upper() or None
     company.phone = (body.phone or "").strip() or None
+    to, cc = stored_invoice_mail(body.invoice_accounts_email, body.invoice_cc_emails)
+    company.invoice_accounts_email = to
+    company.invoice_cc_emails = cc
 
 
 @router.get("/company-profile/", response_model=CompanyOut, include_in_schema=False)

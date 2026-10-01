@@ -65,6 +65,8 @@ class Company(Base):
     billing_pincode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     gstin: Mapped[str | None] = mapped_column(String(32), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    invoice_accounts_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    invoice_cc_emails: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

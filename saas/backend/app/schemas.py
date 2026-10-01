@@ -73,6 +73,8 @@ class CompanyOut(BaseModel):
     billing_pincode: str | None = None
     gstin: str | None = None
     phone: str | None = None
+    invoice_accounts_email: str | None = None
+    invoice_cc_emails: list[str] | None = None
 
     model_config = {"from_attributes": True}
 
@@ -88,6 +90,8 @@ class CompanyBillingProfileIn(BaseModel):
     billing_pincode: str | None = None
     gstin: str | None = None
     phone: str | None = None
+    invoice_accounts_email: str | None = None
+    invoice_cc_emails: list[str] | None = None
 
 
 class MeResponse(BaseModel):
@@ -427,6 +431,8 @@ class AdminCompanyPatch(BaseModel):
     billing_pincode: str | None = None
     gstin: str | None = None
     phone: str | None = None
+    invoice_accounts_email: str | None = None
+    invoice_cc_emails: list[str] | None = None
 
 
 ThankYouCategory = Literal["running", "regular", "occasional", "stranger", "new", "all"]
@@ -634,6 +640,8 @@ class AdminBillingInvoiceOut(BaseModel):
     terms_notes: str | None = None
     digitally_signed_at: str | None = None
     digital_signatory: dict | None = None
+    invoice_accounts_email: str | None = None
+    invoice_cc_emails: list[str] | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -644,3 +652,11 @@ class AdminBillingInvoiceListResponse(BaseModel):
     generated_count: int
     cancelled_count: int
     items: list[AdminBillingInvoiceOut]
+
+
+class AdminInvoiceEmailOut(BaseModel):
+    ok: bool = True
+    to: str
+    cc: list[str] = []
+    invoice_number: str
+    filename: str

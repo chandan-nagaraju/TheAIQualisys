@@ -655,6 +655,67 @@ def serialize_billing_invoice(row: BillingInvoice, *, db: Session | None = None)
         ),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "invoice_accounts_email": getattr(company, "invoice_accounts_email", None) if company else None,
+        "invoice_cc_emails": list(getattr(company, "invoice_cc_emails", None) or []) if company else [],
+    }
+
+
+def email_invoice(db: Session, invoice_id: int, *, settings_app: Settings | None = None) -> dict[str, Any]:
+    from app.email_util import is_email_configured, send_email_with_pdf_attachment
+    from app.invoice_mail import normalize_cc_emails, normalize_invoice_email
+
+    row = get_billing_invoice(db, invoice_id)
+    company = row.company or (row.payment.company if row.payment else None)
+    to_email = normalize_invoice_email(getattr(company, "invoice_accounts_email", None) if company else None)
+    if not to_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Save the accounts email on the company (Profile or Admin company) before emailing the invoice.",
+        )
+    cc = normalize_cc_emails(
+        getattr(company, "invoice_cc_emails", None) if company else None,
+        exclude=to_email,
+    )
+    app_settings = settings_app or get_settings()
+    if not is_email_configured(app_settings):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email is not configured (Resend or SMTP + EMAIL_FROM).",
+        )
+    data = serialize_billing_invoice(row, db=db)
+    pdf_bytes = render_invoice_pdf(data)
+    number = row.invoice_number
+    company_name = data.get("company_name") or "customer"
+    filename = f"{number}.pdf"
+    subject = f"Tax Invoice {number} — {company_name}"
+    cc_note = f"\nCC: {', '.join(cc)}" if cc else ""
+    text = (
+        f"Please find attached tax invoice {number} for {company_name}.\n"
+        f"Amount: INR {data.get('grand_total')}\n"
+        f"{cc_note}\n\n"
+        "Team,\nTheAIQualisys\n"
+    )
+    try:
+        send_email_with_pdf_attachment(
+            app_settings,
+            to_email=to_email,
+            cc=cc,
+            subject=subject,
+            text=text,
+            filename=filename,
+            pdf_bytes=pdf_bytes,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to send invoice email: {exc}",
+        ) from exc
+    return {
+        "ok": True,
+        "to": to_email,
+        "cc": cc,
+        "invoice_number": number,
+        "filename": filename,
     }
 
 

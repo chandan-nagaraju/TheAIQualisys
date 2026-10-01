@@ -92,6 +92,7 @@ export default function AdminBillingInvoiceDetailPage() {
   const [row, setRow] = useState<AdminBillingInvoice | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mailMsg, setMailMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!localStorage.getItem("fir_admin_token")) {
@@ -128,6 +129,25 @@ export default function AdminBillingInvoiceDetailPage() {
     }
   }
 
+  async function emailInvoice() {
+    if (!row) return;
+    setBusy(true);
+    setErr(null);
+    setMailMsg(null);
+    try {
+      const sent = await apiFetch<{ to: string; cc: string[]; invoice_number: string }>(
+        `/admin/billing/invoices/${row.id}/email`,
+        { method: "POST", token: "admin" },
+      );
+      const cc = sent.cc?.length ? ` (CC ${sent.cc.join(", ")})` : "";
+      setMailMsg(`Invoice ${sent.invoice_number} emailed to ${sent.to}${cc}.`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Email failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const seller = (row?.seller || {}) as Record<string, string | undefined>;
   const cgstSgst = row?.tax_mode === "cgst_sgst";
 
@@ -137,6 +157,7 @@ export default function AdminBillingInvoiceDetailPage() {
         ← Invoices
       </Link>
       {err && <p className="text-sm text-red-400 print:hidden">{err}</p>}
+      {mailMsg && <p className="text-sm text-emerald-400 print:hidden">{mailMsg}</p>}
       {!row && !err && <p className="text-sm text-slate-400">Loading invoice…</p>}
       {row && (
         <div className="space-y-6">
@@ -153,11 +174,32 @@ export default function AdminBillingInvoiceDetailPage() {
               >
                 Download PDF
               </button>
+              <button
+                type="button"
+                className="rounded-lg bg-sky-700 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+                disabled={busy}
+                onClick={() => void emailInvoice()}
+              >
+                Email
+              </button>
               <button type="button" className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200" onClick={() => window.print()}>
                 Print
               </button>
             </div>
           </div>
+          {row.invoice_accounts_email ? (
+            <p className="text-xs text-slate-400 print:hidden">
+              Email sends To {row.invoice_accounts_email}
+              {row.invoice_cc_emails && row.invoice_cc_emails.length
+                ? ` · CC ${row.invoice_cc_emails.join(", ")}`
+                : ""}
+              . Edit addresses on the company billing profile.
+            </p>
+          ) : (
+            <p className="text-xs text-amber-400 print:hidden">
+              Save an accounts email on the company billing profile so Email can send this invoice.
+            </p>
+          )}
 
           <div className="overflow-x-auto rounded-xl border border-slate-800 bg-white p-3 text-[11px] leading-snug text-slate-900 print:border-0 print:p-0">
             <table className="w-full border-collapse border border-slate-800">

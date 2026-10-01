@@ -54,6 +54,8 @@ export type AdminBillingInvoice = {
     date_line?: string;
     time_line?: string;
   } | null;
+  invoice_accounts_email?: string | null;
+  invoice_cc_emails?: string[] | null;
 };
 
 type ListResponse = {
@@ -100,6 +102,7 @@ export default function AdminBillingInvoicesPage() {
   const [manMode, setManMode] = useState("");
   const [manPlan, setManPlan] = useState("");
   const [manPeriod, setManPeriod] = useState("");
+  const [mailMsg, setMailMsg] = useState<string | null>(null);
 
   async function load() {
     const [inv, pay, companyRows, pricing] = await Promise.all([
@@ -165,6 +168,24 @@ export default function AdminBillingInvoicesPage() {
     }
   }
 
+  async function emailInvoice(row: AdminBillingInvoice) {
+    setBusy(true);
+    setErr(null);
+    setMailMsg(null);
+    try {
+      const sent = await apiFetch<{ to: string; cc: string[]; invoice_number: string }>(
+        `/admin/billing/invoices/${row.id}/email`,
+        { method: "POST", token: "admin" },
+      );
+      const cc = sent.cc?.length ? ` (CC ${sent.cc.join(", ")})` : "";
+      setMailMsg(`Invoice ${sent.invoice_number} emailed to ${sent.to}${cc}.`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Email failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function generateManual() {
     if (!manCompany || !manMode || !manPlan || !manPeriod) return;
     setBusy(true);
@@ -205,6 +226,7 @@ export default function AdminBillingInvoicesPage() {
       description="Generate invoices from verified UPI payments or manually for NEFT, RTGS, and account transfers."
     >
       {err && <p className="text-sm text-red-400">{err}</p>}
+      {mailMsg && <p className="text-sm text-emerald-400">{mailMsg}</p>}
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Total Invoices" value={data?.total_count ?? 0} />
         <Stat label="Draft" value={data?.draft_count ?? 0} />
@@ -376,9 +398,19 @@ export default function AdminBillingInvoicesPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                  <Link className="text-brand-600 hover:underline" to={`/admin/billing/invoices/${r.id}`}>
-                    View
-                  </Link>
+                  <div className="flex justify-end gap-3">
+                    <Link className="text-brand-600 hover:underline" to={`/admin/billing/invoices/${r.id}`}>
+                      View
+                    </Link>
+                    <button
+                      type="button"
+                      className="text-sky-400 hover:underline disabled:opacity-50"
+                      disabled={busy}
+                      onClick={() => void emailInvoice(r)}
+                    >
+                      Email
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

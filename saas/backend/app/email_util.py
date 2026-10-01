@@ -34,6 +34,8 @@ def _send_via_resend(
     *,
     html: str | None = None,
     reply_to: str | None = None,
+    cc: list[str] | None = None,
+    attachments: list[dict[str, str]] | None = None,
 ) -> None:
     key = settings.resend_api_key
     sender = settings.email_from
@@ -50,6 +52,10 @@ def _send_via_resend(
         payload["html"] = html
     if reply_to:
         payload["reply_to"] = reply_to
+    if cc:
+        payload["cc"] = list(cc)
+    if attachments:
+        payload["attachments"] = attachments
 
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
@@ -152,6 +158,71 @@ def send_plain_text_email(settings: Settings, to_email: str, subject: str, text:
         if settings.smtp_user and settings.smtp_password is not None:
             smtp.login(settings.smtp_user, settings.smtp_password)
         smtp.send_message(msg, from_addr=envelope_from, to_addrs=[to_email])
+
+
+def send_email_with_pdf_attachment(
+    settings: Settings,
+    *,
+    to_email: str,
+    cc: list[str] | None,
+    subject: str,
+    text: str,
+    filename: str,
+    pdf_bytes: bytes,
+) -> None:
+    """Send one To address, optional CC list, and a PDF attachment (Resend or SMTP)."""
+    cc_list = [e for e in (cc or []) if e and e.lower() != to_email.lower()]
+    if settings.resend_api_key:
+        import base64
+
+        _send_via_resend(
+            settings,
+            to_email,
+            subject,
+            text,
+            cc=cc_list or None,
+            attachments=[
+                {
+                    "filename": filename,
+                    "content": base64.b64encode(pdf_bytes).decode("ascii"),
+                }
+            ],
+        )
+        return
+
+    if not (settings.email_from and settings.smtp_host and settings.smtp_port):
+        raise RuntimeError("SMTP is not configured")
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = settings.email_from
+    msg["To"] = to_email
+    if cc_list:
+        msg["Cc"] = ", ".join(cc_list)
+    msg.set_content(text)
+    msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=filename)
+
+    envelope_from = (settings.smtp_user or settings.email_from or "").strip()
+    timeout = 20
+    host = settings.smtp_host
+    assert host is not None
+    recipients = [to_email, *cc_list]
+
+    if settings.smtp_use_ssl:
+        smtp_cls = _SMTP_SSLPreferIPv4 if settings.smtp_force_ipv4 else smtplib.SMTP_SSL
+        with smtp_cls(host, settings.smtp_port, timeout=timeout) as smtp:
+            if settings.smtp_user and settings.smtp_password is not None:
+                smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.send_message(msg, from_addr=envelope_from, to_addrs=recipients)
+        return
+
+    smtp_cls = _SMTPPreferIPv4 if settings.smtp_force_ipv4 else smtplib.SMTP
+    with smtp_cls(host, settings.smtp_port, timeout=timeout) as smtp:
+        if settings.smtp_use_tls:
+            smtp.starttls()
+        if settings.smtp_user and settings.smtp_password is not None:
+            smtp.login(settings.smtp_user, settings.smtp_password)
+        smtp.send_message(msg, from_addr=envelope_from, to_addrs=recipients)
 
 
 def _send_text_and_html_email(

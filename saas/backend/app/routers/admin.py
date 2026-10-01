@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.billing_invoices import (
+    email_invoice,
     generate_invoice,
     generate_manual_invoice,
     get_billing_invoice,
@@ -67,6 +68,7 @@ from app.schemas import (
     AdminBillingInvoiceListResponse,
     AdminBillingInvoiceOut,
     AdminBillingManualInvoiceBody,
+    AdminInvoiceEmailOut,
     AdminBillingPaymentListResponse,
     AdminBillingPaymentOut,
     AdminBillingPaymentRejectBody,
@@ -529,6 +531,11 @@ def patch_company(
         c.billing_pincode = body.billing_pincode
         c.gstin = (body.gstin or "").strip().upper() or None
         c.phone = body.phone
+        from app.invoice_mail import stored_invoice_mail
+
+        to, cc = stored_invoice_mail(body.invoice_accounts_email, body.invoice_cc_emails)
+        c.invoice_accounts_email = to
+        c.invoice_cc_emails = cc
 
     else:
         raise HTTPException(status_code=400, detail="Unknown action")
@@ -1045,6 +1052,17 @@ def admin_generate_billing_invoice(
     db.commit()
     db.refresh(row)
     return AdminBillingInvoiceOut.model_validate(serialize_billing_invoice(row))
+
+
+@router.post("/billing/invoices/{invoice_id}/email", response_model=AdminInvoiceEmailOut)
+def admin_email_billing_invoice(
+    invoice_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    result = email_invoice(db, invoice_id)
+    db.commit()
+    return AdminInvoiceEmailOut.model_validate(result)
 
 
 @router.get("/billing/invoices/{invoice_id}/pdf")
