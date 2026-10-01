@@ -49,6 +49,7 @@ export type AdminBillingInvoice = {
   hsn_sac?: string | null;
   digitally_signed_at?: string | null;
   digital_signatory?: {
+    full_name?: string;
     short_name?: string;
     by_line?: string;
     date_line?: string;

@@ -327,6 +327,7 @@ def test_invoice_pdf_company_seal_rings():
     assert "CompanySeal" in page
     assert "TheAIQualisys" in seal
     assert "Bangalore-560090" in seal
+    assert "name" in seal
     pdf = render_invoice_pdf(
         {
             "invoice_number": "INV-00001",
@@ -350,5 +351,6 @@ def test_invoice_pdf_company_seal_rings():
     joined = _pdf_tj_joined(pdf)
     assert "TheAIQualisys" in joined
     assert "Bangalore-560090" in joined
+    assert b"Chandan N" in raw
     assert b"Digitally signed by Chandan" in raw
 

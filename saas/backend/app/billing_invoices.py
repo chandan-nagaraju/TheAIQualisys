@@ -866,35 +866,35 @@ def _seal_arc_text(
     center_deg: float,
     size: float,
 ) -> None:
-    """Draw text on a circle, centred on center_deg (0=east, 90=north). Feet toward the centre."""
+    """Draw text on a circle. Letters stay upright so top and bottom read the same way."""
     raw = _pdf_text(text)
     if not raw:
         return
     pdf.set_font("Times", "B", size)
     widths = [pdf.get_string_width(ch) or 0.9 for ch in raw]
-    tracking = 0.22
+    tracking = 0.18
     total = sum(widths) + tracking * max(len(raw) - 1, 0)
     span_deg = math.degrees(total / max(radius, 0.1))
-    # First glyph on the left of the arc (east=0, north=90).
-    start_deg = center_deg - span_deg / 2
-    end_deg = center_deg + span_deg / 2
-    start = math.radians(start_deg)
-    end = math.radians(end_deg)
+    # Top arc (north) and bottom arc (south) run opposite ways so both read left-to-right.
+    if 0 < center_deg < 180:
+        start = math.radians(center_deg + span_deg / 2)
+        end = math.radians(center_deg - span_deg / 2)
+    else:
+        start = math.radians(center_deg - span_deg / 2)
+        end = math.radians(center_deg + span_deg / 2)
     cursor = 0.0
     for ch, wch in zip(raw, widths, strict=True):
         frac = (cursor + wch / 2) / total
         theta = start + (end - start) * frac
         x = cx + radius * math.cos(theta)
         y = cy - radius * math.sin(theta)
-        # Heads point outward so the top line is upright on the page.
-        rot = 270 - math.degrees(theta)
-        with pdf.rotation(rot, x, y):
-            pdf.text(x - wch / 2, y + size * 0.32, ch)
+        pdf.set_xy(x - wch / 2, y - size * 0.32)
+        pdf.cell(wch, size * 0.55, ch, align="C")
         cursor += wch + tracking
 
 
-def _draw_company_seal(pdf, *, cx: float, cy: float, radius: float = 11.6) -> None:
-    """Two-ring company seal with TheAIQualisys / Bangalore-560090 in the annulus."""
+def _draw_company_seal(pdf, *, cx: float, cy: float, radius: float = 11.6, center_name: str = "") -> None:
+    """Two-ring company seal with name in the inner circle."""
     r, g, b = SEAL_INK
     pdf.set_draw_color(r, g, b)
     pdf.set_text_color(r, g, b)
@@ -904,7 +904,7 @@ def _draw_company_seal(pdf, *, cx: float, cy: float, radius: float = 11.6) -> No
     inner_r = radius * 0.58
     pdf.set_line_width(0.42)
     pdf.ellipse(cx - inner_r, cy - inner_r, inner_r * 2, inner_r * 2, style="D")
-    band_r = (radius + inner_r) / 2 + 0.15
+    band_r = (radius + inner_r) / 2 + 0.2
     _seal_arc_text(
         pdf,
         SEAL_COMPANY,
@@ -912,7 +912,7 @@ def _draw_company_seal(pdf, *, cx: float, cy: float, radius: float = 11.6) -> No
         cy=cy,
         radius=band_r,
         center_deg=90,
-        size=5.8,
+        size=max(4.4, radius * 0.42),
     )
     _seal_arc_text(
         pdf,
@@ -921,14 +921,18 @@ def _draw_company_seal(pdf, *, cx: float, cy: float, radius: float = 11.6) -> No
         cy=cy,
         radius=band_r,
         center_deg=270,
-        size=4.8,
+        size=max(3.6, radius * 0.34),
     )
-    pdf.set_fill_color(r, g, b)
-    for deg in (180, 0):
-        rad = math.radians(deg)
-        dx = (radius + inner_r) / 2 * math.cos(rad)
-        dy = -(radius + inner_r) / 2 * math.sin(rad)
-        pdf.ellipse(cx + dx - 0.55, cy + dy - 0.55, 1.1, 1.1, style="F")
+    name = _pdf_text(center_name)
+    if name:
+        max_w = inner_r * 1.75
+        size = min(9.0, radius * 0.62)
+        pdf.set_font("Times", "BI", size)
+        while size > 4.2 and pdf.get_string_width(name) > max_w:
+            size -= 0.4
+            pdf.set_font("Times", "BI", size)
+        pdf.set_xy(cx - inner_r, cy - size * 0.38)
+        pdf.cell(inner_r * 2, size * 0.72, name, align="C")
     pdf.set_draw_color(0, 0, 0)
     pdf.set_text_color(0, 0, 0)
     pdf.set_fill_color(0, 0, 0)
@@ -938,20 +942,18 @@ def _draw_company_seal(pdf, *, cx: float, cy: float, radius: float = 11.6) -> No
 def _draw_digital_signatory(pdf, put, *, x: float, y: float, w: float, h: float, seller_name: str, stamp: dict[str, str]) -> None:
     put(x + 1.5, y + 1, w - 3, 4, f"for {seller_name}", bold=True, size=7, align="R")
     short = stamp.get("short_name") or ""
-    _draw_company_seal(pdf, cx=x + 16.5, cy=y + 18.8, radius=12.2)
+    center_name = (stamp.get("full_name") or short or "").strip()
+    seal_r = 11.2
+    cx = x + w / 2
+    cy = y + 16.2
+    _draw_company_seal(pdf, cx=cx, cy=cy, radius=seal_r, center_name=center_name)
     if short:
-        tx = x + 32
-        ty = y + 9
-        pdf.set_font("Helvetica", "", 6)
+        pdf.set_font("Helvetica", "", 5.5)
         pdf.set_text_color(0, 0, 0)
-        pdf.set_xy(tx, ty)
-        pdf.multi_cell(
-            w - 34,
-            3.1,
-            _pdf_text("\n".join([stamp.get("by_line") or "", stamp.get("date_line") or "", stamp.get("time_line") or ""])),
-            align="L",
-        )
-    put(x + 1.5, y + h - 8, w - 3, 4, "Authorised Signatory", size=6.5, align="R")
+        lines = [stamp.get("by_line") or "", stamp.get("date_line") or "", stamp.get("time_line") or ""]
+        pdf.set_xy(x + 2, cy + seal_r + 0.4)
+        pdf.multi_cell(w - 4, 2.6, _pdf_text("\n".join(lines)), align="C")
+    put(x + 1.5, y + h - 4.5, w - 3, 3.5, "Authorised Signatory", size=6.5, align="R")
 
 
 def render_invoice_pdf(data: dict[str, Any]) -> bytes:
@@ -1176,7 +1178,7 @@ def render_invoice_pdf(data: dict[str, Any]) -> bytes:
 
     foot = tw + (14 if pan else 8)
     split_f = x0 + 100
-    fh = 36
+    fh = 44
     pdf.rect(x0, foot, split_f - x0, fh)
     pdf.rect(split_f, foot, x1 - split_f, fh)
     put(x0 + 1.5, foot + 1, 90, 4, "Declaration", bold=True, size=7)

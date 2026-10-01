@@ -379,17 +379,20 @@ export default function AdminBillingInvoiceDetailPage() {
                       const full = typeof seller.authorised_signatory_name === "string" ? seller.authorised_signatory_name : "";
                       const short = stamp?.short_name || full.trim().split(/\s+/)[0] || "";
                       return (
-                        <div className="mt-1 flex min-h-[88px] items-center gap-2">
-                          <CompanySeal className="h-[88px] w-[88px] shrink-0" />
-                          <div className="text-left text-[10px] leading-tight text-slate-800">
-                            {short ? (
-                              <>
-                                <div>{stamp?.by_line || `Digitally signed by ${short}`}</div>
-                                <div>{stamp?.date_line}</div>
-                                <div>{stamp?.time_line}</div>
-                              </>
-                            ) : null}
+                        <div className="relative mt-1 min-h-[96px]">
+                          <div className="flex justify-center">
+                            <CompanySeal
+                              className="h-[96px] w-[96px]"
+                              name={stamp?.full_name || full || short}
+                            />
                           </div>
+                          {short ? (
+                            <div className="mt-1 text-center text-[10px] leading-tight text-slate-800">
+                              <div>{stamp?.by_line || `Digitally signed by ${short}`}</div>
+                              <div>{stamp?.date_line}</div>
+                              <div>{stamp?.time_line}</div>
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })()}
