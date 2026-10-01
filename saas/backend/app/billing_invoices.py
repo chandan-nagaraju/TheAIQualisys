@@ -7,7 +7,7 @@ billing_settings and companies.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
@@ -39,6 +39,46 @@ _MISSING_INVOICEABLE = "Invoice can only be generated after payment verification
 _DUPLICATE = "Invoice already generated for this payment."
 # SAC for IT design and development / SaaS subscription (not configured on Billing Settings).
 SAAS_SAC = "998314"
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _signatory_short_name(full: str | None) -> str:
+    parts = (full or "").strip().split()
+    return parts[0] if parts else ""
+
+
+def _ist_now() -> datetime:
+    return datetime.now(_IST)
+
+
+def _to_ist(raw: Any) -> datetime:
+    if isinstance(raw, datetime):
+        dt = raw
+    elif isinstance(raw, str) and raw.strip():
+        text = raw.strip().replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(text)
+        except ValueError:
+            dt = _ist_now()
+    else:
+        dt = _ist_now()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_IST)
+    return dt.astimezone(_IST)
+
+
+def adobe_digital_sign_stamp(full_name: str | None, signed_at: Any = None) -> dict[str, str]:
+    """Visual Adobe-style stamp from signatory name — no image URL, no crypto cert."""
+    short = _signatory_short_name(full_name)
+    dt = _to_ist(signed_at)
+    return {
+        "full_name": (full_name or "").strip(),
+        "short_name": short,
+        "by_line": f"Digitally signed by {short}" if short else "",
+        "date_line": f"Date: {dt.strftime('%Y.%m.%d')}",
+        "time_line": f"{dt.strftime('%H:%M:%S')} +05'30'",
+        "iso": dt.isoformat(),
+    }
 
 
 def _money(value: Decimal | int | float | str) -> Decimal:
@@ -292,6 +332,10 @@ def preview_invoice(db: Session, *, payment_id: int, payment_method: str | None 
         user = sorted(company.users, key=lambda u: u.id)[0]
     period = payment.billing_period or "MONTHLY"
     invoice_date = billing_today()
+    signed = adobe_digital_sign_stamp(
+        settings.authorised_signatory_name,
+        payment.verified_at or _ist_now(),
+    )
     return {
         "payment_id": payment.id,
         "payment_code": payment.payment_code or payment_code_for(payment.id),
@@ -337,6 +381,8 @@ def preview_invoice(db: Session, *, payment_id: int, payment_method: str | None 
         "vendor_code": company.vendor_code if company else None,
         "hsn_sac": SAAS_SAC,
         "uom": "Nos",
+        "digitally_signed_at": signed["iso"],
+        "digital_signatory": signed,
     }
 
 
@@ -439,6 +485,7 @@ def preview_manual_invoice(
     user = sorted(company.users, key=lambda u: u.id)[0] if company.users else None
     start = billing_today()
     end = subscription_end_from_start(start, quote["billing_period"])
+    signed = adobe_digital_sign_stamp(settings.authorised_signatory_name, _ist_now())
     return {
         "payment_id": 0,
         "payment_code": "(assigned on generate)",
@@ -484,6 +531,8 @@ def preview_manual_invoice(
         "vendor_code": company.vendor_code,
         "hsn_sac": SAAS_SAC,
         "uom": "Nos",
+        "digitally_signed_at": signed["iso"],
+        "digital_signatory": signed,
     }
 
 
@@ -598,6 +647,12 @@ def serialize_billing_invoice(row: BillingInvoice, *, db: Session | None = None)
         "vendor_code": snap.get("vendor_code") or (company.vendor_code if company else None),
         "hsn_sac": snap.get("hsn_sac") or SAAS_SAC,
         "uom": snap.get("uom") or "Nos",
+        "digitally_signed_at": snap.get("digitally_signed_at"),
+        "digital_signatory": snap.get("digital_signatory")
+        or adobe_digital_sign_stamp(
+            (snap.get("seller") or {}).get("authorised_signatory_name") if isinstance(snap.get("seller"), dict) else None,
+            snap.get("digitally_signed_at") or snap.get("payment_verified_at"),
+        ),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -737,16 +792,33 @@ def _party_lines(data: dict[str, Any], *, seller: bool = False) -> list[str]:
     return [str(x) for x in lines if x]
 
 
-def _local_signatory_image(raw: str | None) -> str | None:
-    path = (raw or "").strip()
-    if not path:
-        return None
-    from pathlib import Path
-
-    p = Path(path)
-    if p.is_file():
-        return str(p)
-    return None
+def _draw_digital_signatory(pdf, put, *, x: float, y: float, w: float, h: float, seller_name: str, stamp: dict[str, str]) -> None:
+    put(x + 1.5, y + 1, w - 3, 4, f"for {seller_name}", bold=True, size=7, align="R")
+    short = stamp.get("short_name") or ""
+    if short:
+        # Faint circular seal behind the name (Adobe-style appearance, not a cert).
+        pdf.set_draw_color(196, 90, 90)
+        pdf.set_line_width(0.35)
+        seal_x = x + 10
+        seal_y = y + 7
+        pdf.ellipse(seal_x, seal_y, 22, 22, style="D")
+        pdf.ellipse(seal_x + 1.4, seal_y + 1.4, 19.2, 19.2, style="D")
+        pdf.set_draw_color(0, 0, 0)
+        pdf.set_line_width(0.2)
+        pdf.set_xy(x + 8, y + 12)
+        pdf.set_font("Times", "I", 18)
+        pdf.cell(40, 8, _pdf_text(short), align="L")
+        tx = x + 48
+        ty = y + 9
+        pdf.set_font("Helvetica", "", 6)
+        pdf.set_xy(tx, ty)
+        pdf.multi_cell(
+            w - 52,
+            3.1,
+            _pdf_text("\n".join([stamp.get("by_line") or "", stamp.get("date_line") or "", stamp.get("time_line") or ""])),
+            align="L",
+        )
+    put(x + 1.5, y + h - 8, w - 3, 4, "Authorised Signatory", size=6.5, align="R")
 
 
 def render_invoice_pdf(data: dict[str, Any]) -> bytes:
@@ -986,19 +1058,20 @@ def render_invoice_pdf(data: dict[str, Any]) -> bytes:
     )
     put(x0 + 1.5, foot + fh - 8, 90, 4, "Customer's Seal and Signature", size=6.5)
     seller_name = (seller or {}).get("business_name") or "TheAIQualisys"
-    put(split_f + 1.5, foot + 1, x1 - split_f - 3, 4, f"for {seller_name}", bold=True, size=7, align="R")
-    sign_path = (seller or {}).get("authorised_signatory_path") if isinstance(seller, dict) else None
     sign_name = ((seller or {}).get("authorised_signatory_name") or "").strip() if isinstance(seller, dict) else ""
-    img_file = _local_signatory_image(sign_path)
-    if img_file:
-        try:
-            img_w = min(42.0, x1 - split_f - 8)
-            pdf.image(img_file, x=x1 - img_w - 3, y=foot + 6.5, w=img_w, h=16)
-        except Exception:
-            pass
-    if sign_name:
-        put(split_f + 1.5, foot + fh - 12, x1 - split_f - 3, 4, sign_name, bold=True, size=7, align="R")
-    put(split_f + 1.5, foot + fh - 8, x1 - split_f - 3, 4, "Authorised Signatory", size=6.5, align="R")
+    stamp = data.get("digital_signatory") if isinstance(data.get("digital_signatory"), dict) else None
+    if not stamp:
+        stamp = adobe_digital_sign_stamp(sign_name, data.get("digitally_signed_at") or data.get("payment_verified_at"))
+    _draw_digital_signatory(
+        pdf,
+        put,
+        x=split_f,
+        y=foot,
+        w=x1 - split_f,
+        h=fh,
+        seller_name=seller_name,
+        stamp=stamp,
+    )
 
     notes = data.get("terms_notes") or ((seller or {}).get("terms_notes") if isinstance(seller, dict) else None)
     if notes:

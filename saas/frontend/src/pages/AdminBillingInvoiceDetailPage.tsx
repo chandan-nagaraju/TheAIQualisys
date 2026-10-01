@@ -329,21 +329,35 @@ export default function AdminBillingInvoiceDetailPage() {
                     </p>
                     <p className="mt-6">Customer's Seal and Signature</p>
                   </td>
-                  <td className="border border-slate-800 p-2 align-top text-right w-1/2">
-                    <div className="font-semibold">for {seller.business_name || "TheAIQualisys"}</div>
-                    {typeof seller.authorised_signatory_path === "string" && seller.authorised_signatory_path ? (
-                      <img
-                        alt="Authorised signatory"
-                        src={String(seller.authorised_signatory_path)}
-                        className="ml-auto mt-2 h-14 w-auto object-contain"
-                      />
-                    ) : (
-                      <div className="mt-8" />
-                    )}
-                    {typeof seller.authorised_signatory_name === "string" && seller.authorised_signatory_name ? (
-                      <p className="mt-2 font-semibold">{String(seller.authorised_signatory_name)}</p>
-                    ) : null}
-                    <p className="mt-1">Authorised Signatory</p>
+                  <td className="border border-slate-800 p-2 align-top w-1/2">
+                    <div className="font-semibold text-right">for {seller.business_name || "TheAIQualisys"}</div>
+                    {(() => {
+                      const stamp = row.digital_signatory;
+                      const full = typeof seller.authorised_signatory_name === "string" ? seller.authorised_signatory_name : "";
+                      const short = stamp?.short_name || full.trim().split(/\s+/)[0] || "";
+                      if (!short) {
+                        return <p className="mt-16 text-right">Authorised Signatory</p>;
+                      }
+                      return (
+                        <div className="relative mt-2 flex min-h-[72px] items-center justify-end gap-2 pr-1">
+                          <div
+                            className="pointer-events-none absolute left-8 top-0 h-16 w-16 rounded-full border-2 border-rose-400/70"
+                            aria-hidden
+                          />
+                          <div
+                            className="pointer-events-none absolute left-10 top-2 h-12 w-12 rounded-full border border-rose-400/60"
+                            aria-hidden
+                          />
+                          <p className="relative z-10 mr-auto pl-10 font-serif text-2xl italic text-slate-900">{short}</p>
+                          <div className="relative z-10 text-left text-[10px] leading-tight text-slate-800">
+                            <div>{stamp?.by_line || `Digitally signed by ${short}`}</div>
+                            <div>{stamp?.date_line}</div>
+                            <div>{stamp?.time_line}</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    <p className="mt-1 text-right">Authorised Signatory</p>
                   </td>
                 </tr>
               </tbody>

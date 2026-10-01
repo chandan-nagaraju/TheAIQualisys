@@ -18,7 +18,6 @@ type Settings = {
   igst_rate: number | null;
   terms_notes: string | null;
   authorised_signatory_name: string | null;
-  authorised_signatory_path: string | null;
 };
 
 const EMPTY: Settings = {
@@ -36,7 +35,6 @@ const EMPTY: Settings = {
   igst_rate: 18,
   terms_notes: "",
   authorised_signatory_name: "",
-  authorised_signatory_path: "",
 };
 
 export default function AdminBillingSettingsPage() {
@@ -102,11 +100,10 @@ export default function AdminBillingSettingsPage() {
           value={form.authorised_signatory_name || ""}
           onChange={(v) => set("authorised_signatory_name", v)}
         />
-        <Field
-          label="Authorised signatory image path / URL"
-          value={form.authorised_signatory_path || ""}
-          onChange={(v) => set("authorised_signatory_path", v)}
-        />
+        <p className="text-xs normal-case text-slate-400">
+          Printed on invoices as a digital signature stamp (name, “Digitally signed by …”, and IST date). No image
+          upload is required.
+        </p>
         <button type="submit" className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">
           Save settings
         </button>
