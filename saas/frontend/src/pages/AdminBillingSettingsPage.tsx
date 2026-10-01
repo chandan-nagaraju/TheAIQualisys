@@ -101,8 +101,8 @@ export default function AdminBillingSettingsPage() {
           onChange={(v) => set("authorised_signatory_name", v)}
         />
         <p className="text-xs normal-case text-slate-400">
-          Printed on invoices as a digital signature stamp (name, “Digitally signed by …”, and IST date). No image
-          upload is required.
+          Printed on invoices as a digital signature (name, “Digitally signed by …”, IST date) next to the
+          TheAIQualisys two-ring company seal (Bangalore-560090). No image upload is required.
         </p>
         <button type="submit" className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">
           Save settings

@@ -7,6 +7,7 @@ billing_settings and companies.
 
 from __future__ import annotations
 
+import math
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
@@ -37,7 +38,9 @@ TAX_IGST = "igst"
 
 _MISSING_INVOICEABLE = "Invoice can only be generated after payment verification."
 _DUPLICATE = "Invoice already generated for this payment."
-# SAC for IT design and development / SaaS subscription (not configured on Billing Settings).
+SEAL_COMPANY = "TheAIQualisys"
+SEAL_PLACE = "Bangalore-560090"
+SEAL_INK = (176, 48, 48)
 SAAS_SAC = "998314"
 _IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -792,28 +795,97 @@ def _party_lines(data: dict[str, Any], *, seller: bool = False) -> list[str]:
     return [str(x) for x in lines if x]
 
 
+def _seal_arc_text(
+    pdf,
+    text: str,
+    *,
+    cx: float,
+    cy: float,
+    radius: float,
+    center_deg: float,
+    size: float,
+) -> None:
+    """Draw text on a circle, centred on center_deg (0=east, 90=north). Feet toward the centre."""
+    raw = _pdf_text(text)
+    if not raw:
+        return
+    pdf.set_font("Times", "B", size)
+    widths = [pdf.get_string_width(ch) or 0.9 for ch in raw]
+    tracking = 0.22
+    total = sum(widths) + tracking * max(len(raw) - 1, 0)
+    span_deg = math.degrees(total / max(radius, 0.1))
+    # First glyph on the left of the arc (east=0, north=90).
+    start_deg = center_deg - span_deg / 2
+    end_deg = center_deg + span_deg / 2
+    start = math.radians(start_deg)
+    end = math.radians(end_deg)
+    cursor = 0.0
+    for ch, wch in zip(raw, widths, strict=True):
+        frac = (cursor + wch / 2) / total
+        theta = start + (end - start) * frac
+        x = cx + radius * math.cos(theta)
+        y = cy - radius * math.sin(theta)
+        # Heads point outward so the top line is upright on the page.
+        rot = 270 - math.degrees(theta)
+        with pdf.rotation(rot, x, y):
+            pdf.text(x - wch / 2, y + size * 0.32, ch)
+        cursor += wch + tracking
+
+
+def _draw_company_seal(pdf, *, cx: float, cy: float, radius: float = 11.6) -> None:
+    """Two-ring company seal with TheAIQualisys / Bangalore-560090 in the annulus."""
+    r, g, b = SEAL_INK
+    pdf.set_draw_color(r, g, b)
+    pdf.set_text_color(r, g, b)
+    pdf.set_line_width(0.55)
+    outer = radius * 2
+    pdf.ellipse(cx - radius, cy - radius, outer, outer, style="D")
+    inner_r = radius * 0.58
+    pdf.set_line_width(0.42)
+    pdf.ellipse(cx - inner_r, cy - inner_r, inner_r * 2, inner_r * 2, style="D")
+    band_r = (radius + inner_r) / 2 + 0.15
+    _seal_arc_text(
+        pdf,
+        SEAL_COMPANY,
+        cx=cx,
+        cy=cy,
+        radius=band_r,
+        center_deg=90,
+        size=5.8,
+    )
+    _seal_arc_text(
+        pdf,
+        SEAL_PLACE,
+        cx=cx,
+        cy=cy,
+        radius=band_r,
+        center_deg=270,
+        size=4.8,
+    )
+    pdf.set_fill_color(r, g, b)
+    for deg in (180, 0):
+        rad = math.radians(deg)
+        dx = (radius + inner_r) / 2 * math.cos(rad)
+        dy = -(radius + inner_r) / 2 * math.sin(rad)
+        pdf.ellipse(cx + dx - 0.55, cy + dy - 0.55, 1.1, 1.1, style="F")
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_fill_color(0, 0, 0)
+    pdf.set_line_width(0.2)
+
+
 def _draw_digital_signatory(pdf, put, *, x: float, y: float, w: float, h: float, seller_name: str, stamp: dict[str, str]) -> None:
     put(x + 1.5, y + 1, w - 3, 4, f"for {seller_name}", bold=True, size=7, align="R")
     short = stamp.get("short_name") or ""
+    _draw_company_seal(pdf, cx=x + 16.5, cy=y + 18.8, radius=12.2)
     if short:
-        # Faint circular seal behind the name (Adobe-style appearance, not a cert).
-        pdf.set_draw_color(196, 90, 90)
-        pdf.set_line_width(0.35)
-        seal_x = x + 10
-        seal_y = y + 7
-        pdf.ellipse(seal_x, seal_y, 22, 22, style="D")
-        pdf.ellipse(seal_x + 1.4, seal_y + 1.4, 19.2, 19.2, style="D")
-        pdf.set_draw_color(0, 0, 0)
-        pdf.set_line_width(0.2)
-        pdf.set_xy(x + 8, y + 12)
-        pdf.set_font("Times", "I", 18)
-        pdf.cell(40, 8, _pdf_text(short), align="L")
-        tx = x + 48
+        tx = x + 32
         ty = y + 9
         pdf.set_font("Helvetica", "", 6)
+        pdf.set_text_color(0, 0, 0)
         pdf.set_xy(tx, ty)
         pdf.multi_cell(
-            w - 52,
+            w - 34,
             3.1,
             _pdf_text("\n".join([stamp.get("by_line") or "", stamp.get("date_line") or "", stamp.get("time_line") or ""])),
             align="L",
