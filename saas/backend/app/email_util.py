@@ -172,6 +172,8 @@ def send_email_with_pdf_attachment(
     html: str | None = None,
 ) -> None:
     """Send one To address, optional CC list, and a PDF attachment (Resend or SMTP)."""
+    if not pdf_bytes:
+        raise RuntimeError("Invoice PDF is empty; cannot send email without the attachment")
     cc_list = [e for e in (cc or []) if e and e.lower() != to_email.lower()]
     if settings.resend_api_key:
         import base64
@@ -187,6 +189,7 @@ def send_email_with_pdf_attachment(
                 {
                     "filename": filename,
                     "content": base64.b64encode(pdf_bytes).decode("ascii"),
+                    "content_type": "application/pdf",
                 }
             ],
         )

@@ -89,6 +89,49 @@ def test_email_invoice_sends_pdf_to_accounts_and_cc(monkeypatch):
     assert sent["subject"] == "Payment Invoice INV-00003 — TheAIQualisys"
 
 
+def test_resend_invoice_mail_attaches_pdf_bytes(monkeypatch):
+    import base64
+    import json
+
+    captured: dict = {}
+
+    class _Resp:
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def _urlopen(req, timeout=30):
+        captured["payload"] = json.loads(req.data.decode("utf-8"))
+        return _Resp()
+
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+    from app.email_util import send_email_with_pdf_attachment
+
+    pdf = b"%PDF-1.4 invoice"
+    send_email_with_pdf_attachment(
+        SimpleNamespace(resend_api_key="rk_test", email_from="billing@theaiqualisys.com"),
+        to_email="accounts@acme.test",
+        cc=["cfo@acme.test"],
+        subject="Payment Invoice INV-00003 — TheAIQualisys",
+        text="Dear Customer,\n",
+        html="<p>Dear Customer,</p>",
+        filename="INV-00003.pdf",
+        pdf_bytes=pdf,
+    )
+    payload = captured["payload"]
+    assert payload["to"] == ["accounts@acme.test"]
+    assert payload["cc"] == ["cfo@acme.test"]
+    att = payload["attachments"][0]
+    assert att["filename"] == "INV-00003.pdf"
+    assert att["content_type"] == "application/pdf"
+    assert base64.b64decode(att["content"]) == pdf
+
+
 def test_email_route_and_mail_fields_exist():
     from pathlib import Path
 
