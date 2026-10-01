@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session
 
 from app.billing_invoices import (
     generate_invoice,
+    generate_manual_invoice,
     get_billing_invoice,
     get_billing_settings,
     invoice_counts,
     list_billing_invoices,
     preview_invoice,
+    preview_manual_invoice,
     render_invoice_pdf,
     serialize_billing_invoice,
     serialize_billing_settings,
@@ -64,6 +66,7 @@ from app.schemas import (
     AdminBillingInvoiceGenerateBody,
     AdminBillingInvoiceListResponse,
     AdminBillingInvoiceOut,
+    AdminBillingManualInvoiceBody,
     AdminBillingPaymentListResponse,
     AdminBillingPaymentOut,
     AdminBillingPaymentRejectBody,
@@ -982,12 +985,54 @@ def admin_preview_billing_invoice(
     _: PlatformAdmin = Depends(get_platform_admin),
     db: Session = Depends(get_db_session),
 ):
-    data = preview_invoice(db, payment_id=body.payment_id)
+    data = preview_invoice(db, payment_id=body.payment_id, payment_method=body.payment_method)
     data["id"] = 0
     data["invoice_id"] = None
     data["invoice_number"] = "(assigned on generate)"
     data["status"] = "draft"
     return AdminBillingInvoiceOut.model_validate(data)
+
+
+@router.post("/billing/invoices/manual/preview", response_model=AdminBillingInvoiceOut)
+def admin_preview_manual_billing_invoice(
+    body: AdminBillingManualInvoiceBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    data = preview_manual_invoice(
+        db,
+        company_id=body.company_id,
+        plan_type=body.plan_type,
+        billing_period=body.billing_period,
+        payment_method=body.payment_method,
+        module_key=body.module_key or "fir",
+    )
+    data["id"] = 0
+    data["invoice_id"] = None
+    data["invoice_number"] = "(assigned on generate)"
+    data["status"] = "draft"
+    data["payment_id"] = 0
+    return AdminBillingInvoiceOut.model_validate(data)
+
+
+@router.post("/billing/invoices/manual", response_model=AdminBillingInvoiceOut)
+def admin_generate_manual_billing_invoice(
+    body: AdminBillingManualInvoiceBody,
+    admin: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = generate_manual_invoice(
+        db,
+        admin=admin,
+        company_id=body.company_id,
+        plan_type=body.plan_type,
+        billing_period=body.billing_period,
+        payment_method=body.payment_method,
+        module_key=body.module_key or "fir",
+    )
+    db.commit()
+    db.refresh(row)
+    return AdminBillingInvoiceOut.model_validate(serialize_billing_invoice(row))
 
 
 @router.post("/billing/invoices", response_model=AdminBillingInvoiceOut)
@@ -996,7 +1041,7 @@ def admin_generate_billing_invoice(
     _: PlatformAdmin = Depends(get_platform_admin),
     db: Session = Depends(get_db_session),
 ):
-    row = generate_invoice(db, payment_id=body.payment_id)
+    row = generate_invoice(db, payment_id=body.payment_id, payment_method=body.payment_method)
     db.commit()
     db.refresh(row)
     return AdminBillingInvoiceOut.model_validate(serialize_billing_invoice(row))

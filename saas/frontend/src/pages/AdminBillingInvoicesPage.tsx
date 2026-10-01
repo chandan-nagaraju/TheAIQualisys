@@ -68,21 +68,54 @@ export function invoiceStatusClass(status: string) {
   return "bg-slate-200 text-slate-800";
 }
 
+const PAYMENT_MODES = ["UPI", "NEFT", "RTGS", "Account Transfer"] as const;
+const BILLING_PERIODS = [
+  { value: "MONTHLY", label: "Monthly" },
+  { value: "QUARTERLY", label: "Quarterly" },
+  { value: "HALF_YEARLY", label: "Semi yearly" },
+  { value: "YEARLY", label: "Yearly" },
+] as const;
+
+type CompanyOpt = { id: number; company_name: string; vendor_code: string };
+type PricingRow = { fir_plan_type: string | null; display_name: string; listing_active?: boolean };
+
 export default function AdminBillingInvoicesPage() {
   const nav = useNavigate();
   const [data, setData] = useState<ListResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [payments, setPayments] = useState<AdminBillingPayment[]>([]);
   const [pick, setPick] = useState("");
+  const [payMode, setPayMode] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [companies, setCompanies] = useState<CompanyOpt[]>([]);
+  const [plans, setPlans] = useState<{ value: string; label: string }[]>([]);
+  const [manCompany, setManCompany] = useState("");
+  const [manMode, setManMode] = useState("");
+  const [manPlan, setManPlan] = useState("");
+  const [manPeriod, setManPeriod] = useState("");
 
   async function load() {
-    const [inv, pay] = await Promise.all([
+    const [inv, pay, companyRows, pricing] = await Promise.all([
       apiFetch<ListResponse>("/admin/billing/invoices", { token: "admin" }),
       apiFetch<{ items: AdminBillingPayment[] }>("/admin/billing/payments?status=verified", { token: "admin" }),
+      apiFetch<CompanyOpt[]>("/admin/companies", { token: "admin" }),
+      apiFetch<PricingRow[]>("/admin/pricing-modules", { token: "admin" }),
     ]);
     setData(inv);
     setPayments(pay.items || []);
+    setCompanies(companyRows || []);
+    const firPlans = (pricing || [])
+      .filter((r) => r.fir_plan_type)
+      .map((r) => ({ value: String(r.fir_plan_type), label: r.display_name }));
+    setPlans(
+      firPlans.length
+        ? firPlans
+        : [
+            { value: "basic", label: "Basic" },
+            { value: "pro", label: "Pro" },
+            { value: "enterprise", label: "Enterprise" },
+          ],
+    );
   }
 
   useEffect(() => {
@@ -106,16 +139,50 @@ export default function AdminBillingInvoicesPage() {
       const preview = await apiFetch<AdminBillingInvoice>("/admin/billing/invoices/preview", {
         method: "POST",
         token: "admin",
-        body: JSON.stringify({ payment_id: Number(pick) }),
+        body: JSON.stringify({ payment_id: Number(pick), payment_method: payMode || undefined }),
       });
       const ok = window.confirm(
-        `Generate invoice for this verified payment?\n${preview.customer_name}\n${preview.module_name} · ${preview.plan_name} · ${preview.billing_period_label}\nGrand total ${formatInr(preview.grand_total)}`,
+        `Generate invoice for this verified payment?\n${preview.customer_name}\n${preview.module_name} · ${preview.plan_name} · ${preview.billing_period_label}\nMode: ${preview.payment_method || payMode || "—"}\nGrand total ${formatInr(preview.grand_total)}`,
       );
       if (!ok) return;
       const created = await apiFetch<AdminBillingInvoice>("/admin/billing/invoices", {
         method: "POST",
         token: "admin",
-        body: JSON.stringify({ payment_id: Number(pick) }),
+        body: JSON.stringify({ payment_id: Number(pick), payment_method: payMode || undefined }),
+      });
+      nav(`/admin/billing/invoices/${created.id}`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Generate failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function generateManual() {
+    if (!manCompany || !manMode || !manPlan || !manPeriod) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const body = {
+        company_id: Number(manCompany),
+        payment_method: manMode,
+        plan_type: manPlan,
+        billing_period: manPeriod,
+        module_key: "fir",
+      };
+      const preview = await apiFetch<AdminBillingInvoice>("/admin/billing/invoices/manual/preview", {
+        method: "POST",
+        token: "admin",
+        body: JSON.stringify(body),
+      });
+      const ok = window.confirm(
+        `Generate invoice?\n${preview.company_name}\n${preview.plan_name} · ${preview.billing_period_label}\nMode: ${preview.payment_method}\nGrand total ${formatInr(preview.grand_total)}`,
+      );
+      if (!ok) return;
+      const created = await apiFetch<AdminBillingInvoice>("/admin/billing/invoices/manual", {
+        method: "POST",
+        token: "admin",
+        body: JSON.stringify(body),
       });
       nav(`/admin/billing/invoices/${created.id}`);
     } catch (e) {
@@ -128,7 +195,7 @@ export default function AdminBillingInvoicesPage() {
   return (
     <AdminBillingShell
       title="Invoices"
-      description="View and manage invoices generated for verified customer payments."
+      description="Generate invoices from verified UPI payments or manually for NEFT, RTGS, and account transfers."
     >
       {err && <p className="text-sm text-red-400">{err}</p>}
       <div className="grid gap-3 sm:grid-cols-4">
@@ -137,9 +204,85 @@ export default function AdminBillingInvoicesPage() {
         <Stat label="Generated" value={data?.generated_count ?? 0} />
         <Stat label="Cancelled" value={data?.cancelled_count ?? 0} />
       </div>
+      <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+        <h3 className="text-sm font-semibold text-white">Manual invoice</h3>
+        <p className="text-xs text-slate-400">
+          Select company, mode of payment, subscription (Basic / Pro / Enterprise), and period, then generate.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs uppercase text-slate-500">
+            Company
+            <select
+              className="mt-1 block min-w-[240px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm normal-case text-white"
+              value={manCompany}
+              onChange={(e) => setManCompany(e.target.value)}
+            >
+              <option value="">Select company…</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.company_name} ({c.vendor_code})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs uppercase text-slate-500">
+            Mode of payment
+            <select
+              className="mt-1 block min-w-[180px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm normal-case text-white"
+              value={manMode}
+              onChange={(e) => setManMode(e.target.value)}
+            >
+              <option value="">Select mode…</option>
+              {PAYMENT_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs uppercase text-slate-500">
+            Subscription
+            <select
+              className="mt-1 block min-w-[160px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm normal-case text-white"
+              value={manPlan}
+              onChange={(e) => setManPlan(e.target.value)}
+            >
+              <option value="">Select plan…</option>
+              {plans.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs uppercase text-slate-500">
+            Period
+            <select
+              className="mt-1 block min-w-[160px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm normal-case text-white"
+              value={manPeriod}
+              onChange={(e) => setManPeriod(e.target.value)}
+            >
+              <option value="">Select period…</option>
+              {BILLING_PERIODS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            disabled={!manCompany || !manMode || !manPlan || !manPeriod || busy}
+            onClick={() => void generateManual()}
+          >
+            Generate invoice
+          </button>
+        </div>
+      </div>
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs uppercase text-slate-500">
-          Generate Invoice
+          From verified payment
           <select
             className="mt-1 block min-w-[280px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
             value={pick}
@@ -148,14 +291,29 @@ export default function AdminBillingInvoicesPage() {
             <option value="">Select verified payment…</option>
             {eligible.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.payment_code || `PAY-${p.id}`} · {p.company_name} · ₹{p.amount_inr}
+                {p.payment_code || `PAY-${p.id}`} · {p.company_name} · {p.payment_method} · ₹{p.amount_inr}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs uppercase text-slate-500">
+          Mode of payment
+          <select
+            className="mt-1 block min-w-[180px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm normal-case text-white"
+            value={payMode}
+            onChange={(e) => setPayMode(e.target.value)}
+          >
+            <option value="">Keep payment mode</option>
+            {PAYMENT_MODES.map((m) => (
+              <option key={m} value={m}>
+                {m}
               </option>
             ))}
           </select>
         </label>
         <button
           type="button"
-          className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-300 disabled:opacity-50"
           disabled={!pick || busy}
           onClick={() => void generate()}
         >

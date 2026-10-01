@@ -17,6 +17,8 @@ type Settings = {
   sgst_rate: number | null;
   igst_rate: number | null;
   terms_notes: string | null;
+  authorised_signatory_name: string | null;
+  authorised_signatory_path: string | null;
 };
 
 const EMPTY: Settings = {
@@ -33,6 +35,8 @@ const EMPTY: Settings = {
   sgst_rate: 9,
   igst_rate: 18,
   terms_notes: "",
+  authorised_signatory_name: "",
+  authorised_signatory_path: "",
 };
 
 export default function AdminBillingSettingsPage() {
@@ -93,6 +97,16 @@ export default function AdminBillingSettingsPage() {
         <Field label="SGST rate %" value={String(form.sgst_rate ?? 9)} onChange={(v) => set("sgst_rate", Number(v))} />
         <Field label="IGST rate %" value={String(form.igst_rate ?? 18)} onChange={(v) => set("igst_rate", Number(v))} />
         <Field label="Terms / notes" value={form.terms_notes || ""} onChange={(v) => set("terms_notes", v)} area />
+        <Field
+          label="Authorised signatory name"
+          value={form.authorised_signatory_name || ""}
+          onChange={(v) => set("authorised_signatory_name", v)}
+        />
+        <Field
+          label="Authorised signatory image path / URL"
+          value={form.authorised_signatory_path || ""}
+          onChange={(v) => set("authorised_signatory_path", v)}
+        />
         <button type="submit" className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">
           Save settings
         </button>

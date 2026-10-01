@@ -185,7 +185,7 @@ export default function AdminBillingInvoiceDetailPage() {
                     <table className="w-full border-collapse">
                       <tbody>
                         <Meta label="Invoice No." value={row.invoice_number} label2="Dated" value2={dmy(row.invoice_date)} />
-                        <Meta label="Delivery Note" value="" label2="Mode/Terms of Payment" value2={row.payment_method || "UPI"} />
+                        <Meta label="Delivery Note" value="" label2="Mode/Terms of Payment" value2={row.payment_method || ""} />
                         <Meta
                           label="Reference No. & Date."
                           value={row.payment_code || ""}
@@ -331,7 +331,19 @@ export default function AdminBillingInvoiceDetailPage() {
                   </td>
                   <td className="border border-slate-800 p-2 align-top text-right w-1/2">
                     <div className="font-semibold">for {seller.business_name || "TheAIQualisys"}</div>
-                    <p className="mt-10">Authorised Signatory</p>
+                    {typeof seller.authorised_signatory_path === "string" && seller.authorised_signatory_path ? (
+                      <img
+                        alt="Authorised signatory"
+                        src={String(seller.authorised_signatory_path)}
+                        className="ml-auto mt-2 h-14 w-auto object-contain"
+                      />
+                    ) : (
+                      <div className="mt-8" />
+                    )}
+                    {typeof seller.authorised_signatory_name === "string" && seller.authorised_signatory_name ? (
+                      <p className="mt-2 font-semibold">{String(seller.authorised_signatory_name)}</p>
+                    ) : null}
+                    <p className="mt-1">Authorised Signatory</p>
                   </td>
                 </tr>
               </tbody>

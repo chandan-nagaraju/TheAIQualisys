@@ -16,11 +16,19 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.billing_payments import STATUS_VERIFIED, get_billing_payment, payment_code_for, serialize_billing_payment
-from app.billing_period import period_label
+from app.billing_payments import (
+    STATUS_VERIFIED,
+    create_admin_manual_payment,
+    get_billing_payment,
+    normalize_payment_method,
+    payment_code_for,
+    quote_payment,
+    serialize_billing_payment,
+)
+from app.billing_period import period_label, subscription_end_from_start
 from app.config import Settings, get_settings
 from app.dates import billing_today
-from app.models import BillingInvoice, BillingPayment, BillingSettings, Company
+from app.models import BillingInvoice, BillingPayment, BillingSettings, Company, PlatformAdmin
 
 STATUS_GENERATED = "generated"
 STATUS_CANCELLED = "cancelled"
@@ -74,6 +82,8 @@ def serialize_billing_settings(row: BillingSettings) -> dict[str, Any]:
         "sgst_rate": float(row.sgst_rate) if row.sgst_rate is not None else 9,
         "igst_rate": float(row.igst_rate) if row.igst_rate is not None else 18,
         "terms_notes": row.terms_notes,
+        "authorised_signatory_name": row.authorised_signatory_name,
+        "authorised_signatory_path": row.authorised_signatory_path,
     }
 
 
@@ -93,6 +103,8 @@ def update_billing_settings(db: Session, body: dict[str, Any]) -> BillingSetting
         "sgst_rate",
         "igst_rate",
         "terms_notes",
+        "authorised_signatory_name",
+        "authorised_signatory_path",
     }
     for key, val in body.items():
         if key not in allowed:
@@ -230,7 +242,7 @@ def _line_description(payment: BillingPayment) -> str:
     return f"{module} - {plan} Plan - {period} Subscription"
 
 
-def preview_invoice(db: Session, *, payment_id: int) -> dict[str, Any]:
+def preview_invoice(db: Session, *, payment_id: int, payment_method: str | None = None) -> dict[str, Any]:
     payment = get_billing_payment(db, payment_id)
     st = payment.status if payment.status != "pending" else "pending_verification"
     if st != STATUS_VERIFIED:
@@ -261,6 +273,8 @@ def preview_invoice(db: Session, *, payment_id: int) -> dict[str, Any]:
             detail="Cannot generate invoice. Missing: " + ", ".join(missing) + ".",
         )
 
+    method = normalize_payment_method(payment_method, required=False) or payment.payment_method
+
     taxable = _money(payment.amount_inr)
     snap = payment.pricing_snapshot if isinstance(payment.pricing_snapshot, dict) else {}
     if snap.get("gst_inclusive") and snap.get("taxable_amount_inr") is not None:
@@ -281,7 +295,7 @@ def preview_invoice(db: Session, *, payment_id: int) -> dict[str, Any]:
     return {
         "payment_id": payment.id,
         "payment_code": payment.payment_code or payment_code_for(payment.id),
-        "payment_method": payment.payment_method,
+        "payment_method": method,
         "payment_reference": payment.reference_note or payment.payment_code,
         "payment_verified_at": payment.verified_at.isoformat() if payment.verified_at else None,
         "customer_name": payment.customer_name_snapshot or (user.name if user and user.name else None) or (company.company_name if company else None),
@@ -326,9 +340,19 @@ def preview_invoice(db: Session, *, payment_id: int) -> dict[str, Any]:
     }
 
 
-def generate_invoice(db: Session, *, payment_id: int, settings_app: Settings | None = None) -> BillingInvoice:
-    preview = preview_invoice(db, payment_id=payment_id)
+def generate_invoice(
+    db: Session,
+    *,
+    payment_id: int,
+    settings_app: Settings | None = None,
+    payment_method: str | None = None,
+) -> BillingInvoice:
+    preview = preview_invoice(db, payment_id=payment_id, payment_method=payment_method)
     payment = get_billing_payment(db, payment_id)
+    method = preview.get("payment_method")
+    if method and payment.payment_method != method:
+        payment.payment_method = method
+        db.add(payment)
     settings = get_billing_settings(db)
     prefix = settings.invoice_prefix or "INV-"
     number = _next_invoice_number(db, prefix)
@@ -375,6 +399,124 @@ def generate_invoice(db: Session, *, payment_id: int, settings_app: Settings | N
     db.add(row)
     db.flush()
     return row
+
+
+def _get_company_for_manual_invoice(db: Session, company_id: int) -> Company:
+    row = db.execute(
+        select(Company).options(selectinload(Company.users)).where(Company.id == company_id)
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+    return row
+
+
+def preview_manual_invoice(
+    db: Session,
+    *,
+    company_id: int,
+    plan_type: str,
+    billing_period: str,
+    payment_method: str,
+    module_key: str = "fir",
+) -> dict[str, Any]:
+    company = _get_company_for_manual_invoice(db, company_id)
+    settings = get_billing_settings(db)
+    missing = _seller_gaps(settings) + _customer_gaps(company)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot generate invoice. Missing: " + ", ".join(missing) + ".",
+        )
+    method = normalize_payment_method(payment_method)
+    quote = quote_payment(db, module_key=module_key or "fir", plan_type=plan_type, billing_period_raw=billing_period)
+    taxable = _money(quote["taxable_amount_inr"])
+    tax = compute_tax(
+        taxable=taxable,
+        seller_state_code=settings.state_code or "",
+        customer_state_code=company.billing_state_code or "",
+        settings=settings,
+    )
+    user = sorted(company.users, key=lambda u: u.id)[0] if company.users else None
+    start = billing_today()
+    end = subscription_end_from_start(start, quote["billing_period"])
+    return {
+        "payment_id": 0,
+        "payment_code": "(assigned on generate)",
+        "payment_method": method,
+        "payment_reference": None,
+        "payment_verified_at": None,
+        "customer_name": (user.name if user and user.name else None) or company.company_name,
+        "company_id": company.id,
+        "company_name": company.company_name,
+        "email": user.email if user else None,
+        "phone": company.phone,
+        "billing_address": company.billing_address,
+        "city": company.billing_city,
+        "state": company.billing_state,
+        "state_code": company.billing_state_code,
+        "pincode": company.billing_pincode,
+        "gstin": company.gstin,
+        "module_key": quote["module_key"],
+        "module_name": quote["module_label"],
+        "plan_name": quote["plan_name"],
+        "plan_id": quote.get("catalog_id"),
+        "billing_period": quote["billing_period"],
+        "billing_period_label": quote["billing_period_label"],
+        "subscription_start_date": start.isoformat(),
+        "subscription_end_date": end.isoformat(),
+        "invoice_date": start.isoformat(),
+        "line_description": f"{quote['module_label']} - {quote['plan_name']} Plan - {quote['billing_period_label']} Subscription",
+        "quantity": 1,
+        "rate": float(taxable),
+        "subtotal": float(taxable),
+        "taxable_amount": float(taxable),
+        "cgst": float(tax["cgst"]),
+        "sgst": float(tax["sgst"]),
+        "igst": float(tax["igst"]),
+        "total_tax": float(tax["total_tax"]),
+        "grand_total": float(tax["grand_total"]),
+        "currency": "INR",
+        "tax_mode": tax["tax_mode"],
+        "cgst_rate": float(tax["cgst_rate"]),
+        "sgst_rate": float(tax["sgst_rate"]),
+        "igst_rate": float(tax["igst_rate"]),
+        "seller": serialize_billing_settings(settings),
+        "vendor_code": company.vendor_code,
+        "hsn_sac": SAAS_SAC,
+        "uom": "Nos",
+    }
+
+
+def generate_manual_invoice(
+    db: Session,
+    *,
+    admin: PlatformAdmin,
+    company_id: int,
+    plan_type: str,
+    billing_period: str,
+    payment_method: str,
+    module_key: str = "fir",
+    settings_app: Settings | None = None,
+) -> BillingInvoice:
+    preview_manual_invoice(
+        db,
+        company_id=company_id,
+        plan_type=plan_type,
+        billing_period=billing_period,
+        payment_method=payment_method,
+        module_key=module_key,
+    )
+    company = _get_company_for_manual_invoice(db, company_id)
+    payment = create_admin_manual_payment(
+        db,
+        admin=admin,
+        company=company,
+        plan_type=plan_type,
+        billing_period_raw=billing_period,
+        payment_method_raw=payment_method,
+        module_key=module_key or "fir",
+    )
+    return generate_invoice(db, payment_id=payment.id, settings_app=settings_app)
 
 
 def _store_pdf(row: BillingInvoice, pdf_bytes: bytes, app_settings: Settings) -> str | None:
@@ -595,6 +737,18 @@ def _party_lines(data: dict[str, Any], *, seller: bool = False) -> list[str]:
     return [str(x) for x in lines if x]
 
 
+def _local_signatory_image(raw: str | None) -> str | None:
+    path = (raw or "").strip()
+    if not path:
+        return None
+    from pathlib import Path
+
+    p = Path(path)
+    if p.is_file():
+        return str(p)
+    return None
+
+
 def render_invoice_pdf(data: dict[str, Any]) -> bytes:
     """Tally-style GST tax invoice. Selectable Helvetica text. No IRN/e-invoice QR."""
     from fpdf import FPDF
@@ -629,7 +783,7 @@ def render_invoice_pdf(data: dict[str, Any]) -> bytes:
     inv_no = str(data.get("invoice_number") or "")
     inv_dt = _display_date(data.get("invoice_date"))
     pay_ref = str(data.get("payment_code") or data.get("payment_reference") or "")
-    pay_method = str(data.get("payment_method") or "UPI")
+    pay_method = str(data.get("payment_method") or "")
     vendor = str(data.get("vendor_code") or "")
     start = _display_date(data.get("subscription_start_date"))
     end = _display_date(data.get("subscription_end_date"))
@@ -833,6 +987,17 @@ def render_invoice_pdf(data: dict[str, Any]) -> bytes:
     put(x0 + 1.5, foot + fh - 8, 90, 4, "Customer's Seal and Signature", size=6.5)
     seller_name = (seller or {}).get("business_name") or "TheAIQualisys"
     put(split_f + 1.5, foot + 1, x1 - split_f - 3, 4, f"for {seller_name}", bold=True, size=7, align="R")
+    sign_path = (seller or {}).get("authorised_signatory_path") if isinstance(seller, dict) else None
+    sign_name = ((seller or {}).get("authorised_signatory_name") or "").strip() if isinstance(seller, dict) else ""
+    img_file = _local_signatory_image(sign_path)
+    if img_file:
+        try:
+            img_w = min(42.0, x1 - split_f - 8)
+            pdf.image(img_file, x=x1 - img_w - 3, y=foot + 6.5, w=img_w, h=16)
+        except Exception:
+            pass
+    if sign_name:
+        put(split_f + 1.5, foot + fh - 12, x1 - split_f - 3, 4, sign_name, bold=True, size=7, align="R")
     put(split_f + 1.5, foot + fh - 8, x1 - split_f - 3, 4, "Authorised Signatory", size=6.5, align="R")
 
     notes = data.get("terms_notes") or ((seller or {}).get("terms_notes") if isinstance(seller, dict) else None)
