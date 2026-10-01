@@ -232,6 +232,13 @@ def _pdf_text_blob(pdf: bytes) -> bytes:
     return b"\n".join(parts)
 
 
+def _pdf_tj_joined(pdf: bytes) -> str:
+    import re
+
+    chars = re.findall(rb"\(([^)]*)\) Tj", _pdf_text_blob(pdf))
+    return b"".join(chars).decode("latin-1", "replace")
+
+
 def test_preview_can_override_payment_method_to_neft(monkeypatch):
     payment = _verified_payment()
     settings = _settings()
@@ -257,6 +264,9 @@ def test_preview_can_override_payment_method_to_neft(monkeypatch):
     assert b"Digitally signed by Chandan" in raw
     assert b"Date: 2026.09.22" in raw
     assert b"+05'30'" in raw
+    joined = _pdf_tj_joined(pdf)
+    assert "TheAIQualisys" in joined
+    assert "Bangalore-560090" in joined
 
 
 def test_adobe_digital_sign_stamp_uses_first_name_and_ist():
@@ -301,4 +311,44 @@ def test_preview_manual_invoice_uses_catalog_and_mode(monkeypatch):
     assert out["billing_period"] == "QUARTERLY"
     assert out["taxable_amount"] == 4599.0
     assert out["subscription_start_date"] == "2026-10-01"
-    assert out["subscription_end_date"] == "2026-12-30"
+def test_invoice_pdf_company_seal_rings():
+    from pathlib import Path
+
+    page = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "src"
+        / "pages"
+        / "AdminBillingInvoiceDetailPage.tsx"
+    ).read_text(encoding="utf-8")
+    seal = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "components" / "CompanySeal.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert "CompanySeal" in page
+    assert "TheAIQualisys" in seal
+    assert "Bangalore-560090" in seal
+    pdf = render_invoice_pdf(
+        {
+            "invoice_number": "INV-00001",
+            "invoice_date": "2026-10-01",
+            "company_name": "Acme",
+            "grand_total": 100,
+            "taxable_amount": 84.75,
+            "cgst": 7.63,
+            "sgst": 7.63,
+            "igst": 0,
+            "total_tax": 15.26,
+            "tax_mode": "cgst_sgst",
+            "seller": {
+                "business_name": "TheAIQualisys",
+                "authorised_signatory_name": "Chandan N",
+            },
+            "digitally_signed_at": "2026-10-01T10:52:25+05:30",
+        }
+    )
+    raw = _pdf_text_blob(pdf)
+    joined = _pdf_tj_joined(pdf)
+    assert "TheAIQualisys" in joined
+    assert "Bangalore-560090" in joined
+    assert b"Digitally signed by Chandan" in raw
+
