@@ -354,3 +354,39 @@ def test_invoice_pdf_company_seal_rings():
     assert b"Chandan N" in raw
     assert b"Digitally signed by Chandan" in raw
 
+
+def test_next_invoice_number_starts_at_00001_when_empty():
+    from app.billing_invoices import _next_invoice_number
+
+    db = MagicMock()
+    db.execute.return_value.scalar_one.return_value = None
+    db.execute.return_value.scalar_one_or_none.return_value = None
+    assert _next_invoice_number(db, "INV-") == "INV-00001"
+
+
+def test_purge_all_billing_invoices_deletes_rows_and_restarts_postgres_sequence(monkeypatch):
+    from sqlalchemy.sql.dml import Delete
+
+    from app.billing_invoices import purge_all_billing_invoices
+
+    db = MagicMock()
+    paths_result = MagicMock()
+    paths_result.scalars.return_value.all.return_value = [
+        "invoices/2026/INV-00001.pdf",
+        "invoices/2026/INV-00006.pdf",
+    ]
+    delete_result = MagicMock(rowcount=6)
+    db.execute.side_effect = [paths_result, delete_result, MagicMock()]
+    db.get_bind.return_value.dialect.name = "postgresql"
+    monkeypatch.setattr("app.billing_invoices._try_delete_invoice_pdfs", lambda _paths: None)
+
+    out = purge_all_billing_invoices(db)
+    assert out["deleted_count"] == 6
+    ops = [c.args[0] for c in db.execute.call_args_list]
+    deletes = [op for op in ops if isinstance(op, Delete)]
+    assert len(deletes) == 1
+    assert deletes[0].table.name == "billing_invoices"
+    assert any("billing_invoices_id_seq" in str(op) for op in ops)
+    db.flush.assert_called()
+    db.commit.assert_not_called()
+

@@ -17,6 +17,7 @@ from app.billing_invoices import (
     list_billing_invoices,
     preview_invoice,
     preview_manual_invoice,
+    purge_all_billing_invoices,
     render_invoice_pdf,
     serialize_billing_invoice,
     serialize_billing_settings,
@@ -67,6 +68,7 @@ from app.schemas import (
     AdminBillingInvoiceGenerateBody,
     AdminBillingInvoiceListResponse,
     AdminBillingInvoiceOut,
+    AdminBillingInvoicePurgeOut,
     AdminBillingManualInvoiceBody,
     AdminInvoiceEmailOut,
     AdminBillingPaymentListResponse,
@@ -966,6 +968,17 @@ def admin_put_billing_settings(
     db.commit()
     db.refresh(row)
     return AdminBillingSettingsOut.model_validate(serialize_billing_settings(row))
+
+
+@router.delete("/billing/invoices/", response_model=AdminBillingInvoicePurgeOut, include_in_schema=False)
+@router.delete("/billing/invoices", response_model=AdminBillingInvoicePurgeOut)
+def admin_purge_billing_invoices(
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    out = purge_all_billing_invoices(db)
+    db.commit()
+    return AdminBillingInvoicePurgeOut(ok=True, deleted_count=out["deleted_count"])
 
 
 @router.get("/billing/invoices/", response_model=AdminBillingInvoiceListResponse, include_in_schema=False)

@@ -104,6 +104,7 @@ export default function AdminBillingInvoicesPage() {
   const [manPlan, setManPlan] = useState("");
   const [manPeriod, setManPeriod] = useState("");
   const [mailMsg, setMailMsg] = useState<string | null>(null);
+  const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
 
   async function load() {
     const [inv, pay, companyRows, pricing] = await Promise.all([
@@ -141,6 +142,33 @@ export default function AdminBillingInvoicesPage() {
     () => payments.filter((p) => p.status === "verified" && !p.invoice_id),
     [payments],
   );
+
+  async function purgeAll() {
+    const count = data?.total_count ?? 0;
+    const ok = window.confirm(
+      `Delete ALL ${count} invoice${count === 1 ? "" : "s"} and start numbering from INV-00001?\n\nVerified payments are kept so you can generate invoices again.\nThis cannot be undone.`,
+    );
+    if (!ok) return;
+    const again = window.confirm("Really delete every invoice now?");
+    if (!again) return;
+    setBusy(true);
+    setErr(null);
+    setMailMsg(null);
+    setPurgeMsg(null);
+    try {
+      const out = await apiFetch<{ deleted_count: number }>("/admin/billing/invoices", {
+        method: "DELETE",
+        token: "admin",
+      });
+      setPick("");
+      setPurgeMsg(`Deleted ${out.deleted_count} invoice(s). Next number will be INV-00001.`);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function generate() {
     if (!pick) return;
@@ -228,11 +256,22 @@ export default function AdminBillingInvoicesPage() {
     >
       {err && <p className="text-sm text-red-400">{err}</p>}
       {mailMsg && <p className="text-sm text-emerald-400">{mailMsg}</p>}
-      <div className="grid gap-3 sm:grid-cols-4">
-        <Stat label="Total Invoices" value={data?.total_count ?? 0} />
-        <Stat label="Draft" value={data?.draft_count ?? 0} />
-        <Stat label="Generated" value={data?.generated_count ?? 0} />
-        <Stat label="Cancelled" value={data?.cancelled_count ?? 0} />
+      {purgeMsg && <p className="text-sm text-emerald-400">{purgeMsg}</p>}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="grid flex-1 gap-3 sm:grid-cols-4">
+          <Stat label="Total Invoices" value={data?.total_count ?? 0} />
+          <Stat label="Draft" value={data?.draft_count ?? 0} />
+          <Stat label="Generated" value={data?.generated_count ?? 0} />
+          <Stat label="Cancelled" value={data?.cancelled_count ?? 0} />
+        </div>
+        <button
+          type="button"
+          className="rounded-lg border border-red-700 px-3 py-2 text-sm font-semibold text-red-300 disabled:opacity-50"
+          disabled={busy || !data || data.total_count === 0}
+          onClick={() => void purgeAll()}
+        >
+          Delete all invoices
+        </button>
       </div>
       <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
         <h3 className="text-sm font-semibold text-white">Manual invoice</h3>

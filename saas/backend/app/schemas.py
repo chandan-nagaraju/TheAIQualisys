@@ -654,6 +654,11 @@ class AdminBillingInvoiceListResponse(BaseModel):
     items: list[AdminBillingInvoiceOut]
 
 
+class AdminBillingInvoicePurgeOut(BaseModel):
+    ok: bool = True
+    deleted_count: int
+
+
 class AdminInvoiceEmailOut(BaseModel):
     ok: bool = True
     to: str

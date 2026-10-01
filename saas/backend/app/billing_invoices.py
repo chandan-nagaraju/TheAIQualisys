@@ -13,7 +13,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -224,6 +224,55 @@ def _next_invoice_number(db: Session, prefix: str) -> str:
             return code
         n += 1
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not allocate invoice number")
+
+
+def _try_delete_invoice_pdfs(paths: list[str | None]) -> None:
+    try:
+        from app.s3_assets import delete_s3_object, s3_assets_configured
+
+        app_settings = get_settings()
+        if not s3_assets_configured(app_settings):
+            return
+        for path in paths:
+            key = (path or "").strip()
+            if key.startswith("invoices/") and key.endswith(".pdf"):
+                try:
+                    delete_s3_object(app_settings, key)
+                except Exception:
+                    continue
+    except Exception:
+        return
+
+
+def _reset_invoice_id_sequence(db: Session) -> None:
+    try:
+        bind = db.get_bind()
+        dialect = getattr(getattr(bind, "dialect", None), "name", "") or ""
+    except Exception:
+        return
+    try:
+        if dialect == "postgresql":
+            db.execute(text("ALTER SEQUENCE IF EXISTS billing_invoices_id_seq RESTART WITH 1"))
+        elif dialect == "sqlite":
+            db.execute(text("DELETE FROM sqlite_sequence WHERE name = 'billing_invoices'"))
+    except Exception:
+        return
+
+
+def purge_all_billing_invoices(db: Session) -> dict[str, int]:
+    """Delete every SaaS tax invoice so numbering can restart at INV-00001.
+
+    Verified payments and subscriptions are left unchanged.
+    """
+    paths = list(db.execute(select(BillingInvoice.pdf_path)).scalars().all())
+    result = db.execute(delete(BillingInvoice))
+    deleted = int(result.rowcount or 0)
+    if deleted <= 0:
+        deleted = len(paths)
+    _try_delete_invoice_pdfs(paths)
+    _reset_invoice_id_sequence(db)
+    db.flush()
+    return {"deleted_count": deleted}
 
 
 def _seller_gaps(settings: BillingSettings) -> list[str]:
