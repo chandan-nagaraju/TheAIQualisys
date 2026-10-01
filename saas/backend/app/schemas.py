@@ -632,6 +632,8 @@ class AdminBillingInvoiceOut(BaseModel):
     quantity: int | None = 1
     rate: float | None = None
     terms_notes: str | None = None
+    digitally_signed_at: str | None = None
+    digital_signatory: dict | None = None
     created_at: str | None = None
     updated_at: str | None = None
 

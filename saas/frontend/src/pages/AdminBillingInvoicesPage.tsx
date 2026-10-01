@@ -47,6 +47,13 @@ export type AdminBillingInvoice = {
   seller?: Record<string, unknown> | null;
   vendor_code?: string | null;
   hsn_sac?: string | null;
+  digitally_signed_at?: string | null;
+  digital_signatory?: {
+    short_name?: string;
+    by_line?: string;
+    date_line?: string;
+    time_line?: string;
+  } | null;
 };
 
 type ListResponse = {

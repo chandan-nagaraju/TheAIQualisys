@@ -15,6 +15,7 @@ from app.billing_invoices import (
     TAX_CGST_SGST,
     TAX_IGST,
     _amount_in_words,
+    adobe_digital_sign_stamp,
     compute_tax,
     preview_invoice,
     preview_manual_invoice,
@@ -38,6 +39,7 @@ def _settings(**kwargs) -> BillingSettings:
         cgst_rate=9,
         sgst_rate=9,
         igst_rate=18,
+        authorised_signatory_name=kwargs.get("authorised_signatory_name", "Chandan N"),
     )
     return row
 
@@ -251,7 +253,18 @@ def test_preview_can_override_payment_method_to_neft(monkeypatch):
     raw = _pdf_text_blob(pdf)
     assert b"NEFT" in raw
     assert b"Authorised Signatory" in raw
-    assert b"Chandan N" in raw
+    assert b"Chandan" in raw
+    assert b"Digitally signed by Chandan" in raw
+    assert b"Date: 2026.09.22" in raw
+    assert b"+05'30'" in raw
+
+
+def test_adobe_digital_sign_stamp_uses_first_name_and_ist():
+    stamp = adobe_digital_sign_stamp("Chandan N", datetime(2026, 10, 1, 10, 13, 7, tzinfo=timezone.utc))
+    assert stamp["short_name"] == "Chandan"
+    assert stamp["by_line"] == "Digitally signed by Chandan"
+    assert stamp["date_line"] == "Date: 2026.10.01"
+    assert stamp["time_line"] == "15:43:07 +05'30'"
 
 
 def test_preview_manual_invoice_uses_catalog_and_mode(monkeypatch):
