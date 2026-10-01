@@ -557,6 +557,8 @@ class AdminBillingSettingsIn(BaseModel):
     sgst_rate: float | None = None
     igst_rate: float | None = None
     terms_notes: str | None = None
+    authorised_signatory_name: str | None = None
+    authorised_signatory_path: str | None = None
 
 
 class AdminBillingSettingsOut(AdminBillingSettingsIn):
@@ -565,6 +567,15 @@ class AdminBillingSettingsOut(AdminBillingSettingsIn):
 
 class AdminBillingInvoiceGenerateBody(BaseModel):
     payment_id: int
+    payment_method: str | None = None
+
+
+class AdminBillingManualInvoiceBody(BaseModel):
+    company_id: int
+    payment_method: str
+    plan_type: str
+    billing_period: str
+    module_key: str = "fir"
 
 
 class AdminBillingInvoiceOut(BaseModel):

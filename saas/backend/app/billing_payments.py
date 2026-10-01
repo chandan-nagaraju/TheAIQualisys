@@ -38,6 +38,37 @@ STATUS_VERIFIED = "verified"
 STATUS_REJECTED = "rejected"
 ALLOWED_STATUSES = {STATUS_PENDING, STATUS_VERIFIED, STATUS_REJECTED, "pending"}
 
+PAYMENT_UPI = "UPI"
+PAYMENT_NEFT = "NEFT"
+PAYMENT_RTGS = "RTGS"
+PAYMENT_ACCOUNT_TRANSFER = "Account Transfer"
+ALLOWED_PAYMENT_METHODS = (PAYMENT_UPI, PAYMENT_NEFT, PAYMENT_RTGS, PAYMENT_ACCOUNT_TRANSFER)
+_PAYMENT_METHOD_ALIASES = {
+    "UPI": PAYMENT_UPI,
+    "NEFT": PAYMENT_NEFT,
+    "RTGS": PAYMENT_RTGS,
+    "IMPS": PAYMENT_ACCOUNT_TRANSFER,
+    "ACCOUNT TRANSFER": PAYMENT_ACCOUNT_TRANSFER,
+    "ACCOUNT_TRANSFER": PAYMENT_ACCOUNT_TRANSFER,
+    "BANK TRANSFER": PAYMENT_ACCOUNT_TRANSFER,
+    "BANK_TRANSFER": PAYMENT_ACCOUNT_TRANSFER,
+}
+
+
+def normalize_payment_method(raw: str | None, *, required: bool = True) -> str | None:
+    if raw is None or not str(raw).strip():
+        if required:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment mode is required")
+        return None
+    key = " ".join(str(raw).strip().upper().replace("-", " ").replace("/", " ").split())
+    method = _PAYMENT_METHOD_ALIASES.get(key)
+    if not method:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Payment mode must be UPI, NEFT, RTGS, or Account Transfer",
+        )
+    return method
+
 REJECT_REASONS = (
     "payment_not_received",
     "incorrect_amount",
@@ -454,6 +485,85 @@ def apply_verified_subscription_to_company(
     if want in {PlanType.basic.value, PlanType.pro.value, PlanType.enterprise.value}:
         company.plan_type = want
     close_overlapping_trial_for_paid_activation(company, start)
+
+
+def create_admin_manual_payment(
+    db: Session,
+    *,
+    admin: PlatformAdmin,
+    company: Company,
+    plan_type: str | None,
+    billing_period_raw: str,
+    payment_method_raw: str,
+    module_key: str = MODULE_FIR,
+) -> BillingPayment:
+    """Admin-recorded bank/UPI receipt: verified immediately and subscription applied."""
+    quote = quote_payment(db, module_key=module_key, plan_type=plan_type, billing_period_raw=billing_period_raw)
+    method = normalize_payment_method(payment_method_raw)
+    user = _primary_user(company)
+    now = _utc_now()
+    start = now.date()
+    period = quote["billing_period"]
+    end = subscription_end_from_start(start, period)
+    customer_name = (user.name if user and user.name else None) or company.company_name
+    row = BillingPayment(
+        company_id=company.id,
+        user_id=user.id if user else None,
+        plan_name=quote["plan_name"],
+        amount_inr=quote["amount_inr"],
+        payment_method=method,
+        reference_note=None,
+        payment_date=now,
+        status=STATUS_VERIFIED,
+        module_key=quote["module_key"],
+        module_label=quote["module_label"],
+        plan_type=quote["plan_type"],
+        billing_period=period,
+        subscription_duration=quote["subscription_duration"],
+        subscription_start_date=start,
+        subscription_end_date=end,
+        currency="INR",
+        pricing_snapshot={
+            "module": quote["module_label"],
+            "module_key": quote["module_key"],
+            "plan": quote["plan_name"],
+            "plan_type": quote["plan_type"],
+            "catalog_id": quote["catalog_id"],
+            "billing_period": quote["billing_period"],
+            "billing_period_label": quote["billing_period_label"],
+            "subscription_duration": quote["subscription_duration"],
+            "monthly_price": quote["monthly_price"],
+            "original_plan_price": quote["monthly_price"],
+            "taxable_amount_inr": quote["taxable_amount_inr"],
+            "gst_rate": quote["gst_rate"],
+            "gst_amount_inr": quote["gst_amount_inr"],
+            "amount_inr": quote["amount_inr"],
+            "gst_inclusive": True,
+            "currency": "INR",
+            "source": "admin_manual_invoice",
+            "payment_method": method,
+        },
+        payment_submitted_at=now,
+        verified_by_admin_id=admin.id,
+        verified_at=now,
+        customer_name_snapshot=customer_name,
+        company_name_snapshot=company.company_name,
+        email_snapshot=user.email if user else None,
+    )
+    db.add(row)
+    db.flush()
+    row.payment_code = payment_code_for(row.id)
+    row.reference_note = row.payment_code
+    apply_verified_subscription_to_company(
+        company,
+        start=start,
+        end=end,
+        plan_type=quote["plan_type"],
+    )
+    db.add(row)
+    db.add(company)
+    db.flush()
+    return row
 
 
 def verify_payment(db: Session, *, admin: PlatformAdmin, payment_id: int) -> BillingPayment:

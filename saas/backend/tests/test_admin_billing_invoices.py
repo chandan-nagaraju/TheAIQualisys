@@ -17,9 +17,10 @@ from app.billing_invoices import (
     _amount_in_words,
     compute_tax,
     preview_invoice,
+    preview_manual_invoice,
     render_invoice_pdf,
 )
-from app.billing_payments import STATUS_PENDING, STATUS_REJECTED, STATUS_VERIFIED
+from app.billing_payments import STATUS_PENDING, STATUS_REJECTED, STATUS_VERIFIED, normalize_payment_method
 from app.models import BillingPayment, BillingSettings, Company, CompanyUser
 
 
@@ -205,3 +206,86 @@ def test_amount_in_words_matches_gst_invoice_style():
         "Indian Rupees One Thousand Four Hundred Eighty Four and Ninety Two Paise Only"
     )
     assert _amount_in_words(Decimal("8022.82")).startswith("Indian Rupees Eight Thousand Twenty Two")
+
+
+def test_normalize_payment_method_bank_modes():
+    assert normalize_payment_method("neft") == "NEFT"
+    assert normalize_payment_method("RTGS") == "RTGS"
+    assert normalize_payment_method("account transfer") == "Account Transfer"
+    assert normalize_payment_method("bank transfer") == "Account Transfer"
+    with pytest.raises(HTTPException):
+        normalize_payment_method("cash")
+
+
+def _pdf_text_blob(pdf: bytes) -> bytes:
+    import re
+    import zlib
+
+    parts = [pdf]
+    for chunk in re.findall(rb"stream\r?\n(.+?)endstream", pdf, re.S):
+        try:
+            parts.append(zlib.decompress(chunk))
+        except Exception:
+            parts.append(chunk)
+    return b"\n".join(parts)
+
+
+def test_preview_can_override_payment_method_to_neft(monkeypatch):
+    payment = _verified_payment()
+    settings = _settings()
+    db = MagicMock()
+    monkeypatch.setattr("app.billing_invoices.get_billing_payment", lambda _db, _id: payment)
+    monkeypatch.setattr("app.billing_invoices.generated_invoice_for_payment", lambda _db, _id: None)
+    monkeypatch.setattr("app.billing_invoices.get_billing_settings", lambda _db: settings)
+    monkeypatch.setattr("app.billing_invoices.billing_today", lambda: date(2026, 9, 22))
+    out = preview_invoice(db, payment_id=2, payment_method="NEFT")
+    assert out["payment_method"] == "NEFT"
+    pdf = render_invoice_pdf({
+        **out,
+        "invoice_number": "INV-00009",
+        "seller": {
+            **out["seller"],
+            "authorised_signatory_name": "Chandan N",
+        },
+    })
+    raw = _pdf_text_blob(pdf)
+    assert b"NEFT" in raw
+    assert b"Authorised Signatory" in raw
+    assert b"Chandan N" in raw
+
+
+def test_preview_manual_invoice_uses_catalog_and_mode(monkeypatch):
+    payment = _verified_payment()
+    company = payment.company
+    settings = _settings()
+    db = MagicMock()
+    monkeypatch.setattr("app.billing_invoices._get_company_for_manual_invoice", lambda _db, _id: company)
+    monkeypatch.setattr("app.billing_invoices.get_billing_settings", lambda _db: settings)
+    monkeypatch.setattr("app.billing_invoices.billing_today", lambda: date(2026, 10, 1))
+    monkeypatch.setattr(
+        "app.billing_invoices.quote_payment",
+        lambda _db, **kwargs: {
+            "module_key": "fir",
+            "module_label": "FIR",
+            "plan_type": "pro",
+            "plan_name": "Pro",
+            "catalog_id": 2,
+            "taxable_amount_inr": 4599,
+            "billing_period": "QUARTERLY",
+            "billing_period_label": "Quarterly",
+            "subscription_duration": "3 Months",
+        },
+    )
+    out = preview_manual_invoice(
+        db,
+        company_id=1,
+        plan_type="pro",
+        billing_period="QUARTERLY",
+        payment_method="RTGS",
+    )
+    assert out["payment_method"] == "RTGS"
+    assert out["plan_name"] == "Pro"
+    assert out["billing_period"] == "QUARTERLY"
+    assert out["taxable_amount"] == 4599.0
+    assert out["subscription_start_date"] == "2026-10-01"
+    assert out["subscription_end_date"] == "2026-12-30"
