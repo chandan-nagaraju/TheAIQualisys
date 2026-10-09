@@ -134,11 +134,45 @@ def sync_sqlite_to_postgres(
     cc_cols = _sqlite_table_columns(conn, "customer_complaint_parameters")
     mg_cols = _sqlite_table_columns(conn, "material_grade")
     sc_cols = _sqlite_table_columns(conn, "surface_coating_master")
-    cust_cols = _sqlite_table_columns(conn, "Customers")
     settings_cols = _sqlite_table_columns(conn, "Settings")
     wh_parts, args_parts = _pick_sqlite_company_filter(pm_cols, sqlite_company_id)
     sql_parts = f"SELECT * FROM parts_master WHERE {wh_parts} ORDER BY part_no"
     part_rows = conn.execute(sql_parts, args_parts).fetchall()
+
+    # Default FIR customer for legacy parts (parts_v2.customer_id required)
+    default_customer_id = None
+    cust_cols = _sqlite_table_columns(conn, "Customers")
+    if cust_cols and "vendor_code" in cust_cols and "name" in cust_cols:
+        wh_cust, args_cust = _pick_sqlite_company_filter(cust_cols, sqlite_company_id)
+        cust_rows_early = conn.execute(
+            f"SELECT vendor_code, name FROM Customers WHERE {wh_cust} ORDER BY id",
+            args_cust,
+        ).fetchall()
+        for row in cust_rows_early:
+            vendor_code = str(row["vendor_code"] or "").strip()
+            name = str(row["name"] or "").strip()
+            if not vendor_code or not name:
+                continue
+            existing = pg.execute(
+                select(Customer).where(
+                    Customer.company_id == target_cid,
+                    Customer.vendor_code == vendor_code,
+                )
+            ).scalar_one_or_none()
+            if existing:
+                existing.name = name
+            else:
+                pg.add(Customer(company_id=target_cid, vendor_code=vendor_code, name=name))
+        pg.flush()
+    fc = pg.execute(select(Customer.id).where(Customer.company_id == target_cid).order_by(Customer.id)).scalars().first()
+    if fc is None:
+        pg.add(Customer(company_id=target_cid, vendor_code="IMPORT", name="Imported parts"))
+        pg.flush()
+        default_customer_id = pg.execute(
+            select(Customer.id).where(Customer.company_id == target_cid).order_by(Customer.id)
+        ).scalars().first()
+    else:
+        default_customer_id = fc
     seen = len(part_rows)
 
     parts_upserted = 0
@@ -158,6 +192,7 @@ def sync_sqlite_to_postgres(
         existing = pg.execute(
             select(PartV2).where(
                 PartV2.company_id == target_cid,
+                PartV2.customer_id == default_customer_id,
                 PartV2.part_no == part_no,
             )
         ).scalar_one_or_none()
@@ -169,6 +204,7 @@ def sync_sqlite_to_postgres(
         else:
             pg_part = PartV2(
                 company_id=target_cid,
+                customer_id=default_customer_id,
                 part_no=part_no,
                 drawing_rev=drawing_rev,
                 description=description,
@@ -294,29 +330,7 @@ def sync_sqlite_to_postgres(
                     )
                     coatings_written += 1
 
-    customers_upserted = 0
-    if cust_cols and "vendor_code" in cust_cols and "name" in cust_cols:
-        wh_cust, args_cust = _pick_sqlite_company_filter(cust_cols, sqlite_company_id)
-        cust_rows = conn.execute(
-            f"SELECT vendor_code, name FROM Customers WHERE {wh_cust} ORDER BY id",
-            args_cust,
-        ).fetchall()
-        for row in cust_rows:
-            vendor_code = str(row["vendor_code"] or "").strip()
-            name = str(row["name"] or "").strip()
-            if not vendor_code or not name:
-                continue
-            existing = pg.execute(
-                select(Customer).where(
-                    Customer.company_id == target_cid,
-                    Customer.vendor_code == vendor_code,
-                )
-            ).scalar_one_or_none()
-            if existing:
-                existing.name = name
-            else:
-                pg.add(Customer(company_id=target_cid, vendor_code=vendor_code, name=name))
-            customers_upserted += 1
+    customers_upserted = 0  # synced earlier for default_customer_id
 
     settings_written = 0
     if settings_cols:
