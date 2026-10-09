@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pandas as pd
 
@@ -103,6 +104,9 @@ def test_thread_sizes_and_designations():
     assert normalize_part_master_moi("BOLT", "M8X1.25", None, "DVC") == "TPG"
     assert normalize_part_master_moi("Boult", "M8", None, "Vernier Caliper") == "TPG"
     assert expected_moi_from_specification("Boult", "M8x1.25x35") == "TPG"
+    assert normalize_part_master_moi("THREAD SIZE", "M14 X1.5", None, "TRG") == "TRG"
+    assert normalize_part_master_moi("THREAD SIZE", "M14X1.5", None, "Thread Ring Gauge") == "TRG"
+    assert normalize_part_master_moi("THREAD SIZE", "M14 X1.5", None, "TG") == "TPG"
 
 
 def test_excel_import_applies_rules():
@@ -139,5 +143,14 @@ def test_preserve_user_part_master_moi_only_canonicalizes_height_gauge_aliases()
     assert preserve_user_part_master_moi("HG") == "DHG"
     assert preserve_user_part_master_moi("DVC") == "DVC"
     assert preserve_user_part_master_moi("TPG") == "TPG"
+    assert preserve_user_part_master_moi("TRG") == "TRG"
+
+
+def test_fir_runtime_js_treats_trg_as_ok_only_method():
+    js = (Path(__file__).resolve().parents[1] / "static" / "fir_preview_runtime.js").read_text()
+    assert "function firIsThreadRingGaugeMethod" in js
+    assert 'u === "TRG"' in js
+    assert "firIsThreadGaugeMethod(raw)" in js
+    assert "firIsThreadGaugeMethod(methodText)" in js
     assert preserve_user_part_master_moi("Parallel Gauge") == "Parallel Gauge"
     assert preserve_user_part_master_moi("") is None

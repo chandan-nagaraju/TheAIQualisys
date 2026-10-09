@@ -170,6 +170,8 @@ def _standardize_moi_name(raw: str | None) -> str | None:
     if s in {"DFT", "DFT METER", "DFT METRE"} or (s.startswith("DFT ") and "METER" in s):
         return "DFT METER"
 
+    if s in {"TRG"} or "THREAD RING" in s:
+        return "TRG"
     if re.match(r"^(?:M(?:6|8|10|12)\s*)?(?:TG|TPG)$", s):
         return "TPG"
     if s in {"TG", "THREAD PLUG GAUGE", "THREAD PLUG GUAGE", "THREAD GAUGE", "THREAD GUAGE"}:
@@ -216,6 +218,7 @@ def _standardize_moi_name(raw: str | None) -> str | None:
 
     if s in {
         "TPG",
+        "TRG",
         "DVC",
         "DMM",
         "RG",
@@ -327,6 +330,8 @@ def normalize_part_master_moi(
 
     expected = expected_moi_from_specification(parameter, specification)
     if expected:
+        if expected == "TPG" and _standardize_moi_name(raw_moi) == "TRG":
+            return "TRG"
         return expected
 
     standardized = _standardize_moi_name(raw_moi)

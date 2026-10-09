@@ -226,6 +226,24 @@
   }
 
   /**
+   * Thread ring gauge — TRG or full phrase (case-insensitive).
+   * Go / no-go for external threads; measured values and remarks are OK only.
+   */
+  function firIsThreadRingGaugeMethod(raw) {
+    var u = String(raw || "").trim().replace(/\s+/g, " ").toUpperCase();
+    if (u === "TRG") return true;
+    if (u === "THREAD RING GAUGE") return true;
+    var letters = String(raw || "").replace(/[^A-Za-z]/g, "").toUpperCase();
+    if (letters.indexOf("THREADRINGGAUGE") !== -1) return true;
+    if (letters.indexOf("HREADRINGGAUG") !== -1) return true;
+    return false;
+  }
+
+  function firIsThreadGaugeMethod(raw) {
+    return firIsThreadPlugGaugeMethod(raw) || firIsThreadRingGaugeMethod(raw);
+  }
+
+  /**
    * Instruments that read a numeric size (mm, R, °) — autofill uses specification, not OK.
    * Checked before pass/fail gauge rules so "Vernier height gauge" stays dimensional.
    */
@@ -252,7 +270,7 @@
     if (firIsDimensionalMeasuringMethod(raw)) return false;
     var u = String(raw || "").trim().toUpperCase();
     if (!u) return false;
-    if (/^FG$|PARALLEL\s*GAU|PERPEND(?:ICULAR|IVULAR)?\s*GAU|SLIP\s*GAU|FEELER|WELD\s*FILLET|SNAP\s*GAU|RING\s*GAU|PLUG\s*GAU|GO\s*NO\s*GO|GO\/NO\s*GO/.test(u)) {
+    if (/^FG$|^TRG$|^TPG$|PARALLEL\s*GAU|PERPEND(?:ICULAR|IVULAR)?\s*GAU|SLIP\s*GAU|FEELER|WELD\s*FILLET|SNAP\s*GAU|RING\s*GAU|PLUG\s*GAU|GO\s*NO\s*GO|GO\/NO\s*GO/.test(u)) {
       return true;
     }
     return /\bGAUG(E)?\b/.test(u) || u.indexOf("GAUGE") !== -1 || u.indexOf("GAUG") !== -1;
@@ -522,14 +540,14 @@
     return (
       firIsVisualMethod(raw) ||
       firIsQrScannerMethod(raw) ||
-      firIsThreadPlugGaugeMethod(raw) ||
+      firIsThreadGaugeMethod(raw) ||
       firIsPassFailGaugeMethod(raw)
     );
   }
 
   /**
    * Metric thread / bolt designation — M8, M6X1, M8X1.25, M8X1.25X35 (size × pitch × length).
-   * Checked with thread plug gauge (TPG): measured values are OK only.
+   * Checked with TPG or TRG (thread plug / ring gauge): measured values are OK only.
    */
   function firIsMetricThreadSpecification(specRaw) {
     var s = String(specRaw || "")
@@ -1484,7 +1502,7 @@
     var methodText = (methodEl.value || "").trim();
     var resolved = firResolveRowMeasuredContext(paramText, spec, methodText);
     if (resolved.mode === "qualitative") {
-      if (firIsMetricThreadSpecification(spec)) {
+      if (firIsMetricThreadSpecification(spec) && !firIsThreadGaugeMethod(methodText)) {
         methodEl.value = "TPG";
       }
       firFillQualitativeMeasuredRow(tr);

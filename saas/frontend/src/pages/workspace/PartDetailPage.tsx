@@ -141,7 +141,7 @@ function looksLikeCoatingInspectionMethod(x: string): boolean {
   if (!t) return false;
   const u = t.toUpperCase();
   if (u === "VISUAL" || u.startsWith("VISUAL ")) return true;
-  return /^(DVC|DHG|DHI|RG|R\.G\.?|MM|CMM|UT|MPI|DFT|DFT\s*METER)$/i.test(t);
+  return /^(DVC|DHG|DHI|RG|R\.G\.?|MM|CMM|UT|MPI|DFT|DFT\s*METER|TPG|TRG)$/i.test(t);
 }
 
 /** One pasted line for Section D: tolerate 3 Excel columns (Parameter, Specification, Method) and single-cell colour+process text. */
