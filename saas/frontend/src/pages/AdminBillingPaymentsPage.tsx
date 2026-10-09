@@ -112,6 +112,7 @@ export default function AdminBillingPaymentsPage() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     if (!localStorage.getItem("fir_admin_token")) {
@@ -131,7 +132,7 @@ export default function AdminBillingPaymentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [nav]);
+  }, [nav, reloadTick]);
 
   const needle = norm(q);
   const rows = useMemo(() => {
@@ -161,7 +162,18 @@ export default function AdminBillingPaymentsPage() {
       title="Payment Verification"
       description="Review and verify customer payments before activating their subscription and generating an invoice."
     >
-      {err && <p className="text-sm text-red-400">{err}</p>}
+      {err && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <p className="text-sm text-red-400">{err}</p>
+          <button
+            type="button"
+            className="shrink-0 rounded-lg border border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-200 hover:bg-slate-800"
+            onClick={() => setReloadTick((n) => n + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat label="Pending Verification" value={data?.pending_count ?? 0} tone="pending" />

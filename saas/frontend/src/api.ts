@@ -50,12 +50,41 @@ function isFetchFailedError(err: unknown): boolean {
 function asNetworkError(path: string, err: unknown): Error {
   if (isFetchFailedError(err)) {
     const url = apiUrl(path);
-    const origin = typeof window !== "undefined" ? window.location.origin : "your Vercel origin";
+    const origin = typeof window !== "undefined" ? window.location.origin : "your app origin";
     return new Error(
-      `Cannot reach the API (${url}). This is often a temporary network glitch (try again), CORS if the browser console shows a CORS error (ensure Railway CORS_ORIGINS or PUBLIC_APP_URL includes ${origin} — we also add the apex/www pair when possible), a wrong VITE_API_URL in the frontend build, or the API being unreachable. For large ZIP jobs, keep this tab in the foreground until the download starts.`,
+      `Cannot reach the API (${url}). Retry in a few seconds. If the browser console shows a CORS error, Railway CORS_ORIGINS or PUBLIC_APP_URL must include ${origin}.`,
     );
   }
   return err instanceof Error ? err : new Error(String(err));
+}
+
+function requestHeaders(kind: TokenKind, extra?: HeadersInit, body?: BodyInit | null): HeadersInit {
+  const headers: Record<string, string> = { ...(authHeader(kind) as Record<string, string>) };
+  if (extra) {
+    new Headers(extra).forEach((value, key) => {
+      headers[key] = value;
+    });
+  }
+  const hasBody = body != null && body !== "";
+  if (hasBody && !Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) {
+    headers["Content-Type"] = "application/json";
+  }
+  return headers;
+}
+
+async function fetchWithRetry(path: string, init: RequestInit): Promise<Response> {
+  const url = apiUrl(path);
+  let last: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      last = e;
+      if (!isFetchFailedError(e) || attempt === 2) throw asNetworkError(path, e);
+      await delay(350 * 2 ** attempt);
+    }
+  }
+  throw asNetworkError(path, last);
 }
 
 export async function apiFetch<T>(
@@ -66,13 +95,9 @@ export async function apiFetch<T>(
   const { token: _t, ...rest } = opts;
   let res: Response;
   try {
-    res = await fetch(apiUrl(path), {
+    res = await fetchWithRetry(path, {
       ...rest,
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeader(tokenKind),
-        ...(rest.headers || {}),
-      },
+      headers: requestHeaders(tokenKind, rest.headers, rest.body),
     });
   } catch (e) {
     throw asNetworkError(path, e);
