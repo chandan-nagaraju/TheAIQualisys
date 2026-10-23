@@ -61,6 +61,7 @@ _SPEC_VISUAL_PARAM = re.compile(
     re.I,
 )
 _QR_CODE_PARAM = re.compile(r"\bQR\s*CODE\b", re.I)
+_PAINT_PEEL_PARAM = re.compile(r"\bPAINT\s*PEEL(?:\s*OFF)?\b|\bPEEL\s*OFF\b", re.I)
 _FLATNESS_PARAM = re.compile(r"\b(?:FLATNESS|FLATENESS)\b", re.I)
 _PARALLEL_PARAM = re.compile(r"\bPARALLEL(?:ISM)?\b", re.I)
 _PERPENDICULARITY_PARAM = re.compile(
@@ -72,6 +73,11 @@ _PERPENDICULARITY_PARAM = re.compile(
 def is_qr_code_parameter(parameter: str | None) -> bool:
     """True when parameter denotes QR code verification (e.g. QR code MISS MATCH)."""
     return bool(_QR_CODE_PARAM.search(_norm_key(parameter)))
+
+
+def is_paint_peel_off_parameter(parameter: str | None) -> bool:
+    """True when parameter is paint peel off (adhesion test, not visual)."""
+    return bool(_PAINT_PEEL_PARAM.search(_norm_key(parameter)))
 
 
 def is_flatness_parameter(parameter: str | None) -> bool:
@@ -207,6 +213,9 @@ def _standardize_moi_name(raw: str | None) -> str | None:
     if s in {"QRS", "QR SCAN", "QR SCANNER"} or (s.startswith("QR") and "SCAN" in s):
         return "QR SCANNER"
 
+    if s in {"ADHESION", "ADHESION TEST"} or "ADHESION" in s:
+        return "Adhesion test"
+
     if "FEELER" in s or s == "FG":
         return "Feeler gauge (FG)"
 
@@ -229,6 +238,7 @@ def _standardize_moi_name(raw: str | None) -> str | None:
         "CMM",
         "CG",
         "QR SCANNER",
+        "Adhesion test",
         "Feeler gauge (FG)",
         "FG",
         "PARALLEL GAUGE",
@@ -253,6 +263,9 @@ def expected_moi_from_specification(
 
     if is_qr_code_parameter(parameter):
         return "QR SCANNER"
+
+    if is_paint_peel_off_parameter(parameter):
+        return "Adhesion test"
 
     gdt_moi = moi_for_gdt_shop_gauge_parameter(parameter, None)
     if gdt_moi:
@@ -312,6 +325,9 @@ def normalize_part_master_moi(
     if is_qr_code_parameter(parameter):
         return "QR SCANNER"
 
+    if is_paint_peel_off_parameter(parameter):
+        return "Adhesion test"
+
     gdt_moi = moi_for_gdt_shop_gauge_parameter(parameter, raw_moi)
     if gdt_moi:
         return gdt_moi
@@ -332,6 +348,8 @@ def normalize_part_master_moi(
     if expected:
         if expected == "TPG" and _standardize_moi_name(raw_moi) == "TRG":
             return "TRG"
+        if expected == "VIS" and _standardize_moi_name(raw_moi) == "Adhesion test":
+            return "Adhesion test"
         return expected
 
     standardized = _standardize_moi_name(raw_moi)

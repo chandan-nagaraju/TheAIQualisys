@@ -141,6 +141,7 @@ function looksLikeCoatingInspectionMethod(x: string): boolean {
   if (!t) return false;
   const u = t.toUpperCase();
   if (u === "VISUAL" || u.startsWith("VISUAL ")) return true;
+  if (u === "ADHESION" || u === "ADHESION TEST" || u.includes("ADHESION")) return true;
   return /^(DVC|DHG|DHI|RG|R\.G\.?|MM|CMM|UT|MPI|DFT|DFT\s*METER|TPG|TRG)$/i.test(t);
 }
 

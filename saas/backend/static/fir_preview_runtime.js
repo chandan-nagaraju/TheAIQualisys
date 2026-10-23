@@ -146,6 +146,18 @@
     return /\bNOT\s+ALLOWED\b|\bNOT\s+PERMITTED\b|\bNO\s+DEFECT\b|\bFREE\s+FROM\b/.test(s);
   }
 
+  /** Paint peel off — shop adhesion test; measured values and remarks are OK only. */
+  function firIsPaintPeelOffParameter(paramRaw) {
+    return /\bPAINT\s*PEEL(?:\s*OFF)?\b|\bPEEL\s*OFF\b/i.test(String(paramRaw || ""));
+  }
+
+  function firIsAdhesionTestMethod(raw) {
+    var u = String(raw || "").trim().replace(/\s+/g, " ").toUpperCase();
+    if (!u) return false;
+    if (u === "ADHESION" || u === "ADHESION TEST") return true;
+    return /\bADHESION\b/.test(u);
+  }
+
   /** QR code verification — parameter contains "QR code"; measured values are OK only. */
   function firIsQrCodeParameter(paramRaw) {
     return /\bQR\s*CODE\b/i.test(String(paramRaw || ""));
@@ -541,6 +553,7 @@
       firIsVisualMethod(raw) ||
       firIsQrScannerMethod(raw) ||
       firIsThreadGaugeMethod(raw) ||
+      firIsAdhesionTestMethod(raw) ||
       firIsPassFailGaugeMethod(raw)
     );
   }
@@ -570,6 +583,7 @@
     var param = String(paramRaw || "").trim();
     if (firRowIsMillipore(param, method)) return false;
     if (firIsOkOnlyInspectionMethod(method)) return true;
+    if (firIsPaintPeelOffParameter(param) || firIsAdhesionTestMethod(method)) return true;
     if (firIsQrCodeParameter(param) || firIsQrScannerMethod(method)) return true;
     if (firGdtParameterUsesQualitativeMeasured(param, method)) return true;
     if (firIsFeelerGaugeMethod(method) || firIsParallelGaugeMethod(method) || firIsPerpendicularGaugeMethod(method)) return true;
@@ -1504,6 +1518,9 @@
     if (resolved.mode === "qualitative") {
       if (firIsMetricThreadSpecification(spec) && !firIsThreadGaugeMethod(methodText)) {
         methodEl.value = "TPG";
+      }
+      if (firIsPaintPeelOffParameter(paramText) && !firIsAdhesionTestMethod(methodText)) {
+        methodEl.value = "Adhesion test";
       }
       firFillQualitativeMeasuredRow(tr);
       return;

@@ -429,6 +429,7 @@ _INSPECTION_METHOD_HINTS = (
     "ring",
     "height",
     "visual",
+    "adhesion",
     "go no go",
     "thread",
     "projector",

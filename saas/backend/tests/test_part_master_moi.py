@@ -48,6 +48,18 @@ def test_auto_correct_overrides_raw_moi():
     assert normalize_part_master_moi("RUST/DENT & DAMAGES/", "NOT ALLOWED", None, "Visual") == "VIS"
 
 
+def test_paint_peel_off_maps_to_adhesion_test_not_visual():
+    from app.part_master_moi import is_paint_peel_off_parameter
+
+    assert is_paint_peel_off_parameter("paint peel off")
+    assert is_paint_peel_off_parameter("PAINT PEEL OFF")
+    assert normalize_part_master_moi("paint peel off", "not allowed", None, "VISUAL") == "Adhesion test"
+    assert normalize_part_master_moi("paint peel off", "Not Allowed", None, "adhesion test") == "Adhesion test"
+    assert normalize_part_master_moi("paint peel off", "not allowed", None, None) == "Adhesion test"
+    assert expected_moi_from_specification("paint peel off", "not allowed") == "Adhesion test"
+    assert normalize_part_master_moi("PAINT SAG", "Not Allowed", None, "adhesion test") == "Adhesion test"
+
+
 def test_qr_code_parameter_maps_to_qr_scanner():
     from app.part_master_moi import is_qr_code_parameter
 
@@ -144,6 +156,8 @@ def test_preserve_user_part_master_moi_only_canonicalizes_height_gauge_aliases()
     assert preserve_user_part_master_moi("DVC") == "DVC"
     assert preserve_user_part_master_moi("TPG") == "TPG"
     assert preserve_user_part_master_moi("TRG") == "TRG"
+    assert preserve_user_part_master_moi("Parallel Gauge") == "Parallel Gauge"
+    assert preserve_user_part_master_moi("") is None
 
 
 def test_fir_runtime_js_treats_trg_as_ok_only_method():
@@ -152,5 +166,11 @@ def test_fir_runtime_js_treats_trg_as_ok_only_method():
     assert 'u === "TRG"' in js
     assert "firIsThreadGaugeMethod(raw)" in js
     assert "firIsThreadGaugeMethod(methodText)" in js
-    assert preserve_user_part_master_moi("Parallel Gauge") == "Parallel Gauge"
-    assert preserve_user_part_master_moi("") is None
+
+
+def test_fir_runtime_js_treats_adhesion_test_as_ok_only_method():
+    js = (Path(__file__).resolve().parents[1] / "static" / "fir_preview_runtime.js").read_text()
+    assert "function firIsPaintPeelOffParameter" in js
+    assert "function firIsAdhesionTestMethod" in js
+    assert "firIsAdhesionTestMethod(raw)" in js
+    assert "firIsPaintPeelOffParameter(param)" in js
