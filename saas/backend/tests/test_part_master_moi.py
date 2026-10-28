@@ -176,5 +176,6 @@ def test_fir_runtime_js_treats_adhesion_test_as_ok_only_method():
     assert "firIsPaintPeelOffParameter(param)" in js
     assert "FIR_ADHESION_REMARKS" in js
     assert "100% verified" in js
+    assert "textarea rows=\"1\" class=\"remarks-value quali-font fir-wrap-cell\"" in js
     assert "100% inspection done and no peel off found" not in js
     assert "fir-adhesion-merged" not in js

@@ -332,14 +332,30 @@
   }
   .quali-font,
   input.actual-value,
-  input.remarks-value {
+  input.remarks-value,
+  textarea.remarks-value {
     font-family: 'Quali_1', sans-serif;
     line-height: 1.5;
   }
   .data-table input.actual-value,
-  .data-table input.remarks-value {
+  .data-table input.remarks-value,
+  .data-table textarea.remarks-value {
     font-size: 25px;
     min-height: 0;
+  }
+  .data-table textarea.remarks-value {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    font-family: 'Quali_1', sans-serif !important;
+    font-size: 25px !important;
+    line-height: 1.15;
+    text-align: center;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    overflow: hidden;
   }
   td.fir-millipore-merged {
     text-align: left !important;
@@ -425,8 +441,10 @@
   }
   body.generating-pdf.fir-fit-one-page #dimension-table input.actual-value,
   body.generating-pdf.fir-fit-one-page #dimension-table input.remarks-value,
+  body.generating-pdf.fir-fit-one-page #dimension-table textarea.remarks-value,
   body.generating-pdf.fir-fit-one-page #coating-table input.actual-value,
-  body.generating-pdf.fir-fit-one-page #coating-table input.remarks-value {
+  body.generating-pdf.fir-fit-one-page #coating-table input.remarks-value,
+  body.generating-pdf.fir-fit-one-page #coating-table textarea.remarks-value {
     font-size: 16px;
     line-height: 1.05;
     padding: 0;
@@ -545,7 +563,7 @@
   <div id="reportRoot"><p id="firPaintHint" style="text-align:center;color:#444;padding:32px;font-family:Calibri,Arial,sans-serif;">Loading inspection report…</p></div>
 
   <script type="application/json" id="fir-preview-boot">{{ fir_boot | tojson }}</script>
-  <script src="{{ api_static_base }}fir_preview_runtime.js?v=adhesion-verified"></script>
+  <script src="{{ api_static_base }}fir_preview_runtime.js?v=adhesion-remarks-wrap"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </body>
 </html>

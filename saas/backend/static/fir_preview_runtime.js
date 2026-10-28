@@ -671,7 +671,7 @@
     firUnmergeAdhesionRow(tr);
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
-    var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
+    var remarksEl = firQueryRemarksEl(cells[10]);
     if (!remarksEl) return;
     var methodEl = firQueryMethodInput(cells[4]);
     var paramEl = cells[1].querySelector("textarea") || cells[1].querySelector("input");
@@ -694,6 +694,7 @@
       inp.value = ci < 5 + nActiveQ ? "OK" : "";
     }
     remarksEl.value = firRowIsAdhesionTest(paramRaw, methodRaw) ? FIR_ADHESION_REMARKS : "OK";
+    firAutosizeTextarea(remarksEl);
     updateStatusButtons();
   }
 
@@ -750,6 +751,11 @@
   function firQueryMethodInput(container) {
     if (!container) return null;
     return container.querySelector("textarea.method-input, input.method-input");
+  }
+
+  function firQueryRemarksEl(container) {
+    if (!container) return null;
+    return container.querySelector("textarea.remarks-value, input.remarks-value");
   }
 
   function firAttrUrl(u) {
@@ -829,7 +835,7 @@
       </thead><tbody>`;
 
     const actualInput = '<input type="text" class="actual-value quali-font">';
-    const remarksInput = '<input type="text" class="remarks-value quali-font">';
+    const remarksInput = '<textarea rows="1" class="remarks-value quali-font fir-wrap-cell"></textarea>';
     const wrapCell = (val) => `<textarea rows="1" class="fir-wrap-cell">${esc(val || '')}</textarea>`;
     const shortInput = (val) => `<input type="text" value="${esc(val || '')}">`;
     const methodInput = (val) => `<textarea rows="1" class="method-input fir-wrap-cell">${esc(val || '')}</textarea>`;
@@ -868,7 +874,7 @@
 
     {
         const actualInput = '<input type="text" class="actual-value quali-font">';
-        const remarksInput = '<input type="text" class="remarks-value quali-font">';
+        const remarksInput = '<textarea rows="1" class="remarks-value quali-font fir-wrap-cell"></textarea>';
         let bHtml = '<table class="data-table" id="ccp-table"><thead><tr class="fir-section-head-row"><th colspan="11" class="section-title">B) Customer End Complaints Parameters & Check Points</th></tr><tr><th rowspan="2" style="width:5%;">Sl No</th><th rowspan="2" style="width:15%;">Parameter</th><th rowspan="2" style="width:15%;">Specification</th><th rowspan="2" style="width:5%;">Special Char.</th><th rowspan="2" style="width:10%;">Method</th><th colspan="5" style="width:41%;" class="fir-col-head">Actual Measured Values</th><th rowspan="2" style="width:8%;">Remarks</th></tr><tr><th class="fir-col-head-num">1</th><th class="fir-col-head-num">2</th><th class="fir-col-head-num">3</th><th class="fir-col-head-num">4</th><th class="fir-col-head-num">5</th></tr></thead><tbody>';
         var ccpRows = (FIR_CCP_DATA || []).filter(firIsRealCcpRow);
         if (ccpRows.length > 0) {
@@ -1008,7 +1014,7 @@
       const acceptedEl = document.getElementById('status-accepted');
       const rejectedEl = document.getElementById('status-rejected');
       if (!acceptedEl || !rejectedEl) return;
-      const remarksInputs = document.querySelectorAll('input.remarks-value');
+      const remarksInputs = document.querySelectorAll('.remarks-value');
       let allOk = true;
       let hasRemarks = false;
       remarksInputs.forEach(function(inp) {
@@ -1435,7 +1441,7 @@
       if (mCells.length < 7) return;
       var specElM = mCells[2].querySelector("textarea") || mCells[2].querySelector("input");
       var methodElM = firQueryMethodInput(mCells[4]);
-      var remarksElM = mCells[6].querySelector("input.remarks-value") || mCells[6].querySelector("input");
+      var remarksElM = firQueryRemarksEl(mCells[6]);
       var measuredElM = mCells[5].querySelector("input.actual-value") || mCells[5].querySelector("input");
       if (!specElM || !methodElM || !remarksElM || !measuredElM) return;
       var mp = firParseMilliporeSpec((specElM.value || "").trim());
@@ -1464,7 +1470,7 @@
     if (cells.length < 11) return;
     var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
     var methodEl = firQueryMethodInput(cells[4]);
-    var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
+    var remarksEl = firQueryRemarksEl(cells[10]);
     if (!specEl || !methodEl || !remarksEl) return;
     var methodRaw = (methodEl.value || "").trim();
     var paramEl = cells[1].querySelector("textarea") || cells[1].querySelector("input");
@@ -1522,7 +1528,7 @@
       if (mCells.length < 7) return;
       var specElMp = mCells[2].querySelector("textarea") || mCells[2].querySelector("input");
       var methodElMp = firQueryMethodInput(mCells[4]);
-      var remarksElMp = mCells[6].querySelector("input.remarks-value") || mCells[6].querySelector("input");
+      var remarksElMp = firQueryRemarksEl(mCells[6]);
       var measuredElMp = mCells[5].querySelector("input.actual-value") || mCells[5].querySelector("input");
       if (!specElMp || !methodElMp || !remarksElMp || !measuredElMp) return;
       var resolvedMp = firResolveRowMeasuredContext(
@@ -1541,7 +1547,7 @@
     if (cells.length < 11) return;
     var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
     var methodEl = firQueryMethodInput(cells[4]);
-    var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
+    var remarksEl = firQueryRemarksEl(cells[10]);
     if (!specEl || !methodEl || !remarksEl) return;
     var actualInputs = [];
     for (var ci = 5; ci <= 9; ci++) {
