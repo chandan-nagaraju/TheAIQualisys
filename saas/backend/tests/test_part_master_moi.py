@@ -174,6 +174,7 @@ def test_fir_runtime_js_treats_adhesion_test_as_ok_only_method():
     assert "function firIsAdhesionTestMethod" in js
     assert "firIsAdhesionTestMethod(raw)" in js
     assert "firIsPaintPeelOffParameter(param)" in js
-    assert "function firFillAdhesionMeasuredRow" in js
-    assert "100% inspection done and no peel off found" in js
-    assert "fir-adhesion-merged" in js
+    assert "FIR_ADHESION_REMARKS" in js
+    assert "100% verified" in js
+    assert "100% inspection done and no peel off found" not in js
+    assert "fir-adhesion-merged" not in js
