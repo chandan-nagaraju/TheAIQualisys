@@ -100,8 +100,8 @@
       table.querySelectorAll("tbody tr").forEach(function(tr) {
         if (firIsNoCpiRow(tr)) return;
         firSyncMilliporeRowLayout(tr);
-        if (firIsMilliporeRow(tr)) {
-          var mpTd = tr.querySelector("td.fir-millipore-merged");
+        if (firIsMilliporeRow(tr) || firIsAdhesionRow(tr)) {
+          var mpTd = tr.querySelector("td.fir-millipore-merged, td.fir-adhesion-merged");
           if (mpTd) mpTd.classList.remove("fir-measured-inactive");
           var mpInp = tr.querySelector("input.actual-value");
           if (mpInp) mpInp.disabled = false;
@@ -156,6 +156,12 @@
     if (!u) return false;
     if (u === "ADHESION" || u === "ADHESION TEST") return true;
     return /\bADHESION\b/.test(u);
+  }
+
+  var FIR_ADHESION_PASS_TEXT = "100% inspection done and no peel off found";
+
+  function firRowIsAdhesionTest(paramRaw, methodRaw) {
+    return firIsAdhesionTestMethod(methodRaw) || firIsPaintPeelOffParameter(paramRaw);
   }
 
   /** QR code verification — parameter contains "QR code"; measured values are OK only. */
@@ -463,6 +469,10 @@
     return !!(tr && tr.classList && tr.classList.contains("fir-millipore-row"));
   }
 
+  function firIsAdhesionRow(tr) {
+    return !!(tr && tr.classList && tr.classList.contains("fir-adhesion-row"));
+  }
+
   function firIsNoCpiRow(tr) {
     return !!(tr && tr.classList && tr.classList.contains("fir-no-cpi-row"));
   }
@@ -475,6 +485,7 @@
 
   function firApplyMilliporeRowLayout(tr) {
     if (!tr || firIsMilliporeRow(tr)) return;
+    if (firIsAdhesionRow(tr)) firUnmergeAdhesionRow(tr);
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length !== 11) return;
     var keepVal = "";
@@ -523,6 +534,58 @@
     tr.classList.remove("fir-millipore-row");
   }
 
+  function firApplyAdhesionRowLayout(tr) {
+    if (!tr || firIsAdhesionRow(tr)) return;
+    if (firIsMilliporeRow(tr)) firUnmergeMilliporeRow(tr);
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length !== 11) return;
+    var merged = document.createElement("td");
+    merged.colSpan = 5;
+    merged.className = "fir-adhesion-merged";
+    var inp = document.createElement("input");
+    inp.type = "text";
+    inp.className = "actual-value quali-font adhesion-actual";
+    inp.value = "";
+    merged.appendChild(inp);
+    var remarks = cells[10];
+    for (var ci = 9; ci >= 5; ci--) cells[ci].remove();
+    tr.insertBefore(merged, remarks);
+    tr.classList.add("fir-adhesion-row");
+  }
+
+  function firUnmergeAdhesionRow(tr) {
+    if (!tr || !firIsAdhesionRow(tr)) return;
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length !== 7) return;
+    var merged = cells[5];
+    var remarks = cells[6];
+    merged.remove();
+    for (var i = 0; i < 5; i++) {
+      var td = document.createElement("td");
+      var input = document.createElement("input");
+      input.type = "text";
+      input.className = "actual-value quali-font";
+      td.appendChild(input);
+      tr.insertBefore(td, remarks);
+    }
+    tr.classList.remove("fir-adhesion-row");
+  }
+
+  function firFillAdhesionMeasuredRow(tr) {
+    if (firIsNoCpiRow(tr)) return;
+    firApplyAdhesionRowLayout(tr);
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length < 7) return;
+    var remarksEl = cells[6].querySelector("input.remarks-value") || cells[6].querySelector("input");
+    var measuredEl = cells[5].querySelector("input.actual-value") || cells[5].querySelector("input");
+    var methodEl = firQueryMethodInput(cells[4]);
+    if (!remarksEl || !measuredEl) return;
+    if (methodEl && !firIsAdhesionTestMethod(methodEl.value)) methodEl.value = "Adhesion test";
+    measuredEl.value = FIR_ADHESION_PASS_TEXT;
+    remarksEl.value = "OK";
+    updateStatusButtons();
+  }
+
   function firSyncMilliporeRowLayout(tr) {
     if (!tr || firIsNoCpiRow(tr)) return;
     var cells = tr.querySelectorAll(":scope > td");
@@ -532,9 +595,14 @@
     var param = paramEl ? String(paramEl.value || "").trim() : "";
     var method = methodEl ? String(methodEl.value || "").trim() : "";
     if (firRowIsMillipore(param, method)) {
+      firUnmergeAdhesionRow(tr);
       firApplyMilliporeRowLayout(tr);
+    } else if (firRowIsAdhesionTest(param, method)) {
+      firUnmergeMilliporeRow(tr);
+      firApplyAdhesionRowLayout(tr);
     } else {
       firUnmergeMilliporeRow(tr);
+      firUnmergeAdhesionRow(tr);
     }
   }
 
@@ -636,7 +704,7 @@
   }
 
   function firFillQualitativeMeasuredRow(tr) {
-    if (firIsNoCpiRow(tr) || firIsMilliporeRow(tr)) return;
+    if (firIsNoCpiRow(tr) || firIsMilliporeRow(tr) || firIsAdhesionRow(tr)) return;
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
     var remarksEl = cells[10].querySelector("input.remarks-value") || cells[10].querySelector("input");
@@ -661,7 +729,7 @@
     var root = document.getElementById("reportRoot");
     if (!root) return;
     root.querySelectorAll("#dimension-table tbody tr, #ccp-table tbody tr, #coating-table tbody tr").forEach(function(tr) {
-      if (firIsNoCpiRow(tr) || firIsMilliporeRow(tr)) return;
+      if (firIsNoCpiRow(tr) || firIsMilliporeRow(tr) || firIsAdhesionRow(tr)) return;
       var cells = tr.querySelectorAll(":scope > td");
       if (cells.length < 11) return;
       var mel = firQueryMethodInput(cells[4]);
@@ -1003,8 +1071,9 @@
           if (trM) {
             firSyncMilliporeRowLayout(trM);
             var cellsM = trM.querySelectorAll(":scope > td");
-            if (firIsMilliporeRow(trM)) {
-              firUpdateRowRemarksFromMeasurements(trM);
+            if (firIsMilliporeRow(trM) || firIsAdhesionRow(trM)) {
+              if (firIsAdhesionRow(trM)) firFillAdhesionMeasuredRow(trM);
+              else firUpdateRowRemarksFromMeasurements(trM);
               return;
             }
             var paramElM = cellsM[1] ? (cellsM[1].querySelector("textarea") || cellsM[1].querySelector("input")) : null;
@@ -1036,9 +1105,11 @@
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr = e.target.closest('tr');
           if (tr) {
-            if (firIsMilliporeRow(tr) && e.target.classList.contains('millipore-actual')) {
+            if (firIsAdhesionRow(tr) && e.target.classList.contains('adhesion-actual')) {
+              firFillAdhesionMeasuredRow(tr);
+            } else if (firIsMilliporeRow(tr) && e.target.classList.contains('millipore-actual')) {
               firUpdateRowRemarksFromMeasurements(tr);
-            } else if (!firIsMilliporeRow(tr)) {
+            } else if (!firIsMilliporeRow(tr) && !firIsAdhesionRow(tr)) {
               firUpdateRowRemarksFromMeasurements(tr);
             }
           }
@@ -1051,8 +1122,9 @@
           if (trM2) {
             firSyncMilliporeRowLayout(trM2);
             var cellsM2 = trM2.querySelectorAll(":scope > td");
-            if (firIsMilliporeRow(trM2)) {
-              firUpdateRowRemarksFromMeasurements(trM2);
+            if (firIsMilliporeRow(trM2) || firIsAdhesionRow(trM2)) {
+              if (firIsAdhesionRow(trM2)) firFillAdhesionMeasuredRow(trM2);
+              else firUpdateRowRemarksFromMeasurements(trM2);
               return;
             }
             var paramElM2 = cellsM2[1] ? (cellsM2[1].querySelector("textarea") || cellsM2[1].querySelector("input")) : null;
@@ -1084,9 +1156,11 @@
         if (e.target && e.target.classList && e.target.classList.contains('actual-value')) {
           var tr2 = e.target.closest('tr');
           if (tr2) {
-            if (firIsMilliporeRow(tr2) && e.target.classList.contains('millipore-actual')) {
+            if (firIsAdhesionRow(tr2) && e.target.classList.contains('adhesion-actual')) {
+              firFillAdhesionMeasuredRow(tr2);
+            } else if (firIsMilliporeRow(tr2) && e.target.classList.contains('millipore-actual')) {
               firUpdateRowRemarksFromMeasurements(tr2);
-            } else if (!firIsMilliporeRow(tr2)) {
+            } else if (!firIsMilliporeRow(tr2) && !firIsAdhesionRow(tr2)) {
               firUpdateRowRemarksFromMeasurements(tr2);
             }
           }
@@ -1390,6 +1464,18 @@
   /** Recompute Remarks from spec + filled measured cells (active sample columns only). */
   function firUpdateRowRemarksFromMeasurements(tr) {
     if (!tr || firIsNoCpiRow(tr)) return;
+    if (firIsAdhesionRow(tr)) {
+      firFillAdhesionMeasuredRow(tr);
+      return;
+    }
+    var peekCells = tr.querySelectorAll(":scope > td");
+    if (peekCells.length >= 5) {
+      var peekMethod = firQueryMethodInput(peekCells[4]);
+      if (firRowIsAdhesionTest(firRowTextFromCell(peekCells[1]), peekMethod ? peekMethod.value : "")) {
+        firFillAdhesionMeasuredRow(tr);
+        return;
+      }
+    }
     if (firIsMilliporeRow(tr)) {
       var mCells = tr.querySelectorAll(":scope > td");
       if (mCells.length < 7) return;
@@ -1477,6 +1563,10 @@
   function fillOneRow(tr) {
     if (firIsNoCpiRow(tr)) return;
     firSyncMilliporeRowLayout(tr);
+    if (firIsAdhesionRow(tr)) {
+      firFillAdhesionMeasuredRow(tr);
+      return;
+    }
     if (firIsMilliporeRow(tr)) {
       var mCells = tr.querySelectorAll(":scope > td");
       if (mCells.length < 7) return;

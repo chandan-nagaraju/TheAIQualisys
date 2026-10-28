@@ -341,14 +341,21 @@
     font-size: 25px;
     min-height: 0;
   }
-  td.fir-millipore-merged {
+  td.fir-millipore-merged,
+  td.fir-adhesion-merged {
     text-align: left !important;
   }
   td.fir-millipore-merged input.actual-value,
-  td.fir-millipore-merged input.millipore-actual {
+  td.fir-millipore-merged input.millipore-actual,
+  td.fir-adhesion-merged input.actual-value,
+  td.fir-adhesion-merged input.adhesion-actual {
     text-align: left !important;
     font-size: 25px !important;
     line-height: 1.15;
+  }
+  td.fir-adhesion-merged input.actual-value,
+  td.fir-adhesion-merged input.adhesion-actual {
+    font-size: 16px !important;
   }
   td.fir-no-cpi-merged {
     text-align: center !important;
@@ -433,7 +440,9 @@
   }
   body.generating-pdf.fir-fit-one-page #dimension-table td.fir-millipore-merged input.actual-value,
   body.generating-pdf.fir-fit-one-page #dimension-table td.fir-millipore-merged input.millipore-actual,
-  body.generating-pdf.fir-fit-one-page #coating-table td.fir-millipore-merged input.actual-value {
+  body.generating-pdf.fir-fit-one-page #coating-table td.fir-millipore-merged input.actual-value,
+  body.generating-pdf.fir-fit-one-page #dimension-table td.fir-adhesion-merged input.actual-value,
+  body.generating-pdf.fir-fit-one-page #coating-table td.fir-adhesion-merged input.actual-value {
     font-size: 16px !important;
     line-height: 1.05;
   }
@@ -545,7 +554,7 @@
   <div id="reportRoot"><p id="firPaintHint" style="text-align:center;color:#444;padding:32px;font-family:Calibri,Arial,sans-serif;">Loading inspection report…</p></div>
 
   <script type="application/json" id="fir-preview-boot">{{ fir_boot | tojson }}</script>
-  <script src="{{ api_static_base }}fir_preview_runtime.js?v=adhesion-ok"></script>
+  <script src="{{ api_static_base }}fir_preview_runtime.js?v=adhesion-merge"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </body>
 </html>
