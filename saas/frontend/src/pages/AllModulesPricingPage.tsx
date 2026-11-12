@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
 import { QMS_MODULES } from "../moduleCatalog";
+import { buildUpgradeSearch } from "./upgradeHelpers";
 
 type Plan = {
   plan_type: string;
@@ -65,7 +66,7 @@ export default function AllModulesPricingPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-brand-500/30 bg-gradient-to-br from-brand-950/50 to-slate-900/80 p-6">
-          <h2 className="text-lg font-semibold text-white">FIR Automation</h2>
+          <h2 className="text-lg font-semibold text-white">Final inspection reports</h2>
           <p className="mt-2 text-sm text-slate-400">Usage-based tiers for inspection and reports.</p>
           <div className="mt-6 space-y-4">
             {plans.length === 0 && !err ? (
@@ -77,7 +78,7 @@ export default function AllModulesPricingPage() {
                     <span className="font-medium text-slate-200">{plan.name}</span>
                     <span className="text-lg font-bold text-white">
                       ₹{plan.price_inr.toLocaleString("en-IN")}
-                      <span className="text-sm font-normal text-slate-500">/month</span>
+                      <span className="text-sm font-normal text-slate-500">/mo + 18% GST</span>
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
@@ -85,6 +86,17 @@ export default function AllModulesPricingPage() {
                       ? `${plan.min_invoices}+ invoices / month`
                       : `${plan.min_invoices}–${plan.max_invoices} invoices / month`}
                   </p>
+                  <Link
+                    to={`/upgrade?${buildUpgradeSearch({
+                      moduleKey: "fir",
+                      planName: plan.name,
+                      planType: plan.plan_type,
+                      priceInr: plan.price_inr,
+                    })}`}
+                    className="mt-3 inline-flex min-h-9 items-center justify-center rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+                  >
+                    Buy — pay with UPI QR
+                  </Link>
                 </div>
               ))
             )}
@@ -105,7 +117,7 @@ export default function AllModulesPricingPage() {
                   >
                     <span className="font-medium text-slate-200">{m.title}</span>
                     <span className="text-sm font-semibold text-slate-300">
-                      {row ? `₹${row.monthly_price.toLocaleString("en-IN")}/mo` : "—"}
+                      {row ? `₹${row.monthly_price.toLocaleString("en-IN")}/mo + 18% GST` : "—"}
                     </span>
                   </Link>
                 </li>

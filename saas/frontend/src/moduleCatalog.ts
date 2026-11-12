@@ -28,7 +28,7 @@ export const QMS_MODULES: QmsModuleDef[] = [
     moduleName: "rc2a",
     title: "RC2A",
     shortDescription: "Repeatable corrective action workflows aligned to your QMS.",
-    landingStatus: "development",
+    landingStatus: "available",
     features: ["8D / RCA templates", "Action tracking and sign-off", "Audit trail"],
   },
   {
@@ -36,7 +36,7 @@ export const QMS_MODULES: QmsModuleDef[] = [
     moduleName: "ppap",
     title: "PPAP",
     shortDescription: "Production Part Approval Process packs and submission tracking.",
-    landingStatus: "development",
+    landingStatus: "available",
     features: ["PSW and element checklists", "Document bundling", "Customer submission status"],
   },
   {
@@ -51,4 +51,9 @@ export const QMS_MODULES: QmsModuleDef[] = [
 
 export function getModuleBySlug(slug: string): QmsModuleDef | undefined {
   return QMS_MODULES.find((m) => m.slug === slug);
+}
+
+export function getModuleByModuleName(name: string): QmsModuleDef | undefined {
+  const key = name.trim().toLowerCase();
+  return QMS_MODULES.find((m) => m.moduleName.toLowerCase() === key);
 }

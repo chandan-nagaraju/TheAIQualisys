@@ -6,9 +6,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.deps import get_company_for_user, get_current_company_user, get_db_session
+from app.dates import billing_today
+from app.deps import company_impersonated_by_admin, get_company_for_user, get_current_company_user, get_db_session
 from app.models import CompanyUser
-from app.module_access import SLUG_TO_MODULE, access_state, actions_remaining_trial, utc_today
+from app.module_access import SLUG_TO_MODULE, access_state, actions_remaining_trial
 from app.pricing_catalog import get_pricing_by_module_name
 from app.schemas import BillingModuleRow, BillingOverviewResponse
 from app.subscription_logic import (
@@ -37,8 +38,7 @@ def _company_status(company, today: date) -> str:
 
 
 def _fir_module_status(company, today: date, enable_sub: bool) -> str:
-    if not enable_sub:
-        return "Active"
+    _ = enable_sub # FIR workspace always gated; label matches access only
     if trial_is_valid(company, today):
         return "Trial"
     if subscription_is_active(company, today):
@@ -50,11 +50,12 @@ def _fir_module_status(company, today: date, enable_sub: bool) -> str:
 def billing_overview(
     user: CompanyUser = Depends(get_current_company_user),
     db: Session = Depends(get_db_session),
+    admin_impersonation: bool = Depends(company_impersonated_by_admin),
 ):
     settings = get_settings()
     company = get_company_for_user(user, db)
-    today = date.today()
-    utc = utc_today()
+    today = billing_today()
+    utc = today
 
     inv_combined = count_combined_usage_this_month(db, company.id, today)
     fir_only = count_fir_reports_this_month(db, company.id, today)
@@ -63,13 +64,16 @@ def billing_overview(
 
     ok, sub_msg = can_create_invoice(db, company, enable_subscription=settings.enable_subscription)
     can_ws = can_access_fir_workspace(
-        company, enable_subscription=settings.enable_subscription, today=today
+        company,
+        enable_subscription=settings.enable_subscription,
+        today=today,
+        impersonated_by_admin=admin_impersonation,
     )
 
     modules: list[BillingModuleRow] = [
         BillingModuleRow(
             module_key="fir",
-            display_name="FIR Automation",
+            display_name="Final inspection reports",
             subscription_status=_fir_module_status(company, today, settings.enable_subscription),
             reports_this_month=fir_only,
             combined_usage_this_month=inv_combined,
@@ -120,6 +124,7 @@ def billing_overview(
         company_name=company.company_name,
         vendor_code=company.vendor_code,
         plan_name=str(company.plan_type).replace("_", " ").title(),
+        enable_subscription=settings.enable_subscription,
         company_status=_company_status(company, today),
         trial_end_date=company.trial_end_date,
         subscription_start=company.subscription_start,
