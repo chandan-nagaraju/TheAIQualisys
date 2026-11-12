@@ -582,6 +582,7 @@ class AdminBillingManualInvoiceBody(BaseModel):
     plan_type: str
     billing_period: str
     module_key: str = "fir"
+    invoice_date: str | None = None
 
 
 class AdminBillingInvoiceOut(BaseModel):

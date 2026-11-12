@@ -1026,6 +1026,7 @@ def admin_preview_manual_billing_invoice(
         billing_period=body.billing_period,
         payment_method=body.payment_method,
         module_key=body.module_key or "fir",
+        invoice_date=body.invoice_date,
     )
     data["id"] = 0
     data["invoice_id"] = None
@@ -1049,6 +1050,7 @@ def admin_generate_manual_billing_invoice(
         billing_period=body.billing_period,
         payment_method=body.payment_method,
         module_key=body.module_key or "fir",
+        invoice_date=body.invoice_date,
     )
     db.commit()
     db.refresh(row)

@@ -444,9 +444,12 @@ def generate_invoice(
     payment_id: int,
     settings_app: Settings | None = None,
     payment_method: str | None = None,
+    invoice_date: date | None = None,
 ) -> BillingInvoice:
     preview = preview_invoice(db, payment_id=payment_id, payment_method=payment_method)
     payment = get_billing_payment(db, payment_id)
+    if invoice_date is not None:
+        preview["invoice_date"] = invoice_date.isoformat()
     method = preview.get("payment_method")
     if method and payment.payment_method != method:
         payment.payment_method = method
@@ -499,6 +502,21 @@ def generate_invoice(
     return row
 
 
+def _parse_invoice_date(raw: str | None) -> date | None:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invoice date must be YYYY-MM-DD",
+        )
+
+
 def _get_company_for_manual_invoice(db: Session, company_id: int) -> Company:
     row = db.execute(
         select(Company).options(selectinload(Company.users)).where(Company.id == company_id)
@@ -516,6 +534,7 @@ def preview_manual_invoice(
     billing_period: str,
     payment_method: str,
     module_key: str = "fir",
+    invoice_date: str | None = None,
 ) -> dict[str, Any]:
     company = _get_company_for_manual_invoice(db, company_id)
     settings = get_billing_settings(db)
@@ -535,7 +554,7 @@ def preview_manual_invoice(
         settings=settings,
     )
     user = sorted(company.users, key=lambda u: u.id)[0] if company.users else None
-    start = billing_today()
+    start = _parse_invoice_date(invoice_date) or billing_today()
     end = subscription_end_from_start(start, quote["billing_period"])
     signed = adobe_digital_sign_stamp(settings.authorised_signatory_name, _ist_now())
     return {
@@ -597,17 +616,20 @@ def generate_manual_invoice(
     billing_period: str,
     payment_method: str,
     module_key: str = "fir",
+    invoice_date: str | None = None,
     settings_app: Settings | None = None,
 ) -> BillingInvoice:
-    preview_manual_invoice(
+    preview = preview_manual_invoice(
         db,
         company_id=company_id,
         plan_type=plan_type,
         billing_period=billing_period,
         payment_method=payment_method,
         module_key=module_key,
+        invoice_date=invoice_date,
     )
     company = _get_company_for_manual_invoice(db, company_id)
+    start = date.fromisoformat(preview["invoice_date"])
     payment = create_admin_manual_payment(
         db,
         admin=admin,
@@ -616,8 +638,9 @@ def generate_manual_invoice(
         billing_period_raw=billing_period,
         payment_method_raw=payment_method,
         module_key=module_key or "fir",
+        invoice_date=start,
     )
-    return generate_invoice(db, payment_id=payment.id, settings_app=settings_app)
+    return generate_invoice(db, payment_id=payment.id, settings_app=settings_app, invoice_date=start)
 
 
 def _store_pdf(row: BillingInvoice, pdf_bytes: bytes, app_settings: Settings) -> str | None:

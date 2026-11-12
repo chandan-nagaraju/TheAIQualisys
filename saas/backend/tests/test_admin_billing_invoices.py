@@ -311,6 +311,77 @@ def test_preview_manual_invoice_uses_catalog_and_mode(monkeypatch):
     assert out["billing_period"] == "QUARTERLY"
     assert out["taxable_amount"] == 4599.0
     assert out["subscription_start_date"] == "2026-10-01"
+    assert out["invoice_date"] == "2026-10-01"
+
+
+def test_preview_manual_invoice_uses_selected_invoice_date(monkeypatch):
+    payment = _verified_payment()
+    company = payment.company
+    settings = _settings()
+    db = MagicMock()
+    monkeypatch.setattr("app.billing_invoices._get_company_for_manual_invoice", lambda _db, _id: company)
+    monkeypatch.setattr("app.billing_invoices.get_billing_settings", lambda _db: settings)
+    monkeypatch.setattr("app.billing_invoices.billing_today", lambda: date(2026, 11, 12))
+    monkeypatch.setattr(
+        "app.billing_invoices.quote_payment",
+        lambda _db, **kwargs: {
+            "module_key": "fir",
+            "module_label": "FIR",
+            "plan_type": "enterprise",
+            "plan_name": "Enterprise",
+            "catalog_id": 3,
+            "taxable_amount_inr": 6799,
+            "billing_period": "MONTHLY",
+            "billing_period_label": "Monthly",
+            "subscription_duration": "1 Month",
+        },
+    )
+    out = preview_manual_invoice(
+        db,
+        company_id=1,
+        plan_type="enterprise",
+        billing_period="MONTHLY",
+        payment_method="NEFT",
+        invoice_date="2026-09-01",
+    )
+    assert out["invoice_date"] == "2026-09-01"
+    assert out["subscription_start_date"] == "2026-09-01"
+    assert out["subscription_end_date"] == "2026-10-01"
+
+
+def test_preview_manual_invoice_rejects_invalid_invoice_date(monkeypatch):
+    payment = _verified_payment()
+    company = payment.company
+    settings = _settings()
+    db = MagicMock()
+    monkeypatch.setattr("app.billing_invoices._get_company_for_manual_invoice", lambda _db, _id: company)
+    monkeypatch.setattr("app.billing_invoices.get_billing_settings", lambda _db: settings)
+    monkeypatch.setattr(
+        "app.billing_invoices.quote_payment",
+        lambda _db, **kwargs: {
+            "module_key": "fir",
+            "module_label": "FIR",
+            "plan_type": "enterprise",
+            "plan_name": "Enterprise",
+            "catalog_id": 3,
+            "taxable_amount_inr": 6799,
+            "billing_period": "MONTHLY",
+            "billing_period_label": "Monthly",
+            "subscription_duration": "1 Month",
+        },
+    )
+    with pytest.raises(HTTPException) as exc:
+        preview_manual_invoice(
+            db,
+            company_id=1,
+            plan_type="enterprise",
+            billing_period="MONTHLY",
+            payment_method="NEFT",
+            invoice_date="09-01-2026",
+        )
+    assert exc.value.status_code == 400
+
+
 def test_invoice_pdf_company_seal_rings():
     from pathlib import Path
 

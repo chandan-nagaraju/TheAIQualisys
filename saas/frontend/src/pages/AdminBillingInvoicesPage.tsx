@@ -103,6 +103,7 @@ export default function AdminBillingInvoicesPage() {
   const [manMode, setManMode] = useState("");
   const [manPlan, setManPlan] = useState("");
   const [manPeriod, setManPeriod] = useState("");
+  const [manDate, setManDate] = useState("");
   const [mailMsg, setMailMsg] = useState<string | null>(null);
   const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
 
@@ -216,7 +217,7 @@ export default function AdminBillingInvoicesPage() {
   }
 
   async function generateManual() {
-    if (!manCompany || !manMode || !manPlan || !manPeriod) return;
+    if (!manCompany || !manMode || !manPlan || !manPeriod || !manDate) return;
     setBusy(true);
     setErr(null);
     try {
@@ -226,6 +227,7 @@ export default function AdminBillingInvoicesPage() {
         plan_type: manPlan,
         billing_period: manPeriod,
         module_key: "fir",
+        invoice_date: manDate,
       };
       const preview = await apiFetch<AdminBillingInvoice>("/admin/billing/invoices/manual/preview", {
         method: "POST",
@@ -233,7 +235,7 @@ export default function AdminBillingInvoicesPage() {
         body: JSON.stringify(body),
       });
       const ok = window.confirm(
-        `Generate invoice?\n${preview.company_name}\n${preview.plan_name} · ${preview.billing_period_label}\nMode: ${preview.payment_method}\nGrand total ${formatInr(preview.grand_total)}`,
+        `Generate invoice?\n${preview.company_name}\n${preview.plan_name} · ${preview.billing_period_label}\nInvoice date: ${preview.invoice_date}\nPeriod: ${preview.subscription_start_date} to ${preview.subscription_end_date}\nMode: ${preview.payment_method}\nGrand total ${formatInr(preview.grand_total)}`,
       );
       if (!ok) return;
       const created = await apiFetch<AdminBillingInvoice>("/admin/billing/invoices/manual", {
@@ -276,7 +278,8 @@ export default function AdminBillingInvoicesPage() {
       <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
         <h3 className="text-sm font-semibold text-white">Manual invoice</h3>
         <p className="text-xs text-slate-400">
-          Select company, mode of payment, subscription (Basic / Pro / Enterprise), and period, then generate.
+          Select company, mode, plan, period, and invoice date. For missed months, generate once per month with that
+          month’s date (for example 01-09-2026 then 01-10-2026).
         </p>
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-xs uppercase text-slate-500">
@@ -339,10 +342,20 @@ export default function AdminBillingInvoicesPage() {
               ))}
             </select>
           </label>
+          <label className="text-xs uppercase text-slate-500">
+            Invoice date
+            <input
+              type="date"
+              required
+              className="mt-1 block min-w-[160px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm normal-case text-white"
+              value={manDate}
+              onChange={(e) => setManDate(e.target.value)}
+            />
+          </label>
           <button
             type="button"
             className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            disabled={!manCompany || !manMode || !manPlan || !manPeriod || busy}
+            disabled={!manCompany || !manMode || !manPlan || !manPeriod || !manDate || busy}
             onClick={() => void generateManual()}
           >
             Generate invoice
