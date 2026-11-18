@@ -106,13 +106,15 @@ export default function AdminBillingInvoiceDetailPage() {
       .catch((e) => setErr(e instanceof Error ? e.message : "Failed to load invoice"));
   }, [id, nav]);
 
-  async function downloadPdf() {
+  async function downloadPdf(opts?: { digitalSign?: boolean }) {
     if (!row) return;
+    const digitalSign = opts?.digitalSign !== false;
     setBusy(true);
     setErr(null);
     try {
       const token = localStorage.getItem("fir_admin_token") || "";
-      const res = await fetch(apiUrl(`/admin/billing/invoices/${row.id}/pdf`), {
+      const qs = digitalSign ? "" : "?digital_sign=false";
+      const res = await fetch(apiUrl(`/admin/billing/invoices/${row.id}/pdf${qs}`), {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("PDF download failed");
@@ -120,7 +122,7 @@ export default function AdminBillingInvoiceDetailPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${row.invoice_number}.pdf`;
+      a.download = digitalSign ? `${row.invoice_number}.pdf` : `${row.invoice_number}-unsigned.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -174,6 +176,14 @@ export default function AdminBillingInvoiceDetailPage() {
                 onClick={() => void downloadPdf()}
               >
                 Download PDF
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-emerald-700 px-3 py-1.5 text-sm text-emerald-200 disabled:opacity-50"
+                disabled={busy}
+                onClick={() => void downloadPdf({ digitalSign: false })}
+              >
+                Download without sign
               </button>
               <button
                 type="button"

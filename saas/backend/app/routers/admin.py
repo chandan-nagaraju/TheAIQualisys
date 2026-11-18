@@ -1085,11 +1085,13 @@ def admin_download_billing_invoice_pdf(
     invoice_id: int,
     _: PlatformAdmin = Depends(get_platform_admin),
     db: Session = Depends(get_db_session),
+    digital_sign: bool = Query(default=True),
 ):
     row = get_billing_invoice(db, invoice_id)
     data = serialize_billing_invoice(row)
-    pdf = render_invoice_pdf(data)
-    filename = f"{row.invoice_number}.pdf"
+    pdf = render_invoice_pdf(data, digital_sign=digital_sign)
+    suffix = "" if digital_sign else "-unsigned"
+    filename = f"{row.invoice_number}{suffix}.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",

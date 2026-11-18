@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -424,6 +425,45 @@ def test_invoice_pdf_company_seal_rings():
     assert "Bangalore-560090" in joined
     assert b"Chandan N" in raw
     assert b"Digitally signed by Chandan" in raw
+
+
+def test_invoice_pdf_without_digital_sign_omits_stamp():
+    payload = {
+        "invoice_number": "INV-00002",
+        "invoice_date": "2026-11-10",
+        "company_name": "Qualitech industries",
+        "grand_total": 8022.82,
+        "taxable_amount": 6799,
+        "cgst": 0,
+        "sgst": 0,
+        "igst": 1223.82,
+        "total_tax": 1223.82,
+        "tax_mode": "igst",
+        "seller": {
+            "business_name": "TheAIQualisys",
+            "authorised_signatory_name": "Chandan N",
+        },
+        "digitally_signed_at": "2026-11-12T17:23:35+05:30",
+    }
+    unsigned = render_invoice_pdf(payload, digital_sign=False)
+    raw = _pdf_text_blob(unsigned)
+    joined = _pdf_tj_joined(unsigned)
+    assert unsigned.startswith(b"%PDF")
+    assert b"Authorised Signatory" in raw
+    assert "TheAIQualisys" in joined
+    assert b"Digitally signed by Chandan" not in raw
+    assert b"Date: 2026.11.12" not in raw
+    assert b"+05'30'" not in raw
+    assert "Bangalore-560090" not in joined
+    page = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "src"
+        / "pages"
+        / "AdminBillingInvoiceDetailPage.tsx"
+    ).read_text(encoding="utf-8")
+    assert "Download without sign" in page
+    assert "digital_sign=false" in page
 
 
 def test_next_invoice_number_starts_at_00001_when_empty():

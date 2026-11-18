@@ -1070,24 +1070,36 @@ def _draw_company_seal(pdf, *, cx: float, cy: float, radius: float = 11.6, cente
     pdf.set_line_width(0.2)
 
 
-def _draw_digital_signatory(pdf, put, *, x: float, y: float, w: float, h: float, seller_name: str, stamp: dict[str, str]) -> None:
+def _draw_digital_signatory(
+    pdf,
+    put,
+    *,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    seller_name: str,
+    stamp: dict[str, str],
+    include_stamp: bool = True,
+) -> None:
     put(x + 1.5, y + 1, w - 3, 4, f"for {seller_name}", bold=True, size=7, align="R")
-    short = stamp.get("short_name") or ""
-    center_name = (stamp.get("full_name") or short or "").strip()
-    seal_r = 11.2
-    cx = x + w / 2
-    cy = y + 16.2
-    _draw_company_seal(pdf, cx=cx, cy=cy, radius=seal_r, center_name=center_name)
-    if short:
-        pdf.set_font("Helvetica", "", 5.5)
-        pdf.set_text_color(0, 0, 0)
-        lines = [stamp.get("by_line") or "", stamp.get("date_line") or "", stamp.get("time_line") or ""]
-        pdf.set_xy(x + 2, cy + seal_r + 0.4)
-        pdf.multi_cell(w - 4, 2.6, _pdf_text("\n".join(lines)), align="C")
+    if include_stamp:
+        short = stamp.get("short_name") or ""
+        center_name = (stamp.get("full_name") or short or "").strip()
+        seal_r = 11.2
+        cx = x + w / 2
+        cy = y + 16.2
+        _draw_company_seal(pdf, cx=cx, cy=cy, radius=seal_r, center_name=center_name)
+        if short:
+            pdf.set_font("Helvetica", "", 5.5)
+            pdf.set_text_color(0, 0, 0)
+            lines = [stamp.get("by_line") or "", stamp.get("date_line") or "", stamp.get("time_line") or ""]
+            pdf.set_xy(x + 2, cy + seal_r + 0.4)
+            pdf.multi_cell(w - 4, 2.6, _pdf_text("\n".join(lines)), align="C")
     put(x + 1.5, y + h - 4.5, w - 3, 3.5, "Authorised Signatory", size=6.5, align="R")
 
 
-def render_invoice_pdf(data: dict[str, Any]) -> bytes:
+def render_invoice_pdf(data: dict[str, Any], *, digital_sign: bool = True) -> bytes:
     """Tally-style GST tax invoice. Selectable Helvetica text. No IRN/e-invoice QR."""
     from fpdf import FPDF
 
@@ -1337,6 +1349,7 @@ def render_invoice_pdf(data: dict[str, Any]) -> bytes:
         h=fh,
         seller_name=seller_name,
         stamp=stamp,
+        include_stamp=digital_sign,
     )
 
     notes = data.get("terms_notes") or ((seller or {}).get("terms_notes") if isinstance(seller, dict) else None)
