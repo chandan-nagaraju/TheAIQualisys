@@ -104,6 +104,8 @@ export default function AdminBillingInvoicesPage() {
   const [manPlan, setManPlan] = useState("");
   const [manPeriod, setManPeriod] = useState("");
   const [manDate, setManDate] = useState("");
+  const [manStart, setManStart] = useState("");
+  const [manEnd, setManEnd] = useState("");
   const [mailMsg, setMailMsg] = useState<string | null>(null);
   const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
 
@@ -240,7 +242,7 @@ export default function AdminBillingInvoicesPage() {
   }
 
   async function generateManual() {
-    if (!manCompany || !manMode || !manPlan || !manPeriod || !manDate) return;
+    if (!manCompany || !manMode || !manPlan || !manPeriod || !manDate || !manStart || !manEnd) return;
     setBusy(true);
     setErr(null);
     try {
@@ -251,6 +253,8 @@ export default function AdminBillingInvoicesPage() {
         billing_period: manPeriod,
         module_key: "fir",
         invoice_date: manDate,
+        subscription_start_date: manStart,
+        subscription_end_date: manEnd,
       };
       const preview = await apiFetch<AdminBillingInvoice>("/admin/billing/invoices/manual/preview", {
         method: "POST",
@@ -301,8 +305,8 @@ export default function AdminBillingInvoicesPage() {
       <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
         <h3 className="text-sm font-semibold text-white">Manual invoice</h3>
         <p className="text-xs text-slate-400">
-          Select company, mode, plan, period, and invoice date. For missed months, generate once per month with that
-          month’s date (for example 01-09-2026 then 01-10-2026).
+          Select company, mode, plan, period, invoice date, and terms of delivery start/end. Those dates print on the
+          invoice as Terms of Delivery (they are not calculated from the period).
         </p>
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-xs uppercase text-slate-500">
@@ -375,10 +379,30 @@ export default function AdminBillingInvoicesPage() {
               onChange={(e) => setManDate(e.target.value)}
             />
           </label>
+          <label className="text-xs uppercase text-slate-500">
+            Start
+            <input
+              type="date"
+              required
+              className="mt-1 block min-w-[160px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm normal-case text-white"
+              value={manStart}
+              onChange={(e) => setManStart(e.target.value)}
+            />
+          </label>
+          <label className="text-xs uppercase text-slate-500">
+            End
+            <input
+              type="date"
+              required
+              className="mt-1 block min-w-[160px] rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm normal-case text-white"
+              value={manEnd}
+              onChange={(e) => setManEnd(e.target.value)}
+            />
+          </label>
           <button
             type="button"
             className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            disabled={!manCompany || !manMode || !manPlan || !manPeriod || !manDate || busy}
+            disabled={!manCompany || !manMode || !manPlan || !manPeriod || !manDate || !manStart || !manEnd || busy}
             onClick={() => void generateManual()}
           >
             Generate invoice

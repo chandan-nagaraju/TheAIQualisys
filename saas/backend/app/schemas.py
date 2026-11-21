@@ -583,6 +583,8 @@ class AdminBillingManualInvoiceBody(BaseModel):
     billing_period: str
     module_key: str = "fir"
     invoice_date: str | None = None
+    subscription_start_date: str | None = None
+    subscription_end_date: str | None = None
 
 
 class AdminBillingInvoiceOut(BaseModel):

@@ -26,7 +26,7 @@ from app.billing_payments import (
     quote_payment,
     serialize_billing_payment,
 )
-from app.billing_period import period_label, subscription_end_from_start
+from app.billing_period import period_label
 from app.config import Settings, get_settings
 from app.dates import billing_today
 from app.models import BillingInvoice, BillingPayment, BillingSettings, Company, PlatformAdmin
@@ -513,7 +513,7 @@ def generate_invoice(
     return row
 
 
-def _parse_invoice_date(raw: str | None) -> date | None:
+def _parse_invoice_date(raw: str | None, *, field: str = "Invoice date") -> date | None:
     if raw is None:
         return None
     text = str(raw).strip()
@@ -524,7 +524,7 @@ def _parse_invoice_date(raw: str | None) -> date | None:
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invoice date must be YYYY-MM-DD",
+            detail=f"{field} must be YYYY-MM-DD",
         )
 
 
@@ -546,6 +546,8 @@ def preview_manual_invoice(
     payment_method: str,
     module_key: str = "fir",
     invoice_date: str | None = None,
+    subscription_start_date: str | None = None,
+    subscription_end_date: str | None = None,
 ) -> dict[str, Any]:
     company = _get_company_for_manual_invoice(db, company_id)
     settings = get_billing_settings(db)
@@ -565,8 +567,19 @@ def preview_manual_invoice(
         settings=settings,
     )
     user = sorted(company.users, key=lambda u: u.id)[0] if company.users else None
-    start = _parse_invoice_date(invoice_date) or billing_today()
-    end = subscription_end_from_start(start, quote["billing_period"])
+    dated = _parse_invoice_date(invoice_date) or billing_today()
+    start = _parse_invoice_date(subscription_start_date, field="Terms of delivery start")
+    end = _parse_invoice_date(subscription_end_date, field="Terms of delivery end")
+    if start is None or end is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select terms of delivery start and end dates.",
+        )
+    if end < start:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Terms of delivery end cannot be before start.",
+        )
     signed = adobe_digital_sign_stamp(settings.authorised_signatory_name, _ist_now())
     return {
         "payment_id": 0,
@@ -593,7 +606,7 @@ def preview_manual_invoice(
         "billing_period_label": quote["billing_period_label"],
         "subscription_start_date": start.isoformat(),
         "subscription_end_date": end.isoformat(),
-        "invoice_date": start.isoformat(),
+        "invoice_date": dated.isoformat(),
         "line_description": f"{quote['module_label']} - {quote['plan_name']} Plan - {quote['billing_period_label']} Subscription",
         "quantity": 1,
         "rate": float(taxable),
@@ -628,6 +641,8 @@ def generate_manual_invoice(
     payment_method: str,
     module_key: str = "fir",
     invoice_date: str | None = None,
+    subscription_start_date: str | None = None,
+    subscription_end_date: str | None = None,
     settings_app: Settings | None = None,
 ) -> BillingInvoice:
     preview = preview_manual_invoice(
@@ -638,9 +653,13 @@ def generate_manual_invoice(
         payment_method=payment_method,
         module_key=module_key,
         invoice_date=invoice_date,
+        subscription_start_date=subscription_start_date,
+        subscription_end_date=subscription_end_date,
     )
     company = _get_company_for_manual_invoice(db, company_id)
-    start = date.fromisoformat(preview["invoice_date"])
+    dated = date.fromisoformat(preview["invoice_date"])
+    start = date.fromisoformat(preview["subscription_start_date"])
+    end = date.fromisoformat(preview["subscription_end_date"])
     payment = create_admin_manual_payment(
         db,
         admin=admin,
@@ -649,9 +668,11 @@ def generate_manual_invoice(
         billing_period_raw=billing_period,
         payment_method_raw=payment_method,
         module_key=module_key or "fir",
-        invoice_date=start,
+        invoice_date=dated,
+        subscription_start=start,
+        subscription_end=end,
     )
-    return generate_invoice(db, payment_id=payment.id, settings_app=settings_app, invoice_date=start)
+    return generate_invoice(db, payment_id=payment.id, settings_app=settings_app, invoice_date=dated)
 
 
 def _store_pdf(row: BillingInvoice, pdf_bytes: bytes, app_settings: Settings) -> str | None:

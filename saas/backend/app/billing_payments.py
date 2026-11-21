@@ -497,15 +497,25 @@ def create_admin_manual_payment(
     payment_method_raw: str,
     module_key: str = MODULE_FIR,
     invoice_date: date | None = None,
+    subscription_start: date | None = None,
+    subscription_end: date | None = None,
 ) -> BillingPayment:
     """Admin-recorded bank/UPI receipt: verified immediately and subscription applied."""
     quote = quote_payment(db, module_key=module_key, plan_type=plan_type, billing_period_raw=billing_period_raw)
     method = normalize_payment_method(payment_method_raw)
     user = _primary_user(company)
     now = _utc_now()
-    start = invoice_date or now.date()
+    start = subscription_start or invoice_date or now.date()
     period = quote["billing_period"]
-    end = subscription_end_from_start(start, period)
+    if subscription_end is not None:
+        if subscription_end < start:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Terms of delivery end cannot be before start.",
+            )
+        end = subscription_end
+    else:
+        end = subscription_end_from_start(start, period)
     customer_name = (user.name if user and user.name else None) or company.company_name
     row = BillingPayment(
         company_id=company.id,

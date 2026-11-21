@@ -306,12 +306,16 @@ def test_preview_manual_invoice_uses_catalog_and_mode(monkeypatch):
         plan_type="pro",
         billing_period="QUARTERLY",
         payment_method="RTGS",
+        invoice_date="2026-10-01",
+        subscription_start_date="2026-10-01",
+        subscription_end_date="2026-12-30",
     )
     assert out["payment_method"] == "RTGS"
     assert out["plan_name"] == "Pro"
     assert out["billing_period"] == "QUARTERLY"
     assert out["taxable_amount"] == 4599.0
     assert out["subscription_start_date"] == "2026-10-01"
+    assert out["subscription_end_date"] == "2026-12-30"
     assert out["invoice_date"] == "2026-10-01"
 
 
@@ -343,11 +347,13 @@ def test_preview_manual_invoice_uses_selected_invoice_date(monkeypatch):
         plan_type="enterprise",
         billing_period="MONTHLY",
         payment_method="NEFT",
-        invoice_date="2026-09-01",
+        invoice_date="2026-11-12",
+        subscription_start_date="2026-11-12",
+        subscription_end_date="2026-12-12",
     )
-    assert out["invoice_date"] == "2026-09-01"
-    assert out["subscription_start_date"] == "2026-09-01"
-    assert out["subscription_end_date"] == "2026-10-01"
+    assert out["invoice_date"] == "2026-11-12"
+    assert out["subscription_start_date"] == "2026-11-12"
+    assert out["subscription_end_date"] == "2026-12-12"
 
 
 def test_preview_manual_invoice_rejects_invalid_invoice_date(monkeypatch):
@@ -379,6 +385,83 @@ def test_preview_manual_invoice_rejects_invalid_invoice_date(monkeypatch):
             billing_period="MONTHLY",
             payment_method="NEFT",
             invoice_date="09-01-2026",
+        )
+    assert exc.value.status_code == 400
+
+
+def test_preview_manual_invoice_requires_terms_dates(monkeypatch):
+    payment = _verified_payment()
+    company = payment.company
+    settings = _settings()
+    db = MagicMock()
+    monkeypatch.setattr("app.billing_invoices._get_company_for_manual_invoice", lambda _db, _id: company)
+    monkeypatch.setattr("app.billing_invoices.get_billing_settings", lambda _db: settings)
+    monkeypatch.setattr(
+        "app.billing_invoices.quote_payment",
+        lambda _db, **kwargs: {
+            "module_key": "fir",
+            "module_label": "FIR",
+            "plan_type": "enterprise",
+            "plan_name": "Enterprise",
+            "catalog_id": 3,
+            "taxable_amount_inr": 6799,
+            "billing_period": "MONTHLY",
+            "billing_period_label": "Monthly",
+            "subscription_duration": "1 Month",
+        },
+    )
+    with pytest.raises(HTTPException) as exc:
+        preview_manual_invoice(
+            db,
+            company_id=1,
+            plan_type="enterprise",
+            billing_period="MONTHLY",
+            payment_method="NEFT",
+            invoice_date="2026-11-12",
+        )
+    assert exc.value.status_code == 400
+    page = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "src"
+        / "pages"
+        / "AdminBillingInvoicesPage.tsx"
+    ).read_text(encoding="utf-8")
+    assert "subscription_start_date: manStart" in page
+    assert "subscription_end_date: manEnd" in page
+
+
+def test_preview_manual_invoice_rejects_end_before_start(monkeypatch):
+    payment = _verified_payment()
+    company = payment.company
+    settings = _settings()
+    db = MagicMock()
+    monkeypatch.setattr("app.billing_invoices._get_company_for_manual_invoice", lambda _db, _id: company)
+    monkeypatch.setattr("app.billing_invoices.get_billing_settings", lambda _db: settings)
+    monkeypatch.setattr(
+        "app.billing_invoices.quote_payment",
+        lambda _db, **kwargs: {
+            "module_key": "fir",
+            "module_label": "FIR",
+            "plan_type": "enterprise",
+            "plan_name": "Enterprise",
+            "catalog_id": 3,
+            "taxable_amount_inr": 6799,
+            "billing_period": "MONTHLY",
+            "billing_period_label": "Monthly",
+            "subscription_duration": "1 Month",
+        },
+    )
+    with pytest.raises(HTTPException) as exc:
+        preview_manual_invoice(
+            db,
+            company_id=1,
+            plan_type="enterprise",
+            billing_period="MONTHLY",
+            payment_method="NEFT",
+            invoice_date="2026-11-12",
+            subscription_start_date="2026-12-12",
+            subscription_end_date="2026-11-12",
         )
     assert exc.value.status_code == 400
 

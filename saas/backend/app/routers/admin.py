@@ -1028,6 +1028,8 @@ def admin_preview_manual_billing_invoice(
         payment_method=body.payment_method,
         module_key=body.module_key or "fir",
         invoice_date=body.invoice_date,
+        subscription_start_date=body.subscription_start_date,
+        subscription_end_date=body.subscription_end_date,
     )
     data["id"] = 0
     data["invoice_id"] = None
@@ -1052,6 +1054,8 @@ def admin_generate_manual_billing_invoice(
         payment_method=body.payment_method,
         module_key=body.module_key or "fir",
         invoice_date=body.invoice_date,
+        subscription_start_date=body.subscription_start_date,
+        subscription_end_date=body.subscription_end_date,
     )
     db.commit()
     db.refresh(row)
