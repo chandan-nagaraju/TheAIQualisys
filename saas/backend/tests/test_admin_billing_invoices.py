@@ -501,3 +501,28 @@ def test_purge_all_billing_invoices_deletes_rows_and_restarts_postgres_sequence(
     db.flush.assert_called()
     db.commit.assert_not_called()
 
+
+def test_delete_one_billing_invoice_keeps_others(monkeypatch):
+    from app.billing_invoices import delete_billing_invoice
+
+    row = SimpleNamespace(id=2, invoice_number="INV-00002", pdf_path="invoices/2026/INV-00002.pdf")
+    db = MagicMock()
+    monkeypatch.setattr("app.billing_invoices.get_billing_invoice", lambda _db, invoice_id: row)
+    seen: list[list[str | None]] = []
+    monkeypatch.setattr("app.billing_invoices._try_delete_invoice_pdfs", lambda paths: seen.append(list(paths)))
+    out = delete_billing_invoice(db, 2)
+    assert out == {"deleted_count": 1, "invoice_number": "INV-00002"}
+    db.delete.assert_called_once_with(row)
+    db.flush.assert_called()
+    db.commit.assert_not_called()
+    assert seen == [["invoices/2026/INV-00002.pdf"]]
+    page = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "src"
+        / "pages"
+        / "AdminBillingInvoicesPage.tsx"
+    ).read_text(encoding="utf-8")
+    assert "Delete" in page
+    assert "/admin/billing/invoices/${row.id}" in page or "/admin/billing/invoices/${r.id}" in page
+

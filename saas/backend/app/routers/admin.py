@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.billing_invoices import (
+    delete_billing_invoice,
     email_invoice,
     generate_invoice,
     generate_manual_invoice,
@@ -1097,6 +1098,17 @@ def admin_download_billing_invoice_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.delete("/billing/invoices/{invoice_id}", response_model=AdminBillingInvoicePurgeOut)
+def admin_delete_billing_invoice(
+    invoice_id: int,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    out = delete_billing_invoice(db, invoice_id)
+    db.commit()
+    return AdminBillingInvoicePurgeOut(ok=True, deleted_count=int(out["deleted_count"]))
 
 
 @router.get("/billing/invoices/{invoice_id}", response_model=AdminBillingInvoiceOut)

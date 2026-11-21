@@ -198,6 +198,29 @@ export default function AdminBillingInvoicesPage() {
     }
   }
 
+  async function deleteOne(row: AdminBillingInvoice) {
+    const ok = window.confirm(
+      `Delete invoice ${row.invoice_number}?\n\nThe verified payment is kept so you can generate this invoice again.\nThis cannot be undone.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    setErr(null);
+    setMailMsg(null);
+    setPurgeMsg(null);
+    try {
+      await apiFetch<{ deleted_count: number }>(`/admin/billing/invoices/${row.id}`, {
+        method: "DELETE",
+        token: "admin",
+      });
+      setPurgeMsg(`Deleted ${row.invoice_number}.`);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function emailInvoice(row: AdminBillingInvoice) {
     setBusy(true);
     setErr(null);
@@ -462,6 +485,14 @@ export default function AdminBillingInvoicesPage() {
                       onClick={() => void emailInvoice(r)}
                     >
                       Email
+                    </button>
+                    <button
+                      type="button"
+                      className="text-red-400 hover:underline disabled:opacity-50"
+                      disabled={busy}
+                      onClick={() => void deleteOne(r)}
+                    >
+                      Delete
                     </button>
                   </div>
                 </td>

@@ -259,6 +259,17 @@ def _reset_invoice_id_sequence(db: Session) -> None:
         return
 
 
+def delete_billing_invoice(db: Session, invoice_id: int) -> dict[str, int | str]:
+    """Delete one SaaS tax invoice. The verified payment is kept so it can be invoiced again."""
+    row = get_billing_invoice(db, invoice_id)
+    number = row.invoice_number
+    path = row.pdf_path
+    db.delete(row)
+    db.flush()
+    _try_delete_invoice_pdfs([path])
+    return {"deleted_count": 1, "invoice_number": number}
+
+
 def purge_all_billing_invoices(db: Session) -> dict[str, int]:
     """Delete every SaaS tax invoice so numbering can restart at INV-00001.
 

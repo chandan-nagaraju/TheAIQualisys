@@ -151,6 +151,27 @@ export default function AdminBillingInvoiceDetailPage() {
     }
   }
 
+  async function deleteInvoice() {
+    if (!row) return;
+    const ok = window.confirm(
+      `Delete invoice ${row.invoice_number}?\n\nThe verified payment is kept so you can generate this invoice again.\nThis cannot be undone.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await apiFetch<{ deleted_count: number }>(`/admin/billing/invoices/${row.id}`, {
+        method: "DELETE",
+        token: "admin",
+      });
+      nav("/admin/billing/invoices");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const seller = (row?.seller || {}) as Record<string, string | undefined>;
   const cgstSgst = row?.tax_mode === "cgst_sgst";
 
@@ -195,6 +216,14 @@ export default function AdminBillingInvoiceDetailPage() {
               </button>
               <button type="button" className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200" onClick={() => window.print()}>
                 Print
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-red-700 px-3 py-1.5 text-sm font-semibold text-red-300 disabled:opacity-50"
+                disabled={busy}
+                onClick={() => void deleteInvoice()}
+              >
+                Delete
               </button>
             </div>
           </div>
