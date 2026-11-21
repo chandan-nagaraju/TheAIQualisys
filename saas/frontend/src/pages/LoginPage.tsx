@@ -1,16 +1,24 @@
-import { FormEvent, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch, setWorkspaceCustomerId } from "../api";
 
 export default function LoginPage() {
   const nav = useNavigate();
   const loc = useLocation();
+  const [sp] = useSearchParams();
+  const registeredBanner = useMemo(() => sp.get("registered") === "1", [sp]);
+  const emailFromQuery = sp.get("email")?.trim() ?? "";
+
   const redirectTo = (loc.state as { from?: string } | null)?.from || "/dashboard";
   const isAdminTarget = redirectTo.startsWith("/admin");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (emailFromQuery) setIdentifier(emailFromQuery);
+  }, [emailFromQuery]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -45,6 +53,11 @@ export default function LoginPage() {
         <strong className="text-slate-300">Company:</strong> email or vendor code.{" "}
         <strong className="text-slate-300">Platform admin:</strong> your admin email (same form).
       </p>
+      {registeredBanner && (
+        <p className="mt-4 rounded-lg border border-emerald-900/60 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-200">
+          Your account has been created successfully. Please log in.
+        </p>
+      )}
       <form className="mt-8 space-y-4" onSubmit={onSubmit}>
         <div>
           <label className="block text-xs font-medium text-slate-400">Email or vendor code</label>

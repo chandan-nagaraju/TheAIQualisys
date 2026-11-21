@@ -8,6 +8,8 @@ type Me = {
   fir_reports_this_month: number;
   usage_this_month: number;
   can_access_fir_workspace: boolean;
+  trial_active: boolean;
+  subscription_active: boolean;
 };
 
 type OverviewModule = {
@@ -27,6 +29,7 @@ type PricingRow = {
   module_name: string;
   trial_days: number;
   usage_limit: number;
+  listing_active?: boolean;
 };
 
 const badgeStylesDark: Record<string, string> = {
@@ -80,37 +83,43 @@ export default function ModulesDashboardPage() {
     return map;
   }, [overview]);
 
-  const trialAlerts =
-    overview?.modules.filter((m) => m.notify_trial_ending && m.access === "trial") ?? [];
-
   const priceByModule = useMemo(() => {
     const map = new Map<string, PricingRow>();
     pricingRows?.forEach((r) => map.set(r.module_name, r));
     return map;
   }, [pricingRows]);
 
+  const trialAlerts =
+    overview?.modules.filter((m) => {
+      if (!(m.notify_trial_ending && m.access === "trial")) return false;
+      const pr = priceByModule.get(m.module_name);
+      return Boolean(pr?.listing_active);
+    }) ?? [];
+
   if (!me || !overview || !pricingRows) {
     return <p className="text-slate-400">Loading…</p>;
   }
+
+  const firEntitled = me.trial_active || me.subscription_active;
 
   return (
     <div className="space-y-10">
       <div>
         <h1 className="text-2xl font-semibold text-white">QMS dashboard</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Choose a module. FIR is fully enabled; other modules use trial then subscription.
+          Choose a module. Final inspection reports are fully enabled; other modules use trial then subscription.
         </p>
       </div>
 
       {workspaceBlocked && (
         <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
-          The FIR workspace is unavailable until you have an active trial or paid FIR plan. Open{" "}
+          The FIR workspace requires an active trial or paid plan.{" "}
+          <Link className="font-semibold text-brand-500 hover:underline" to="/workspace/pricing">
+            View FIR pricing
+          </Link>{" "}
+          or{" "}
           <Link className="font-semibold text-brand-500 hover:underline" to="/upgrade">
             Upgrade
-          </Link>{" "}
-          or check{" "}
-          <Link className="font-semibold text-brand-500 hover:underline" to="/dashboard/billing">
-            usage &amp; billing
           </Link>
           .
         </div>
@@ -131,12 +140,12 @@ export default function ModulesDashboardPage() {
 
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         <ModuleCard
-          title="FIR Automation"
+          title="Final inspection reports"
           description="Invoices, inspection, parts master, printable FIR — full workspace."
           badgeLabel="Live"
           badgeKey="live"
           footer={
-            me.can_access_fir_workspace ? (
+            firEntitled ? (
               <Link
                 to="/workspace/dashboard"
                 className="mt-4 inline-flex w-full justify-center rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
@@ -145,10 +154,10 @@ export default function ModulesDashboardPage() {
               </Link>
             ) : (
               <Link
-                to="/upgrade"
+                to="/workspace/pricing"
                 className="mt-4 inline-flex w-full justify-center rounded-lg border border-amber-600/50 py-2.5 text-sm font-semibold text-amber-200 hover:bg-amber-950/40"
               >
-                Activate FIR access
+                View FIR pricing &amp; subscribe
               </Link>
             )
           }
@@ -162,18 +171,28 @@ export default function ModulesDashboardPage() {
 
         {QMS_MODULES.map((def) => {
           const row = overviewBySlug.get(def.slug);
-          const badgeKey =
-            row?.badge === "live" ? "live" : row?.badge === "trial" ? "trial" : row?.access === "denied" ? "locked" : "locked";
+          const pr = priceByModule.get(def.moduleName);
+          const listed = Boolean(pr?.listing_active);
           const pricingHref = `/pricing/modules/${def.slug}`;
+          const badgeKey = !listed
+            ? "coming_soon"
+            : row?.badge === "live"
+              ? "live"
+              : row?.badge === "trial"
+                ? "trial"
+                : "locked";
+          const badgeLabel = !listed ? "Coming soon" : row?.badge === "trial" ? "Trial" : row?.badge === "live" ? "Live" : "Locked";
           return (
             <ModuleCard
               key={def.slug}
               title={def.title}
               description={def.shortDescription}
-              badgeLabel={row?.badge === "trial" ? "Trial" : row?.badge === "live" ? "Live" : "Locked"}
+              badgeLabel={badgeLabel}
               badgeKey={badgeKey}
               stats={
-                row?.access === "trial" ? (
+                !listed ? (
+                  <p className="mt-2 text-xs text-slate-500">Not available yet — stay tuned.</p>
+                ) : row?.access === "trial" ? (
                   <p className="mt-2 text-xs text-slate-500">
                     {row.days_remaining != null ? `${row.days_remaining} days left · ` : ""}
                     {row.actions_remaining != null ? `${row.actions_remaining} trial actions left` : ""}
@@ -183,7 +202,6 @@ export default function ModulesDashboardPage() {
                 ) : (
                   <p className="mt-2 text-xs text-slate-500">
                     {(() => {
-                      const pr = priceByModule.get(def.moduleName);
                       const d = pr?.trial_days ?? 14;
                       const u = pr?.usage_limit ?? 5;
                       return `${d}-day trial · ${u} actions when you open the module.`;
@@ -192,20 +210,32 @@ export default function ModulesDashboardPage() {
                 )
               }
               footer={
-                <div className="mt-4 flex flex-col gap-2">
-                  <Link
-                    to={`/modules/${def.slug}`}
-                    className="inline-flex w-full justify-center rounded-lg bg-slate-100 py-2.5 text-sm font-semibold text-slate-900 hover:bg-white"
-                  >
-                    Open module
-                  </Link>
-                  <Link
-                    to={pricingHref}
-                    className="text-center text-xs font-medium text-brand-500 hover:underline"
-                  >
-                    View pricing &amp; enroll
-                  </Link>
-                </div>
+                !listed ? (
+                  <div className="mt-4 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      disabled
+                      className="inline-flex w-full cursor-not-allowed justify-center rounded-lg border border-slate-700 bg-slate-800/50 py-2.5 text-sm font-semibold text-slate-500"
+                    >
+                      Open module
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-col gap-2">
+                    <Link
+                      to={`/modules/${def.slug}`}
+                      className="inline-flex w-full justify-center rounded-lg bg-slate-100 py-2.5 text-sm font-semibold text-slate-900 hover:bg-white"
+                    >
+                      Open module
+                    </Link>
+                    <Link
+                      to={pricingHref}
+                      className="text-center text-xs font-medium text-brand-500 hover:underline"
+                    >
+                      View pricing &amp; enroll
+                    </Link>
+                  </div>
+                )
               }
             />
           );

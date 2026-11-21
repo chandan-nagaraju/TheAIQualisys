@@ -14,6 +14,7 @@ export type AdminPricingRow = {
   invoice_max: number | null;
   highlight: string | null;
   sort_order: number;
+  listing_active: boolean;
 };
 
 function RowEditor({ row, onSaved }: { row: AdminPricingRow; onSaved: () => void }) {
@@ -25,6 +26,7 @@ function RowEditor({ row, onSaved }: { row: AdminPricingRow; onSaved: () => void
   const [invoice_min, setInvMin] = useState(row.invoice_min == null ? "" : String(row.invoice_min));
   const [invoice_max, setInvMax] = useState(row.invoice_max == null ? "" : String(row.invoice_max));
   const [highlight, setHighlight] = useState(row.highlight ?? "");
+  const [listingActive, setListingActive] = useState(row.listing_active);
   const [status, setStatus] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -37,6 +39,7 @@ function RowEditor({ row, onSaved }: { row: AdminPricingRow; onSaved: () => void
     setInvMin(row.invoice_min == null ? "" : String(row.invoice_min));
     setInvMax(row.invoice_max == null ? "" : String(row.invoice_max));
     setHighlight(row.highlight ?? "");
+    setListingActive(row.listing_active);
     setStatus(null);
     setErr(null);
   }, [row]);
@@ -53,6 +56,9 @@ function RowEditor({ row, onSaved }: { row: AdminPricingRow; onSaved: () => void
     };
     if (yearly_price.trim() === "") body.yearly_price = null;
     else body.yearly_price = parseInt(yearly_price, 10);
+    if (!row.fir_plan_type) {
+      body.listing_active = listingActive;
+    }
     if (row.fir_plan_type) {
       body.invoice_min = invoice_min.trim() === "" ? null : parseInt(invoice_min, 10);
       body.invoice_max = invoice_max.trim() === "" ? null : parseInt(invoice_max, 10);
@@ -80,7 +86,26 @@ function RowEditor({ row, onSaved }: { row: AdminPricingRow; onSaved: () => void
         <h3 className="font-semibold text-white">{row.display_name}</h3>
         <code className="text-xs text-slate-500">{row.module_name}</code>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {!row.fir_plan_type && (
+        <label className="block text-xs text-slate-500">
+          Tenant dashboard (QMS card)
+          <select
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            value={listingActive ? "active" : "inactive"}
+            onChange={(e) => setListingActive(e.target.value === "active")}
+          >
+            <option value="inactive">Not active — stay tuned only (no trial or pricing on card)</option>
+            <option value="active">Active — show trial, pricing teaser, and enroll links</option>
+          </select>
+        </label>
+      )}
+      {!row.fir_plan_type && !listingActive && (
+        <p className="text-xs text-slate-500">
+          Price, trial, and usage below are saved but hidden from users until this module is Active.
+        </p>
+      )}
+
+      <div className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-4 ${!row.fir_plan_type && !listingActive ? "pointer-events-none opacity-50" : ""}`}>
         <label className="block text-xs text-slate-500">
           Display name
           <input
@@ -195,7 +220,7 @@ export default function AdminPricingPage() {
       setLoadErr(null);
       try {
         const data = await apiFetch<AdminPricingRow[]>("/admin/pricing-modules", { token: "admin" });
-        if (!cancelled) setRows(data);
+        if (!cancelled) setRows(data.map((r) => ({ ...r, listing_active: Boolean((r as { listing_active?: boolean }).listing_active) })));
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to load";
         if (!cancelled) {
@@ -228,10 +253,12 @@ export default function AdminPricingPage() {
         </Link>
       </div>
       <p className="text-sm text-slate-400">
-        FIR plan <strong className="text-slate-300">Trial (days)</strong> applies to FIR tiers only, not the QMS module
-        cards on the user dashboard — change trial length for Drawings, RC2A, PPAP, or IATF under{" "}
-        <strong className="text-slate-300">QMS modules</strong> below. Saving QMS trial days or usage limits updates all
-        existing trial rows for that module (end date = that user’s trial start + new days).
+        For each <strong className="text-slate-300">QMS module</strong>, choose <strong>Active</strong> so tenants see trial
+        and pricing on the dashboard, or <strong>Not active</strong> for a stay-tuned-only card. FIR plan tiers below are
+        unchanged.
+      </p>
+      <p className="text-sm text-slate-400">
+        Saving QMS trial days or usage limits updates existing trial rows for that module.
       </p>
 
       {loading && <p className="text-sm text-slate-500">Loading pricing catalog…</p>}
@@ -244,7 +271,7 @@ export default function AdminPricingPage() {
       )}
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-white">FIR Automation (plan tiers)</h2>
+        <h2 className="text-lg font-semibold text-white">Final inspection reports (plan tiers)</h2>
         <div className="space-y-4">
           {firRows.map((r) => (
             <RowEditor key={r.module_name} row={r} onSaved={() => setTick((x) => x + 1)} />

@@ -62,9 +62,19 @@ def verify_password_and_upgrade(plain: str, hashed: str) -> tuple[bool, str | No
     return False, None
 
 
-def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:
+def create_access_token(
+    subject: str,
+    extra: dict[str, Any] | None = None,
+    *,
+    expires_minutes: int | None = None,
+) -> str:
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    minutes = (
+        int(expires_minutes)
+        if expires_minutes is not None
+        else int(settings.access_token_expire_minutes)
+    )
+    expire = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     to_encode: dict[str, Any] = {"sub": subject, "exp": expire, "typ": "company"}
     if extra:
         to_encode.update(extra)
@@ -74,7 +84,14 @@ def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> st
 def decode_access_token(token: str) -> dict[str, Any] | None:
     settings = get_settings()
     try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        # Desktop OAuth tokens may include aud/iss. SPA tokens omit them.
+        # Authorization still depends on typ/sub/company_id + DB checks, not aud.
+        return jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"verify_aud": False},
+        )
     except JWTError:
         return None
 
