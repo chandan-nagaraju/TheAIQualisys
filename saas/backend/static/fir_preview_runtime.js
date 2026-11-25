@@ -130,8 +130,23 @@
 
   /** Visual inspection: qualitative pass recorded as OK in measured cells. */
   function firIsVisualMethod(raw) {
-    var m = String(raw || "").trim().toUpperCase();
-    return m === "VIS" || m === "VISUAL" || m === "VISUAL INSPECTION";
+    var m = String(raw || "").trim().replace(/\s+/g, " ").toUpperCase();
+    if (!m) return false;
+    if (m === "VIS" || m === "VISUAL" || m === "VISUAL INSPECTION" || m === "VISUAL CHECK" || m === "VISUVAL CHECK") {
+      return true;
+    }
+    return /\bVISUAL\s*CHECK/.test(m);
+  }
+
+  /** Label / sticker (incl. client spelling Sticer) — pass/fail, measured cells are OK. */
+  function firIsLabelStickerMethod(raw) {
+    var u = String(raw || "").trim().replace(/\s+/g, " ").toUpperCase();
+    if (!u) return false;
+    var compact = u.replace(/[\s.\-_/]/g, "");
+    if (compact.indexOf("LABEL") !== -1 && (compact.indexOf("STICK") !== -1 || compact.indexOf("STIC") !== -1)) {
+      return true;
+    }
+    return /\bLABEL\b/.test(u) && /\bSTIC/.test(u);
   }
 
   function firIsVisualParameter(paramRaw) {
@@ -418,6 +433,7 @@
     if (!t) return false;
     if (t.toUpperCase() === "OK") return true;
     if (/^100%\s*verified$/i.test(t)) return true;
+    if (/^verified\s+100%\s+with\s+identification\s+done\.?$/i.test(t)) return true;
     if (/^Millipore\s+test\s+achieved\s+.+/i.test(t) && /found\s+OK\.?$/i.test(t)) return true;
     return false;
   }
@@ -476,6 +492,56 @@
 
   function firIsNoCpiRow(tr) {
     return !!(tr && tr.classList && tr.classList.contains("fir-no-cpi-row"));
+  }
+
+  var FIR_CPI_VISUAL_MEASURED = "Verified 100% with identification done";
+
+  function firIsCpiVisualRow(tr) {
+    return !!(tr && tr.classList && tr.classList.contains("fir-cpi-visual-row"));
+  }
+
+  function firRowIsCcpVisualCheck(tr, methodRaw) {
+    if (!tr || !tr.closest || !tr.closest("#ccp-table")) return false;
+    return firIsVisualMethod(methodRaw);
+  }
+
+  function firApplyCpiVisualRowLayout(tr) {
+    if (!tr || firIsCpiVisualRow(tr) || firIsNoCpiRow(tr)) return;
+    firUnmergeMilliporeRow(tr);
+    firUnmergeAdhesionRow(tr);
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length !== 11) return;
+    var merged = document.createElement("td");
+    merged.colSpan = 5;
+    merged.className = "fir-cpi-visual-merged";
+    var ta = document.createElement("textarea");
+    ta.rows = 1;
+    ta.className = "actual-value quali-font fir-wrap-cell fir-cpi-visual-measured";
+    ta.value = FIR_CPI_VISUAL_MEASURED;
+    merged.appendChild(ta);
+    var remarks = cells[10];
+    for (var ci = 9; ci >= 5; ci--) cells[ci].remove();
+    tr.insertBefore(merged, remarks);
+    tr.classList.add("fir-cpi-visual-row");
+    firAutosizeTextarea(ta);
+  }
+
+  function firUnmergeCpiVisualRow(tr) {
+    if (!tr || !firIsCpiVisualRow(tr)) return;
+    var cells = tr.querySelectorAll(":scope > td");
+    if (cells.length !== 7) return;
+    var merged = cells[5];
+    var remarks = cells[6];
+    merged.remove();
+    for (var i = 0; i < 5; i++) {
+      var td = document.createElement("td");
+      var input = document.createElement("input");
+      input.type = "text";
+      input.className = "actual-value quali-font";
+      td.appendChild(input);
+      tr.insertBefore(td, remarks);
+    }
+    tr.classList.remove("fir-cpi-visual-row");
   }
 
   function firRowTextFromCell(cell) {
@@ -562,8 +628,12 @@
     var param = paramEl ? String(paramEl.value || "").trim() : "";
     var method = methodEl ? String(methodEl.value || "").trim() : "";
     firUnmergeAdhesionRow(tr);
+    firUnmergeCpiVisualRow(tr);
     if (firRowIsMillipore(param, method)) {
       firApplyMilliporeRowLayout(tr);
+    } else if (firRowIsCcpVisualCheck(tr, method)) {
+      firUnmergeMilliporeRow(tr);
+      firApplyCpiVisualRowLayout(tr);
     } else {
       firUnmergeMilliporeRow(tr);
     }
@@ -582,6 +652,7 @@
   function firIsQualitativeMeasuredMethod(raw) {
     return (
       firIsVisualMethod(raw) ||
+      firIsLabelStickerMethod(raw) ||
       firIsQrScannerMethod(raw) ||
       firIsThreadGaugeMethod(raw) ||
       firIsAdhesionTestMethod(raw) ||
@@ -669,6 +740,23 @@
   function firFillQualitativeMeasuredRow(tr) {
     if (firIsNoCpiRow(tr) || firIsMilliporeRow(tr)) return;
     firUnmergeAdhesionRow(tr);
+    var cells0 = tr.querySelectorAll(":scope > td");
+    var methodEl0 = cells0[4] ? firQueryMethodInput(cells0[4]) : null;
+    var methodRaw0 = methodEl0 ? (methodEl0.value || "").trim() : "";
+    if (firRowIsCcpVisualCheck(tr, methodRaw0)) {
+      firApplyCpiVisualRowLayout(tr);
+      var mergedEl = tr.querySelector("td.fir-cpi-visual-merged textarea, td.fir-cpi-visual-merged input");
+      if (mergedEl) {
+        mergedEl.value = FIR_CPI_VISUAL_MEASURED;
+        if (mergedEl.tagName === "TEXTAREA") firAutosizeTextarea(mergedEl);
+      }
+      var cellsC = tr.querySelectorAll(":scope > td");
+      var remarksC = firQueryRemarksEl(cellsC[cellsC.length - 1]);
+      if (remarksC) remarksC.value = "";
+      updateStatusButtons();
+      return;
+    }
+    firUnmergeCpiVisualRow(tr);
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
     var remarksEl = firQueryRemarksEl(cells[10]);
@@ -892,12 +980,20 @@
         bHtml += '</tbody></table>';
         const cRemarksInput = '<input type="text" class="remarks-value quali-font" value="OK">';
         let cHtml = '<table class="data-table" id="material-table"><thead><tr class="fir-section-head-row"><th colspan="11" class="section-title">C) Material Grade</th></tr></thead><tbody>';
-        if (FIR_MATERIAL_DATA.length > 0) {
-          FIR_MATERIAL_DATA.forEach(function(r) {
-            var snC = firRowSlNo(r, slno);
-            slno = firAdvanceSlNo(r, slno);
-            cHtml += `<tr><td style="width:5%;">${snC}</td><td colspan="9">${wrapCell(r.material_grade)}</td><td style="width:8%;">${cRemarksInput}</td></tr>`;
+        var materialGrades = (FIR_MATERIAL_DATA || []).map(function(r) {
+          return String(r && r.material_grade != null ? r.material_grade : "").trim();
+        }).filter(function(g) { return !!g; });
+        if (materialGrades.length > 0) {
+          var snC = slno++;
+          var nBlocks = materialGrades.length;
+          var span = Math.max(1, Math.floor(9 / nBlocks));
+          var extra = 9 - span * nBlocks;
+          cHtml += `<tr><td style="width:5%;">${snC}</td>`;
+          materialGrades.forEach(function(g, gi) {
+            var cs = span + (gi === nBlocks - 1 ? extra : 0);
+            cHtml += `<td colspan="${cs}">${wrapCell(g)}</td>`;
           });
+          cHtml += `<td style="width:8%;">${cRemarksInput}</td></tr>`;
         } else {
           cHtml += `<tr><td style="width:5%;">${slno++}</td><td colspan="9">${wrapCell()}</td><td style="width:8%;">${cRemarksInput}</td></tr>`;
         }
@@ -1466,6 +1562,16 @@
       updateStatusButtons();
       return;
     }
+    if (firIsCpiVisualRow(tr)) {
+      var cpiCells = tr.querySelectorAll(":scope > td");
+      var methodCpi = cpiCells[4] ? firQueryMethodInput(cpiCells[4]) : null;
+      var methodCpiRaw = methodCpi ? (methodCpi.value || "").trim() : "";
+      if (firRowIsCcpVisualCheck(tr, methodCpiRaw)) {
+        firFillQualitativeMeasuredRow(tr);
+        return;
+      }
+      firUnmergeCpiVisualRow(tr);
+    }
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
     var specEl = cells[2].querySelector("textarea") || cells[2].querySelector("input");
@@ -1542,6 +1648,15 @@
       remarksElMp.value = firMilliporePasses(sampleVal, resolvedMp.limit) ? "OK" : "Not OK";
       updateStatusButtons();
       return;
+    }
+    if (firIsCpiVisualRow(tr) || (tr.closest && tr.closest("#ccp-table"))) {
+      var cellsCpiF = tr.querySelectorAll(":scope > td");
+      var methodCpiF = cellsCpiF[4] ? firQueryMethodInput(cellsCpiF[4]) : null;
+      var methodCpiFRaw = methodCpiF ? (methodCpiF.value || "").trim() : "";
+      if (firRowIsCcpVisualCheck(tr, methodCpiFRaw)) {
+        firFillQualitativeMeasuredRow(tr);
+        return;
+      }
     }
     var cells = tr.querySelectorAll(":scope > td");
     if (cells.length < 11) return;
@@ -1739,7 +1854,7 @@
     var count = firDimensionParameterCount();
     var ccpRows = (FIR_CCP_DATA || []).filter(firIsRealCcpRow);
     count += ccpRows.length > 0 ? ccpRows.length : 1;
-    count += FIR_MATERIAL_DATA.length > 0 ? FIR_MATERIAL_DATA.length : 1;
+    count += 1;
     count += FIR_COATING_DATA.length > 0 ? FIR_COATING_DATA.length : 1;
     return count;
   }

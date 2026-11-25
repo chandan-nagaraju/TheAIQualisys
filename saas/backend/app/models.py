@@ -486,6 +486,9 @@ class PartComplaintV2(Base):
     specification: Mapped[str | None] = mapped_column(Text, nullable=True)
     special_char: Mapped[str | None] = mapped_column(String(255), nullable=True)
     method_of_inspection: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(), index=True
+    )
 
     part: Mapped[PartV2] = relationship("PartV2", back_populates="complaints")
 

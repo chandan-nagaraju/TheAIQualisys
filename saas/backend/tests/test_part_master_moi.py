@@ -179,3 +179,23 @@ def test_fir_runtime_js_treats_adhesion_test_as_ok_only_method():
     assert "textarea rows=\"1\" class=\"remarks-value quali-font fir-wrap-cell\"" in js
     assert "100% inspection done and no peel off found" not in js
     assert "fir-adhesion-merged" not in js
+
+
+def test_fir_runtime_js_visual_check_and_label_sticker_are_ok_only():
+    js = (Path(__file__).resolve().parents[1] / "static" / "fir_preview_runtime.js").read_text()
+    assert "function firIsVisualMethod" in js
+    assert "VISUAL CHECK" in js
+    assert "function firIsLabelStickerMethod" in js
+    assert "firIsLabelStickerMethod(raw)" in js
+    assert 'FIR_CPI_VISUAL_MEASURED = "Verified 100% with identification done"' in js
+    assert "function firApplyCpiVisualRowLayout" in js
+    assert "fir-cpi-visual-merged" in js
+    html = (Path(__file__).resolve().parents[1] / "templates" / "fir_preview.html").read_text()
+    assert "cpi-visual-90d" in html
+    assert "fir-cpi-visual-merged" in html
+
+
+def test_fir_runtime_js_material_grade_blocks_share_one_row():
+    js = (Path(__file__).resolve().parents[1] / "static" / "fir_preview_runtime.js").read_text()
+    assert "var materialGrades = (FIR_MATERIAL_DATA || []).map" in js
+    assert "materialGrades.forEach(function(g, gi)" in js

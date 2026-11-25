@@ -54,6 +54,7 @@ from app.fir_part_excel import (
     build_part_master_template_xlsx,
     parse_parts_excel_to_bundle_dict,
 )
+from app.part_complaints import purge_expired_part_complaints
 from app.part_field_validation import sanitize_part_master_alnum_upper, sanitize_part_master_description
 from app.part_master_coating_spec import normalize_plating_thickness_specification
 from app.part_master_moi import normalize_part_master_moi, preserve_user_part_master_moi
@@ -993,6 +994,8 @@ def _part_master_rows_with_continuous_sl_no(
 
 
 def _serialize_part_detail(ws: WsContext, p: PartV2) -> dict[str, Any]:
+    if purge_expired_part_complaints(ws.db, p.id):
+        ws.db.commit()
     specs = (
         ws.db.execute(select(PartSpecV2).where(PartSpecV2.part_id == p.id).order_by(PartSpecV2.id))
         .scalars()
@@ -1979,6 +1982,8 @@ def fir_preview(
             select(PartV2).where(PartV2.company_id == company.id, PartV2.part_no == part_no)
         ).scalar_one_or_none()
         if part:
+            if purge_expired_part_complaints(db, part.id):
+                db.commit()
             spec_data = [
                 {
                     "parameter": s.parameter,

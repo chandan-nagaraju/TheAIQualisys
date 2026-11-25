@@ -366,6 +366,23 @@
     font-size: 25px !important;
     line-height: 1.15;
   }
+  td.fir-cpi-visual-merged {
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+  td.fir-cpi-visual-merged textarea.fir-cpi-visual-measured {
+    width: 100%;
+    min-height: 28px;
+    text-align: center !important;
+    font-size: 25px !important;
+    line-height: 1.15;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    resize: none;
+    border: none;
+    background: transparent;
+  }
   td.fir-no-cpi-merged {
     text-align: center !important;
     vertical-align: middle !important;
@@ -563,7 +580,7 @@
   <div id="reportRoot"><p id="firPaintHint" style="text-align:center;color:#444;padding:32px;font-family:Calibri,Arial,sans-serif;">Loading inspection report…</p></div>
 
   <script type="application/json" id="fir-preview-boot">{{ fir_boot | tojson }}</script>
-  <script src="{{ api_static_base }}fir_preview_runtime.js?v=adhesion-remarks-wrap"></script>
+  <script src="{{ api_static_base }}fir_preview_runtime.js?v=cpi-visual-90d"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </body>
 </html>
