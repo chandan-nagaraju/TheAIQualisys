@@ -372,7 +372,7 @@
     text-align: center !important;
     vertical-align: middle !important;
   }
-  td.fir-cpi-visual-merged textarea.fir-cpi-visual-measured {
+  td.fir-cpi-visual-merged .fir-cpi-visual-measured {
     display: block;
     width: 100%;
     min-height: 28px;
@@ -380,12 +380,18 @@
     font-family: 'Quali_1', sans-serif !important;
     font-size: 25px !important;
     line-height: 1.15;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    resize: none;
+    white-space: nowrap;
+    overflow: hidden;
     border: none;
     background: transparent;
+  }
+  td.fir-cpi-visual-merged .fir-cpi-pct {
+    font-family: Calibri, Arial, Helvetica, sans-serif !important;
+    font-size: 15px !important;
+    font-weight: 400;
+    font-style: normal;
+    line-height: 1;
+    vertical-align: 0.12em;
   }
   td.fir-no-cpi-merged {
     text-align: center !important;
@@ -466,11 +472,16 @@
   body.generating-pdf.fir-fit-one-page #coating-table input.actual-value,
   body.generating-pdf.fir-fit-one-page #coating-table input.remarks-value,
   body.generating-pdf.fir-fit-one-page #coating-table textarea.remarks-value,
-  body.generating-pdf.fir-fit-one-page td.fir-cpi-visual-merged textarea.fir-cpi-visual-measured {
+  body.generating-pdf.fir-fit-one-page td.fir-cpi-visual-merged .fir-cpi-visual-measured {
     font-family: 'Quali_1', sans-serif !important;
     font-size: 16px;
     line-height: 1.05;
     padding: 0;
+  }
+  body.generating-pdf.fir-fit-one-page td.fir-cpi-visual-merged .fir-cpi-pct {
+    font-family: Calibri, Arial, Helvetica, sans-serif !important;
+    font-size: 11px !important;
+    vertical-align: 0.08em;
   }
   body.generating-pdf.fir-fit-one-page #dimension-table td.fir-millipore-merged input.actual-value,
   body.generating-pdf.fir-fit-one-page #dimension-table td.fir-millipore-merged input.millipore-actual,
@@ -586,7 +597,7 @@
   <div id="reportRoot"><p id="firPaintHint" style="text-align:center;color:#444;padding:32px;font-family:Calibri,Arial,sans-serif;">Loading inspection report…</p></div>
 
   <script type="application/json" id="fir-preview-boot">{{ fir_boot | tojson }}</script>
-  <script src="{{ api_static_base }}fir_preview_runtime.js?v=cpi-visual-ok-font"></script>
+  <script src="{{ api_static_base }}fir_preview_runtime.js?v=cpi-visual-pct"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </body>
 </html>

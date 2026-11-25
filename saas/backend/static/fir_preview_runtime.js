@@ -496,6 +496,15 @@
 
   var FIR_CPI_VISUAL_MEASURED = "Verified 100% with identification done";
 
+  function firCpiVisualMeasuredHtml() {
+    return "Verified 100<span class=\"fir-cpi-pct\">%</span> with identification done";
+  }
+
+  function firSetCpiVisualMeasured(el) {
+    if (!el) return;
+    el.innerHTML = firCpiVisualMeasuredHtml();
+  }
+
   function firIsCpiVisualRow(tr) {
     return !!(tr && tr.classList && tr.classList.contains("fir-cpi-visual-row"));
   }
@@ -514,16 +523,14 @@
     var merged = document.createElement("td");
     merged.colSpan = 5;
     merged.className = "fir-cpi-visual-merged";
-    var ta = document.createElement("textarea");
-    ta.rows = 1;
-    ta.className = "actual-value quali-font fir-wrap-cell fir-cpi-visual-measured";
-    ta.value = FIR_CPI_VISUAL_MEASURED;
-    merged.appendChild(ta);
+    var measured = document.createElement("div");
+    measured.className = "actual-value quali-font fir-wrap-cell fir-cpi-visual-measured";
+    firSetCpiVisualMeasured(measured);
+    merged.appendChild(measured);
     var remarks = cells[10];
     for (var ci = 9; ci >= 5; ci--) cells[ci].remove();
     tr.insertBefore(merged, remarks);
     tr.classList.add("fir-cpi-visual-row");
-    firAutosizeTextarea(ta);
   }
 
   function firUnmergeCpiVisualRow(tr) {
@@ -745,11 +752,8 @@
     var methodRaw0 = methodEl0 ? (methodEl0.value || "").trim() : "";
     if (firRowIsCcpVisualCheck(tr, methodRaw0)) {
       firApplyCpiVisualRowLayout(tr);
-      var mergedEl = tr.querySelector("td.fir-cpi-visual-merged textarea, td.fir-cpi-visual-merged input");
-      if (mergedEl) {
-        mergedEl.value = FIR_CPI_VISUAL_MEASURED;
-        if (mergedEl.tagName === "TEXTAREA") firAutosizeTextarea(mergedEl);
-      }
+      var mergedEl = tr.querySelector("td.fir-cpi-visual-merged .fir-cpi-visual-measured");
+      if (mergedEl) firSetCpiVisualMeasured(mergedEl);
       var cellsC = tr.querySelectorAll(":scope > td");
       var remarksC = firQueryRemarksEl(cellsC[cellsC.length - 1]);
       if (remarksC) remarksC.value = "OK";
