@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, defer
 
 from app.config import Settings, get_settings
@@ -476,6 +477,35 @@ def create_customer(body: CustomerCreate, ws: WsContext = Depends(get_ws)):
     ws.db.commit()
     ws.db.refresh(c)
     return {"id": c.id, "vendor_code": c.vendor_code, "name": c.name}
+
+
+@router.delete("/customers/{customer_id}")
+def delete_customer(customer_id: int, ws: WsContext = Depends(get_ws)):
+    row = ws.db.execute(
+        select(Customer).where(Customer.id == customer_id, Customer.company_id == ws.company.id)
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
+    n_parts = int(
+        ws.db.execute(select(func.count()).select_from(PartV2).where(PartV2.customer_id == customer_id)).scalar_one()
+        or 0
+    )
+    if n_parts:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot delete this vendor: {n_parts} part(s) are still linked. Delete those parts first.",
+        )
+    vendor_code = row.vendor_code
+    try:
+        ws.db.delete(row)
+        ws.db.commit()
+    except IntegrityError as exc:
+        ws.db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete this vendor while parts or other records are still linked.",
+        ) from exc
+    return {"ok": True, "id": customer_id, "vendor_code": vendor_code}
 
 
 # --- Settings ---
