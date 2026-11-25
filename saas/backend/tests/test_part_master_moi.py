@@ -191,8 +191,11 @@ def test_fir_runtime_js_visual_check_and_label_sticker_are_ok_only():
     assert "function firApplyCpiVisualRowLayout" in js
     assert "fir-cpi-visual-merged" in js
     html = (Path(__file__).resolve().parents[1] / "templates" / "fir_preview.html").read_text()
-    assert "cpi-visual-90d" in html
+    assert "cpi-visual-ok-font" in html
     assert "fir-cpi-visual-merged" in html
+    assert "td.fir-cpi-visual-merged textarea.fir-cpi-visual-measured" in html
+    assert "font-family: 'Quali_1', sans-serif !important" in html
+    assert 'remarksC.value = "OK"' in js
 
 
 def test_fir_runtime_js_material_grade_blocks_share_one_row():

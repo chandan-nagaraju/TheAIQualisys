@@ -333,12 +333,14 @@
   .quali-font,
   input.actual-value,
   input.remarks-value,
+  textarea.actual-value,
   textarea.remarks-value {
     font-family: 'Quali_1', sans-serif;
     line-height: 1.5;
   }
   .data-table input.actual-value,
   .data-table input.remarks-value,
+  .data-table textarea.actual-value,
   .data-table textarea.remarks-value {
     font-size: 25px;
     min-height: 0;
@@ -371,9 +373,11 @@
     vertical-align: middle !important;
   }
   td.fir-cpi-visual-merged textarea.fir-cpi-visual-measured {
+    display: block;
     width: 100%;
     min-height: 28px;
     text-align: center !important;
+    font-family: 'Quali_1', sans-serif !important;
     font-size: 25px !important;
     line-height: 1.15;
     white-space: pre-wrap;
@@ -461,7 +465,9 @@
   body.generating-pdf.fir-fit-one-page #dimension-table textarea.remarks-value,
   body.generating-pdf.fir-fit-one-page #coating-table input.actual-value,
   body.generating-pdf.fir-fit-one-page #coating-table input.remarks-value,
-  body.generating-pdf.fir-fit-one-page #coating-table textarea.remarks-value {
+  body.generating-pdf.fir-fit-one-page #coating-table textarea.remarks-value,
+  body.generating-pdf.fir-fit-one-page td.fir-cpi-visual-merged textarea.fir-cpi-visual-measured {
+    font-family: 'Quali_1', sans-serif !important;
     font-size: 16px;
     line-height: 1.05;
     padding: 0;
@@ -580,7 +586,7 @@
   <div id="reportRoot"><p id="firPaintHint" style="text-align:center;color:#444;padding:32px;font-family:Calibri,Arial,sans-serif;">Loading inspection report…</p></div>
 
   <script type="application/json" id="fir-preview-boot">{{ fir_boot | tojson }}</script>
-  <script src="{{ api_static_base }}fir_preview_runtime.js?v=cpi-visual-90d"></script>
+  <script src="{{ api_static_base }}fir_preview_runtime.js?v=cpi-visual-ok-font"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </body>
 </html>

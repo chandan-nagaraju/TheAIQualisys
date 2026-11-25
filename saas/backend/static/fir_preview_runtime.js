@@ -752,7 +752,7 @@
       }
       var cellsC = tr.querySelectorAll(":scope > td");
       var remarksC = firQueryRemarksEl(cellsC[cellsC.length - 1]);
-      if (remarksC) remarksC.value = "";
+      if (remarksC) remarksC.value = "OK";
       updateStatusButtons();
       return;
     }
