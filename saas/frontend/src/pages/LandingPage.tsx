@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
 import { QMS_MODULES } from "../moduleCatalog";
 import BrandLogo from "../components/BrandLogo";
+import { SELLER_GSTIN_LABEL } from "../companyLegal";
 import { useTheme } from "../theme/ThemeContext";
 
 type Plan = {
@@ -33,6 +34,10 @@ export default function LandingPage() {
     theme === "dark" ? "mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl" : "mt-6 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl";
   const heroDescClass =
     theme === "dark" ? "mx-auto mt-6 max-w-2xl text-lg text-slate-400" : "mx-auto mt-6 max-w-2xl text-lg text-slate-600";
+  const gstinClass =
+    theme === "dark"
+      ? "mx-auto mt-4 text-sm font-semibold tracking-wide text-slate-300"
+      : "mx-auto mt-4 text-sm font-semibold tracking-wide text-slate-700";
   const primaryBtnClass =
     "inline-flex rounded-xl bg-brand-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:bg-brand-500";
   const secondaryBtnClass =
@@ -75,7 +80,8 @@ export default function LandingPage() {
         <p className={heroDescClass}>
           Automate FIR, RC2A, PPAP &amp; IATF documentation — modular subscriptions so you only pay for what you use.
         </p>
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+        <p className={gstinClass}>{SELLER_GSTIN_LABEL}</p>
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           {signedIn ? (
             <>
               <Link

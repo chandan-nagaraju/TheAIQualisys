@@ -8,6 +8,7 @@ import AdminNotificationsNav from "./AdminNotificationsNav";
 import BrandLogo from "./BrandLogo";
 import HeaderBackButton from "./HeaderBackButton";
 import ThemeSwitcher from "./ThemeSwitcher";
+import { SELLER_GSTIN_LABEL } from "../companyLegal";
 import { useTheme } from "../theme/ThemeContext";
 
 function formatDateShort(isoDate: string | null | undefined): string | null {
@@ -373,7 +374,8 @@ export default function Layout() {
         <Outlet />
       </main>
       <footer className={`border-t px-3 py-6 text-center text-xs sm:py-8 ${footerBar}`}>
-        Developed by Chandan. Made with Cursor.ai.
+        <div className="font-medium tracking-wide">{SELLER_GSTIN_LABEL}</div>
+        <div className="mt-1">Developed by Chandan. Made with Cursor.ai.</div>
       </footer>
     </div>
   );
