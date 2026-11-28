@@ -439,7 +439,7 @@ ThankYouCategory = Literal["running", "regular", "occasional", "stranger", "new"
 
 
 class AdminSubscriptionReminderSendBody(BaseModel):
-    reminder_type: Literal["ending_soon", "already_ended", "thank_you", "trial_ending"]
+    reminder_type: Literal["ending_soon", "already_ended", "thank_you", "trial_ending", "payment_overdue"]
     thank_you_category: ThankYouCategory | None = None
 
     @model_validator(mode="after")

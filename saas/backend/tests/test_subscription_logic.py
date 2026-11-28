@@ -315,6 +315,8 @@ def test_thank_you_send_body_requires_category() -> None:
     assert b_all.thank_you_category == "all"
     trial = AdminSubscriptionReminderSendBody(reminder_type="trial_ending")
     assert trial.reminder_type == "trial_ending"
+    overdue = AdminSubscriptionReminderSendBody(reminder_type="payment_overdue")
+    assert overdue.reminder_type == "payment_overdue"
 
 
 def test_thank_you_all_category_performance_email() -> None:

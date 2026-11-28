@@ -44,6 +44,7 @@ from app.email_util import (
     build_admin_thank_you_all_email,
     build_admin_thank_you_email,
     is_email_configured,
+    send_payment_overdue_email,
     send_plain_text_email,
     send_trial_ending_email,
 )
@@ -590,6 +591,12 @@ def send_manual_subscription_reminder(
             detail="No active (non-blocked) workspace users to email for this tenant.",
         )
 
+    if body.reminder_type == "payment_overdue" and c.subscription_end is None:
+        raise HTTPException(
+            status_code=400,
+            detail="This tenant has no subscription end date; cannot send a payment overdue reminder.",
+        )
+
     if body.reminder_type in ("ending_soon", "already_ended") and c.subscription_end is None and c.trial_end_date is None:
         raise HTTPException(
             status_code=400,
@@ -602,6 +609,7 @@ def send_manual_subscription_reminder(
     plan_name = c.plan_type.title()
 
     thank_you_audit: dict | None = None
+    pay_url = f"{settings.public_app_url.rstrip('/')}/upgrade"
     if body.reminder_type == "trial_ending":
         if c.trial_end_date is None:
             raise HTTPException(
@@ -671,6 +679,9 @@ def send_manual_subscription_reminder(
                 ],
                 "total_time_saved_hours": hours_saved,
             }
+    elif body.reminder_type == "payment_overdue":
+        subject = ""
+        text = ""
     else:
         trial_manual = c.subscription_end is None
         if trial_manual:
@@ -696,7 +707,18 @@ def send_manual_subscription_reminder(
     subscribe_url = f"{settings.public_app_url.rstrip('/')}/workspace/pricing"
     for u in users:
         try:
-            if body.reminder_type == "trial_ending" or (
+            if body.reminder_type == "payment_overdue":
+                assert c.subscription_end is not None
+                send_payment_overdue_email(
+                    settings,
+                    u.email,
+                    customer_name=c.company_name,
+                    plan_name=plan_name,
+                    paid_through=c.subscription_end,
+                    today=today,
+                    pay_url=pay_url,
+                )
+            elif body.reminder_type == "trial_ending" or (
                 body.reminder_type != "thank_you" and c.subscription_end is None
             ):
                 if c.trial_end_date is None:

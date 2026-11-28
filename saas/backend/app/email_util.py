@@ -14,6 +14,7 @@ from html import escape
 from typing import Literal
 
 from app.config import Settings
+from app.dates import format_date_english, payment_overdue_close_date, unpaid_month_count
 
 SUBSCRIPTION_EXPIRY_SUBJECT = "Your Final inspection reports subscription ends today"
 TRIAL_ENDING_SUBJECT = "Your TheAIQualisys trial is ending — subscribe to keep working"
@@ -520,6 +521,7 @@ TheAIQualisys"""
 
 ADMIN_MANUAL_SUBSCRIPTION_ENDING_SUBJECT = "Your TheAiQualisys Subscription is Ending Soon"
 ADMIN_MANUAL_SUBSCRIPTION_EXPIRED_SUBJECT = "Your TheAiQualisys Subscription Has Expired"
+ADMIN_PAYMENT_OVERDUE_SUBJECT_PREFIX = "Payment overdue — please settle by "
 
 
 def build_admin_manual_subscription_reminder_email(
@@ -568,6 +570,102 @@ def build_admin_manual_subscription_reminder_email(
         )
         return subject, text
     raise ValueError(f"Unknown reminder_type: {reminder_type!r}")
+
+
+def _days_overdue_label(n: int) -> str:
+    return "1 day" if n == 1 else f"{n} days"
+
+
+def build_payment_overdue_email(
+    *,
+    customer_name: str,
+    plan_name: str,
+    paid_through: date,
+    today: date,
+    pay_url: str,
+) -> tuple[str, str, str]:
+    """Overdue payment reminder: days overdue, pay link, close-all-ties deadline on the 30th."""
+    cutoff = payment_overdue_close_date(today)
+    overdue_days = max(0, (today - paid_through).days)
+    months_now = unpaid_month_count(paid_through, today) if overdue_days else 1
+    months_at_cutoff = unpaid_month_count(paid_through, cutoff)
+    paid_through_fmt = format_date_english(paid_through)
+    cutoff_fmt = format_date_english(cutoff)
+    overdue_phrase = _days_overdue_label(overdue_days) if overdue_days else "the current billing period"
+    months_now_label = "1 month" if months_now == 1 else f"{months_now} months"
+    months_cut_label = "1 month" if months_at_cutoff == 1 else f"{months_at_cutoff} months"
+    subject = f"{ADMIN_PAYMENT_OVERDUE_SUBJECT_PREFIX}{cutoff_fmt}"
+    text = (
+        f"Dear {customer_name},\n\n"
+        f"Your TheAIQualisys subscription payment for the {plan_name} plan is overdue.\n\n"
+        f"You have been overdue for {overdue_phrase} (coverage ended on {paid_through_fmt}). "
+        f"{months_now_label.capitalize()} of payment is currently outstanding.\n\n"
+        "Please complete payment as soon as possible so we can continue supporting your inspection "
+        "reporting without interruption. Open the link below to pay by UPI and send the reference "
+        "for verification.\n\n"
+        f"Pay here: {pay_url}\n\n"
+        f"Deadline: after {cutoff_fmt} we will close all ties. "
+        f"If payment is not received by that date, {months_cut_label} of dues will be outstanding "
+        "and we will end the engagement.\n\n"
+        "If you have already paid, reply to this email with the UPI / transaction reference and we "
+        "will verify it immediately.\n\n"
+        "Team,\n"
+        "TheAIQualisys"
+    )
+    cn = escape(customer_name)
+    plan = escape(plan_name)
+    thru = escape(paid_through_fmt)
+    cut = escape(cutoff_fmt)
+    safe_url = escape(pay_url, quote=True)
+    overdue_esc = escape(overdue_phrase)
+    months_now_esc = escape(months_now_label)
+    months_cut_esc = escape(months_cut_label)
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+<body style="margin:0;padding:24px;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.65;color:#1e293b;background:#f8fafc;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;padding:32px;border-radius:12px;border:1px solid #e2e8f0;">
+    <p style="margin:0 0 16px;">Dear {cn},</p>
+    <p style="margin:0 0 16px;">Your TheAIQualisys subscription payment for the <strong>{plan}</strong> plan is overdue.</p>
+    <p style="margin:0 0 16px;">You have been overdue for <strong>{overdue_esc}</strong> (coverage ended on <strong>{thru}</strong>). {months_now_esc.capitalize()} of payment is currently outstanding.</p>
+    <p style="margin:0 0 20px;">Please complete payment as soon as possible so we can continue supporting your inspection reporting without interruption. Use the button below to pay by UPI, then send the reference for verification.</p>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="{safe_url}" style="display:inline-block;background:#2563eb;color:#ffffff !important;text-decoration:none;font-weight:600;padding:14px 28px;border-radius:10px;font-family:system-ui,sans-serif;">Pay now</a>
+    </div>
+    <p style="margin:0 0 16px;"><strong>Deadline:</strong> after <strong>{cut}</strong> we will close all ties. If payment is not received by that date, {months_cut_esc} of dues will be outstanding and we will end the engagement.</p>
+    <p style="margin:0 0 16px;font-size:15px;">If you have already paid, reply to this email with the UPI / transaction reference and we will verify it immediately.</p>
+    <p style="margin:16px 0 4px;">Team,<br />TheAIQualisys</p>
+  </div>
+</body>
+</html>"""
+    return subject, text, html
+
+
+def send_payment_overdue_email(
+    settings: Settings,
+    to_email: str,
+    *,
+    customer_name: str,
+    plan_name: str,
+    paid_through: date,
+    today: date,
+    pay_url: str,
+) -> None:
+    subject, text, html = build_payment_overdue_email(
+        customer_name=customer_name,
+        plan_name=plan_name,
+        paid_through=paid_through,
+        today=today,
+        pay_url=pay_url,
+    )
+    _send_text_and_html_email(
+        settings,
+        to_email,
+        subject,
+        text,
+        html,
+        reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO,
+    )
 
 
 THANK_YOU_PERFORMANCE_SUBJECT = "Thank You for Using TheAiQualisys – Your Performance Summary"

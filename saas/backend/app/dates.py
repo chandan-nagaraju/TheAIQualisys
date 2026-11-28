@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 from datetime import date, datetime, timezone
 
 
@@ -35,3 +36,30 @@ def billing_month_year_english(d: date | None = None) -> str:
 def format_date_english(d: date) -> str:
     """Full calendar date for emails, e.g. ``June 18, 2026`` (always English)."""
     return f"{_ENGLISH_MONTHS[d.month - 1]} {d.day}, {d.year}"
+
+
+def payment_overdue_close_date(today: date) -> date:
+    """The 30th of this month (or the last day if the month is shorter).
+
+    If *today* is already after that date, use the 30th of the next month.
+    After this date we close all ties for unpaid accounts.
+    """
+
+    def _thirtieth_or_last(year: int, month: int) -> date:
+        last = calendar.monthrange(year, month)[1]
+        return date(year, month, min(30, last))
+
+    cutoff = _thirtieth_or_last(today.year, today.month)
+    if today > cutoff:
+        if today.month == 12:
+            return _thirtieth_or_last(today.year + 1, 1)
+        return _thirtieth_or_last(today.year, today.month + 1)
+    return cutoff
+
+
+def unpaid_month_count(since: date, until: date) -> int:
+    """Whole months of unpaid coverage from *since* through *until* (ceil of days/30)."""
+    days = (until - since).days
+    if days <= 0:
+        return 1
+    return max(1, (days + 29) // 30)

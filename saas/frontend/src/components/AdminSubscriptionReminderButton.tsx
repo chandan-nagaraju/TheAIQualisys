@@ -37,7 +37,9 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
     setStep("menu");
   }
 
-  async function send(reminderType: "ending_soon" | "already_ended" | "trial_ending") {
+  async function send(
+    reminderType: "ending_soon" | "already_ended" | "trial_ending" | "payment_overdue",
+  ) {
     setBusy(true);
     setFeedback(null);
     try {
@@ -172,6 +174,17 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
                     <span className="font-medium text-white">Subscription Already Ended</span>
                     <span className="mt-1 block text-xs text-slate-400">
                       Past expiry — win-back and renew messaging.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="rounded-lg border border-slate-600 bg-slate-950 px-4 py-3 text-left text-sm text-slate-100 hover:bg-slate-800 disabled:opacity-50"
+                    onClick={() => void send("payment_overdue")}
+                  >
+                    <span className="font-medium text-white">Payment overdue — settle before we close ties</span>
+                    <span className="mt-1 block text-xs text-slate-400">
+                      Days overdue and outstanding months, pay link, deadline after the 30th we close all ties.
                     </span>
                   </button>
                   <button
