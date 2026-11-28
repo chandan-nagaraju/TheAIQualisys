@@ -1,13 +1,63 @@
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { workspaceFetch } from "../../api";
 import { useTheme } from "../../theme/ThemeContext";
+import {
+  loadInspectionExtracted,
+  resolvePersistedRouteState,
+  saveInspectionExtracted,
+} from "../../workspace/inspectionSession";
 
 type LocState = { rows: Record<string, unknown>[]; columns: string[]; filename?: string };
+
+type InspectionEnrichRes = {
+  rows: Record<string, unknown>[];
+  customer: { id: number; vendor_code: string; name: string } | null;
+  current_date: string;
+};
 
 export default function ExtractedPage() {
   const loc = useLocation();
   const nav = useNavigate();
   const { theme } = useTheme();
-  const st = loc.state as LocState | null;
+  const locState = loc.state as LocState | null;
+  const st = useMemo(
+    () => resolvePersistedRouteState(locState, loadInspectionExtracted),
+    [locState],
+  );
+  const [enriched, setEnriched] = useState<InspectionEnrichRes | null>(null);
+  const [enrichLoading, setEnrichLoading] = useState(false);
+  const [enrichErr, setEnrichErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (st?.rows?.length) {
+      saveInspectionExtracted({ rows: st.rows, columns: st.columns, filename: st.filename });
+    }
+  }, [st?.rows, st?.columns, st?.filename]);
+
+  useEffect(() => {
+    if (!st?.rows?.length) return;
+    let cancelled = false;
+    setEnriched(null);
+    setEnrichLoading(true);
+    setEnrichErr(null);
+    workspaceFetch<InspectionEnrichRes>("/api/app/inspection/enrich", {
+      method: "POST",
+      body: JSON.stringify({ rows: st.rows }),
+    })
+      .then((res) => {
+        if (!cancelled) setEnriched(res);
+      })
+      .catch((e) => {
+        if (!cancelled) setEnrichErr(e instanceof Error ? e.message : "Could not load Parts master data");
+      })
+      .finally(() => {
+        if (!cancelled) setEnrichLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [st?.rows]);
 
   const panelClass =
     theme === "light"
@@ -54,6 +104,11 @@ export default function ExtractedPage() {
 
   const linkClass = theme === "dark" ? "mt-2 text-blue-300 underline" : "mt-2 text-blue-700 underline";
 
+  const displayRows = useMemo(
+    () => (enriched?.rows?.length ? enriched.rows : st?.rows ?? []),
+    [enriched?.rows, st?.rows],
+  );
+
   if (!st?.rows?.length) {
     return (
       <div className={panelClass}>
@@ -70,12 +125,30 @@ export default function ExtractedPage() {
     );
   }
 
-  const { rows, columns, filename } = st;
+  const { columns, filename } = st;
+  /** Avoid continuing with raw rows before master lookup finishes (unless enrich failed and we fall back). */
+  const continueDisabled = enrichLoading || (!enriched && !enrichErr);
 
   return (
     <div className={panelClass}>
       <h1 className="text-xl font-semibold">Extracted data</h1>
       {filename && <p className={`text-sm ${hintTextClass}`}>{filename}</p>}
+      {enrichLoading && (
+        <p className={`mt-2 text-sm ${hintTextClass}`}>Loading part descriptions from Parts master…</p>
+      )}
+      {enrichErr && (
+        <p
+          className={`mt-2 text-sm ${theme === "dark" ? "text-amber-400" : theme === "grey" ? "text-amber-800" : "text-amber-800"}`}
+          role="alert"
+        >
+          {enrichErr} Showing values from the file only.
+        </p>
+      )}
+      {!enrichLoading && !enrichErr && enriched && (
+        <p className={`mt-2 text-sm ${hintTextClass}`}>
+          Descriptions and drawing rev for matched part numbers come from Parts master.
+        </p>
+      )}
       <div className={tableOuterClass}>
         <table className="min-w-full border-collapse text-sm">
           <thead>
@@ -88,7 +161,7 @@ export default function ExtractedPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => (
+            {displayRows.map((r, i) => (
               <tr key={i} className={rowAltClass}>
                 {columns.map((c) => (
                   <td key={c} className={tdClass}>
@@ -102,8 +175,15 @@ export default function ExtractedPage() {
       </div>
       <button
         type="button"
-        className={continueBtnClass}
-        onClick={() => nav("/workspace/inspection", { state: { rows, columns } })}
+        disabled={continueDisabled}
+        className={
+          continueDisabled
+            ? theme === "grey"
+              ? "mt-6 rounded bg-zinc-400 px-4 py-2 text-sm text-white"
+              : "mt-6 cursor-not-allowed rounded bg-slate-400 px-4 py-2 text-sm text-white"
+            : continueBtnClass
+        }
+        onClick={() => nav("/workspace/inspection", { state: { rows: displayRows, columns, filename: st.filename } })}
       >
         Continue to inspection
       </button>

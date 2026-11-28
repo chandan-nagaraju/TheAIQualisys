@@ -88,12 +88,23 @@ export default function AdminUsersPage() {
     setErr(null);
     setMsg(null);
     try {
-      await apiFetch(`/admin/tenant-users/${userId}`, {
+      const res = await apiFetch<{
+        ok: boolean;
+        deleted_user_id: number;
+        company_id: number;
+        remaining_tenant_users: number;
+      }>(`/admin/tenant-users/${userId}`, {
         token: "admin",
         method: "DELETE",
       });
       setTenantUsers((prev) => prev.filter((u) => u.user_id !== userId));
-      setMsg("User deleted successfully.");
+      if (res.remaining_tenant_users === 0) {
+        setMsg(
+          "User deleted. That company has no workspace logins left until you add a user. The company row and FIR data stay in the admin lists (this is normal).",
+        );
+      } else {
+        setMsg("User deleted successfully.");
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to delete user.");
     } finally {

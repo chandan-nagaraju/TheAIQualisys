@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { workspaceFetch } from "../../api";
+import { getWorkspaceCustomerId, setWorkspaceCustomerId, workspaceFetch } from "../../api";
 
 type Row = { id: number; vendor_code: string; name: string };
 
@@ -9,6 +9,7 @@ export default function CustomersPage() {
   const [vendor_code, setVendorCode] = useState("");
   const [name, setName] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   async function load() {
     setRows(await workspaceFetch<Row[]>("/api/app/customers"));
@@ -31,6 +32,26 @@ export default function CustomersPage() {
       await load();
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Failed");
+    }
+  }
+
+  async function onDelete(row: Row) {
+    const ok = window.confirm(
+      `Delete vendor ${row.vendor_code} — ${row.name}?\n\nThis only works if no parts are linked to this vendor.`,
+    );
+    if (!ok) return;
+    setErr(null);
+    setBusyId(row.id);
+    try {
+      await workspaceFetch(`/api/app/customers/${row.id}`, { method: "DELETE" });
+      if (getWorkspaceCustomerId() === row.id) {
+        setWorkspaceCustomerId(null);
+      }
+      await load();
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "Delete failed");
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -68,10 +89,20 @@ export default function CustomersPage() {
       </form>
       <ul className="mt-6 divide-y divide-slate-100">
         {rows.map((r) => (
-          <li key={r.id} className="py-3 text-sm">
-            <span className="font-mono text-slate-800">{r.vendor_code}</span>
-            <span className="mx-2 text-slate-400">—</span>
-            <span>{r.name}</span>
+          <li key={r.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+            <div>
+              <span className="font-mono text-slate-800">{r.vendor_code}</span>
+              <span className="mx-2 text-slate-400">—</span>
+              <span>{r.name}</span>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 text-sm text-red-600 hover:underline disabled:opacity-50"
+              disabled={busyId !== null}
+              onClick={() => void onDelete(r)}
+            >
+              Delete
+            </button>
           </li>
         ))}
       </ul>

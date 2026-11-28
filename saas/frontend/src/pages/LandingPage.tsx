@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
 import { QMS_MODULES } from "../moduleCatalog";
 import BrandLogo from "../components/BrandLogo";
+import { SELLER_GSTIN_LABEL } from "../companyLegal";
 import { useTheme } from "../theme/ThemeContext";
 
 type Plan = {
@@ -33,6 +34,10 @@ export default function LandingPage() {
     theme === "dark" ? "mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl" : "mt-6 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl";
   const heroDescClass =
     theme === "dark" ? "mx-auto mt-6 max-w-2xl text-lg text-slate-400" : "mx-auto mt-6 max-w-2xl text-lg text-slate-600";
+  const gstinClass =
+    theme === "dark"
+      ? "mx-auto mt-4 text-sm font-semibold tracking-wide text-slate-300"
+      : "mx-auto mt-4 text-sm font-semibold tracking-wide text-slate-700";
   const primaryBtnClass =
     "inline-flex rounded-xl bg-brand-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:bg-brand-500";
   const secondaryBtnClass =
@@ -75,7 +80,8 @@ export default function LandingPage() {
         <p className={heroDescClass}>
           Automate FIR, RC2A, PPAP &amp; IATF documentation — modular subscriptions so you only pay for what you use.
         </p>
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+        <p className={gstinClass}>{SELLER_GSTIN_LABEL}</p>
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           {signedIn ? (
             <>
               <Link
@@ -113,11 +119,11 @@ export default function LandingPage() {
       <section>
         <h2 className={sectionTitleClass}>Product status</h2>
         <p className={sectionDescClass}>
-          Ship quality workflows incrementally. FIR is production-ready; additional modules are rolling out.
+          Ship quality workflows incrementally. Final inspection reporting is production-ready; additional modules are rolling out.
         </p>
         <ul className="mx-auto mt-10 max-w-2xl divide-y divide-slate-800 rounded-2xl border border-slate-800 bg-slate-900/40">
           <li className="flex items-center justify-between gap-4 px-6 py-4">
-            <span className="font-medium text-slate-200">FIR Automation</span>
+            <span className="font-medium text-slate-200">Final inspection reports</span>
             <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-400">
               Available now
             </span>
@@ -143,7 +149,7 @@ export default function LandingPage() {
 
         <div className="mt-10 grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-brand-500/30 bg-gradient-to-br from-brand-950/50 to-slate-900/80 p-6">
-            <h3 className="text-lg font-semibold text-white">FIR Automation</h3>
+            <h3 className="text-lg font-semibold text-white">Final inspection reports</h3>
             <p className="mt-2 text-sm text-slate-400">Final Inspection Reports — usage-based tiers.</p>
             <div className="mt-6 space-y-4">
               {plans.length === 0 && !planErr ? (
@@ -155,7 +161,7 @@ export default function LandingPage() {
                       <span className="font-medium text-slate-200">{plan.name}</span>
                       <span className="text-lg font-bold text-white">
                         ₹{plan.price_inr.toLocaleString("en-IN")}
-                        <span className="text-sm font-normal text-slate-500">/month</span>
+                        <span className="text-sm font-normal text-slate-500">/mo + 18% GST</span>
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
@@ -168,10 +174,10 @@ export default function LandingPage() {
               )}
             </div>
             <Link
-              to="/signup"
+              to={signedIn ? "/workspace/dashboard" : "/signup"}
               className="mt-6 inline-flex w-full justify-center rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
             >
-              Start with FIR
+              {signedIn ? "Open FIR workspace" : "Start with FIR"}
             </Link>
           </div>
 
@@ -188,7 +194,7 @@ export default function LandingPage() {
                   >
                     <span className="text-slate-300">{m.title}</span>
                     <span className="text-sm font-semibold text-slate-400">
-                      {p != null ? `₹${p.toLocaleString("en-IN")}/mo` : "—"}
+                      {p != null ? `₹${p.toLocaleString("en-IN")}/mo + 18% GST` : "—"}
                     </span>
                   </li>
                 );

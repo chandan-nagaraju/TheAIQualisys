@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../api";
+import { buildUpgradeSearch, formatPriceWithGst } from "./upgradeHelpers";
 
 type Plan = {
   plan_type: string;
@@ -19,8 +20,6 @@ type Props = {
   /** `workspace` = light shell inside logged-in FIR workspace (no redirect to marketing). */
   variant?: "marketing" | "workspace";
 };
-
-const UPGRADE_PAGE_URL = "https://the-ai-qualisys.vercel.app/upgrade";
 
 export default function PricingPage({ variant = "marketing" }: Props) {
   const ws = variant === "workspace";
@@ -102,8 +101,7 @@ export default function PricingPage({ variant = "marketing" }: Props) {
               )}
               <h2 className={t.h2}>{plan.name}</h2>
               <p className={t.price}>
-                ₹{plan.price_inr}
-                <span className={t.priceSub}>/month</span>
+                {formatPriceWithGst(plan.price_inr)}
               </p>
               <p className={t.meta}>
                 {plan.max_invoices == null
@@ -112,14 +110,17 @@ export default function PricingPage({ variant = "marketing" }: Props) {
               </p>
               {plan.highlight && <p className={t.highlight}>{plan.highlight}</p>}
               {ws ? (
-                <a
-                  href={`${UPGRADE_PAGE_URL}?plan_name=${encodeURIComponent(plan.name)}&price_inr=${encodeURIComponent(
-                    String(plan.price_inr),
-                  )}&plan_type=${encodeURIComponent(plan.plan_type)}`}
+                <Link
+                  to={`/upgrade?${buildUpgradeSearch({
+                    moduleKey: "fir",
+                    planName: plan.name,
+                    planType: plan.plan_type,
+                    priceInr: plan.price_inr,
+                  })}`}
                   className="mt-8 inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
                 >
                   Buy
-                </a>
+                </Link>
               ) : (
                 <Link
                   to="/signup"
