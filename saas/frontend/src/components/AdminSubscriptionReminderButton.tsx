@@ -13,6 +13,8 @@ type PreviewResponse = {
   invoice_attached: boolean;
   recipient_count: number;
   recipients: string[];
+  to_email?: string | null;
+  cc_emails?: string[];
 };
 
 type ReminderType = "ending_soon" | "already_ended" | "trial_ending" | "payment_overdue" | "thank_you";
@@ -44,6 +46,8 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [invoiceNote, setInvoiceNote] = useState<string | null>(null);
+  const [toEmail, setToEmail] = useState<string | null>(null);
+  const [ccEmails, setCcEmails] = useState<string[]>([]);
   const [recipientCount, setRecipientCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState("Sending…");
@@ -56,6 +60,8 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
     setSubject("");
     setMessage("");
     setInvoiceNote(null);
+    setToEmail(null);
+    setCcEmails([]);
   }
 
   async function loadPreview(type: ReminderType, category?: ThankYouCategory) {
@@ -73,6 +79,8 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
       setSubject(res.subject);
       setMessage(res.message);
       setRecipientCount(res.recipient_count);
+      setToEmail(res.to_email || null);
+      setCcEmails(Array.isArray(res.cc_emails) ? res.cc_emails : []);
       setInvoiceNote(
         res.invoice_attached && res.invoice_number
           ? `${res.invoice_number}.pdf will be attached`
@@ -184,8 +192,8 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
                   Send subscription reminder
                 </h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  Choose the message type. You will review and can edit the full email before it is sent to every
-                  non-blocked workspace user for this company.
+                  Choose the message type. You will review and can edit the full email before it is sent.
+                  Payment overdue uses the same accounts To / CC list as invoices.
                 </p>
                 <div className="mt-6 flex flex-col gap-3">
                   <button
@@ -264,8 +272,10 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
                   Review and edit message
                 </h3>
                 <p className="mt-2 text-sm text-slate-400">
-                  This is the complete email. Edit the subject or body, then send. Goes to {recipientCount} recipient
-                  {recipientCount === 1 ? "" : "s"}.
+                  This is the complete email. Edit the subject or body, then send.
+                  {toEmail
+                    ? ` To ${toEmail}${ccEmails.length ? ` · CC ${ccEmails.join(", ")}` : ""}.`
+                    : ` Goes to ${recipientCount} recipient${recipientCount === 1 ? "" : "s"}.`}
                   {invoiceNote ? ` ${invoiceNote}.` : ""}
                 </p>
                 <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">

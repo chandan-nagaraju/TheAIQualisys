@@ -465,6 +465,8 @@ class AdminSubscriptionReminderPreviewOut(BaseModel):
     invoice_attached: bool = False
     recipient_count: int
     recipients: list[str] = []
+    to_email: str | None = None
+    cc_emails: list[str] = []
 
 
 class AdminSubscriptionReminderSendResponse(BaseModel):

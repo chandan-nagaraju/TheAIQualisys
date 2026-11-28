@@ -57,6 +57,7 @@ from app.email_util import (
 )
 from app.seller_payment import SELLER_GSTIN
 from app.fir_analytics import build_fir_intelligence, list_fir_invoice_months
+from app.invoice_mail import normalize_cc_emails, normalize_invoice_email
 from app.models import (
     AdminSubscriptionReminder,
     Company,
@@ -719,7 +720,21 @@ def _compose_manual_subscription_reminder(
     }
 
 
-def _reminder_company_and_users(db: Session, company_id: int) -> tuple[Company, list[CompanyUser], date]:
+def _accounts_mail_recipients(company: Company) -> tuple[str, list[str]]:
+    """Same To/CC as tax invoice emails (accounts address + CC list)."""
+    to = normalize_invoice_email(getattr(company, "invoice_accounts_email", None))
+    if not to:
+        raise HTTPException(
+            status_code=400,
+            detail="Save the accounts email on the company (Profile or Admin company) before sending this reminder.",
+        )
+    cc = normalize_cc_emails(getattr(company, "invoice_cc_emails", None), exclude=to)
+    return to, cc
+
+
+def _reminder_company_and_users(
+    db: Session, company_id: int, *, require_users: bool = True
+) -> tuple[Company, list[CompanyUser], date]:
     c = db.get(Company, company_id)
     if not c:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -738,7 +753,7 @@ def _reminder_company_and_users(db: Session, company_id: int) -> tuple[Company, 
         .scalars()
         .all()
     )
-    if not users:
+    if require_users and not users:
         raise HTTPException(
             status_code=400,
             detail="No active (non-blocked) workspace users to email for this tenant.",
@@ -758,11 +773,18 @@ def preview_manual_subscription_reminder(
 ):
     """Return the full reminder subject and body for review/edit. Does not send email."""
     settings = get_settings()
-    c, users, today = _reminder_company_and_users(db, company_id)
+    use_accounts = body.reminder_type == "payment_overdue"
+    c, users, today = _reminder_company_and_users(db, company_id, require_users=not use_accounts)
     draft = _compose_manual_subscription_reminder(
         db, c, body, settings, today, users, include_invoice_pdf=False
     )
-    emails = [u.email for u in users]
+    to_email: str | None = None
+    cc_emails: list[str] = []
+    if use_accounts:
+        to_email, cc_emails = _accounts_mail_recipients(c)
+        emails = [to_email, *cc_emails]
+    else:
+        emails = [u.email for u in users]
     return AdminSubscriptionReminderPreviewOut(
         subject=draft["subject"],
         message=draft["text"],
@@ -770,6 +792,8 @@ def preview_manual_subscription_reminder(
         invoice_attached=bool(draft["invoice_number"]),
         recipient_count=len(emails),
         recipients=emails,
+        to_email=to_email,
+        cc_emails=cc_emails,
     )
 
 
@@ -788,7 +812,8 @@ def send_manual_subscription_reminder(
     if not is_email_configured(settings):
         raise HTTPException(status_code=503, detail="Email is not configured (Resend or SMTP + EMAIL_FROM).")
 
-    c, users, today = _reminder_company_and_users(db, company_id)
+    use_accounts = body.reminder_type == "payment_overdue"
+    c, users, today = _reminder_company_and_users(db, company_id, require_users=not use_accounts)
     draft = _compose_manual_subscription_reminder(
         db, c, body, settings, today, users, include_invoice_pdf=True
     )
@@ -802,15 +827,21 @@ def send_manual_subscription_reminder(
     report_month = draft["report_month"]
     current_month_name = draft["current_month_name"]
 
+    if use_accounts:
+        to_email, cc_emails = _accounts_mail_recipients(c)
+        jobs: list[tuple[str, list[str] | None]] = [(to_email, cc_emails)]
+    else:
+        jobs = [(u.email, None) for u in users]
+
     errors: list[str] = []
     sent = 0
-    for u in users:
+    for to_email, cc_emails in jobs:
         try:
             if draft["send_kind"] == "overdue" and not edited:
                 assert c.subscription_end is not None
                 send_payment_overdue_email(
                     settings,
-                    u.email,
+                    to_email,
                     customer_name=c.company_name,
                     plan_name=draft["plan_name"],
                     paid_through=c.subscription_end,
@@ -820,13 +851,14 @@ def send_manual_subscription_reminder(
                     invoice_number=draft["invoice_number"],
                     invoice_pdf=draft["invoice_pdf"],
                     invoice_filename=draft["invoice_filename"],
+                    cc=cc_emails,
                 )
             elif draft["send_kind"] == "trial" and not edited:
                 if c.trial_end_date is None:
                     raise HTTPException(status_code=400, detail="This tenant has no trial end date.")
                 send_trial_ending_email(
                     settings,
-                    u.email,
+                    to_email,
                     company_name=c.company_name,
                     trial_end_date=c.trial_end_date,
                     subscribe_url=draft["subscribe_url"],
@@ -835,8 +867,8 @@ def send_manual_subscription_reminder(
             elif draft["invoice_pdf"] and draft["invoice_filename"]:
                 send_email_with_pdf_attachment(
                     settings,
-                    to_email=u.email,
-                    cc=None,
+                    to_email=to_email,
+                    cc=cc_emails,
                     subject=subject,
                     text=text,
                     html=html or simple_email_html(text),
@@ -846,15 +878,21 @@ def send_manual_subscription_reminder(
                 )
             elif html:
                 _send_text_and_html_email(
-                    settings, u.email, subject, text, html, reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO
+                    settings,
+                    to_email,
+                    subject,
+                    text,
+                    html,
+                    reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO,
+                    cc=cc_emails,
                 )
             else:
-                send_plain_text_email(settings, u.email, subject, text)
+                send_plain_text_email(settings, to_email, subject, text)
             sent += 1
         except Exception as exc:  # noqa: BLE001 — surface provider errors to admin
-            errors.append(f"{u.email}: {exc}")
+            errors.append(f"{to_email}: {exc}")
 
-    n = len(users)
+    n = len(jobs)
     if sent == n:
         st = "success"
         err_msg = None

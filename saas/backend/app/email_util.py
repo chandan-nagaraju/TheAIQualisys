@@ -246,7 +246,9 @@ def _send_text_and_html_email(
     html: str,
     *,
     reply_to: str | None = None,
+    cc: list[str] | None = None,
 ) -> None:
+    cc_list = [e for e in (cc or []) if e and e.lower() != to_email.lower()]
     if settings.resend_api_key:
         _send_via_resend(
             settings,
@@ -255,6 +257,7 @@ def _send_text_and_html_email(
             text,
             html=html,
             reply_to=reply_to,
+            cc=cc_list or None,
         )
         return
 
@@ -267,6 +270,8 @@ def _send_text_and_html_email(
     msg["To"] = to_email
     if reply_to:
         msg["Reply-To"] = reply_to
+    if cc_list:
+        msg["Cc"] = ", ".join(cc_list)
     msg.set_content(text)
     msg.add_alternative(html, subtype="html")
 
@@ -274,13 +279,14 @@ def _send_text_and_html_email(
     timeout = 20
     host = settings.smtp_host
     assert host is not None
+    recipients = [to_email, *cc_list]
 
     if settings.smtp_use_ssl:
         smtp_cls = _SMTP_SSLPreferIPv4 if settings.smtp_force_ipv4 else smtplib.SMTP_SSL
         with smtp_cls(host, settings.smtp_port, timeout=timeout) as smtp:
             if settings.smtp_user and settings.smtp_password is not None:
                 smtp.login(settings.smtp_user, settings.smtp_password)
-            smtp.send_message(msg, from_addr=envelope_from, to_addrs=[to_email])
+            smtp.send_message(msg, from_addr=envelope_from, to_addrs=recipients)
         return
 
     smtp_cls = _SMTPPreferIPv4 if settings.smtp_force_ipv4 else smtplib.SMTP
@@ -289,7 +295,7 @@ def _send_text_and_html_email(
             smtp.starttls()
         if settings.smtp_user and settings.smtp_password is not None:
             smtp.login(settings.smtp_user, settings.smtp_password)
-        smtp.send_message(msg, from_addr=envelope_from, to_addrs=[to_email])
+        smtp.send_message(msg, from_addr=envelope_from, to_addrs=recipients)
 
 
 def _format_subscription_end_human(subscription_end: date) -> str:
@@ -722,6 +728,7 @@ def send_payment_overdue_email(
     invoice_number: str | None = None,
     invoice_pdf: bytes | None = None,
     invoice_filename: str | None = None,
+    cc: list[str] | None = None,
 ) -> None:
     subject, text, html = build_payment_overdue_email(
         customer_name=customer_name,
@@ -736,7 +743,7 @@ def send_payment_overdue_email(
         send_email_with_pdf_attachment(
             settings,
             to_email=to_email,
-            cc=None,
+            cc=cc,
             subject=subject,
             text=text,
             html=html,
@@ -752,6 +759,7 @@ def send_payment_overdue_email(
         text,
         html,
         reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO,
+        cc=cc,
     )
 
 

@@ -81,3 +81,8 @@ def test_admin_reminder_menu_includes_payment_overdue():
     ).read_text(encoding="utf-8")
     invoices = (Path(__file__).resolve().parents[1] / "app" / "billing_invoices.py").read_text(encoding="utf-8")
     assert "def latest_billing_invoice_for_company" in invoices
+    admin = (Path(__file__).resolve().parents[1] / "app" / "routers" / "admin.py").read_text(encoding="utf-8")
+    assert "def _accounts_mail_recipients" in admin
+    assert "cc=cc_emails" in admin
+    email_util = (Path(__file__).resolve().parents[1] / "app" / "email_util.py").read_text(encoding="utf-8")
+    assert "cc: list[str] | None = None" in email_util
