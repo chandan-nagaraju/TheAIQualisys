@@ -15,6 +15,7 @@ from app.billing_invoices import (
     get_billing_invoice,
     get_billing_settings,
     invoice_counts,
+    latest_billing_invoice_for_company,
     list_billing_invoices,
     preview_invoice,
     preview_manual_invoice,
@@ -48,6 +49,7 @@ from app.email_util import (
     send_plain_text_email,
     send_trial_ending_email,
 )
+from app.seller_payment import SELLER_GSTIN
 from app.fir_analytics import build_fir_intelligence, list_fir_invoice_months
 from app.models import (
     AdminSubscriptionReminder,
@@ -610,6 +612,10 @@ def send_manual_subscription_reminder(
 
     thank_you_audit: dict | None = None
     pay_url = f"{settings.public_app_url.rstrip('/')}/upgrade"
+    seller_gstin = SELLER_GSTIN
+    overdue_invoice_number: str | None = None
+    overdue_invoice_filename: str | None = None
+    overdue_invoice_pdf: bytes | None = None
     if body.reminder_type == "trial_ending":
         if c.trial_end_date is None:
             raise HTTPException(
@@ -682,6 +688,12 @@ def send_manual_subscription_reminder(
     elif body.reminder_type == "payment_overdue":
         subject = ""
         text = ""
+        overdue_invoice = latest_billing_invoice_for_company(db, company_id)
+        overdue_invoice_number = overdue_invoice.invoice_number if overdue_invoice else None
+        overdue_invoice_filename = f"{overdue_invoice_number}.pdf" if overdue_invoice_number else None
+        if overdue_invoice is not None:
+            overdue_invoice_pdf = render_invoice_pdf(serialize_billing_invoice(overdue_invoice, db=db))
+        seller_gstin = (get_billing_settings(db).gstin or "").strip().upper() or SELLER_GSTIN
     else:
         trial_manual = c.subscription_end is None
         if trial_manual:
@@ -717,6 +729,10 @@ def send_manual_subscription_reminder(
                     paid_through=c.subscription_end,
                     today=today,
                     pay_url=pay_url,
+                    gstin=seller_gstin,
+                    invoice_number=overdue_invoice_number,
+                    invoice_pdf=overdue_invoice_pdf,
+                    invoice_filename=overdue_invoice_filename,
                 )
             elif body.reminder_type == "trial_ending" or (
                 body.reminder_type != "thank_you" and c.subscription_end is None

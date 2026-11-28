@@ -184,7 +184,7 @@ export function AdminSubscriptionReminderButton({ companyId, variant = "default"
                   >
                     <span className="font-medium text-white">Payment overdue — settle before we close ties</span>
                     <span className="mt-1 block text-xs text-slate-400">
-                      Days overdue and outstanding months, pay link, deadline after the 30th we close all ties.
+                      Days overdue, Pay now, bank / UPI / GSTIN, previous invoice attached, deadline after the 30th we close all ties.
                     </span>
                   </button>
                   <button

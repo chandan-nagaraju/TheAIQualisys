@@ -15,6 +15,7 @@ from typing import Literal
 
 from app.config import Settings
 from app.dates import format_date_english, payment_overdue_close_date, unpaid_month_count
+from app.seller_payment import seller_account_details_lines, seller_account_details_text
 
 SUBSCRIPTION_EXPIRY_SUBJECT = "Your Final inspection reports subscription ends today"
 TRIAL_ENDING_SUBJECT = "Your TheAIQualisys trial is ending — subscribe to keep working"
@@ -171,6 +172,7 @@ def send_email_with_pdf_attachment(
     filename: str,
     pdf_bytes: bytes,
     html: str | None = None,
+    reply_to: str | None = None,
 ) -> None:
     """Send one To address, optional CC list, and a PDF attachment (Resend or SMTP)."""
     if not pdf_bytes:
@@ -185,6 +187,7 @@ def send_email_with_pdf_attachment(
             subject,
             text,
             html=html,
+            reply_to=reply_to,
             cc=cc_list or None,
             attachments=[
                 {
@@ -203,6 +206,8 @@ def send_email_with_pdf_attachment(
     msg["Subject"] = subject
     msg["From"] = settings.email_from
     msg["To"] = to_email
+    if reply_to:
+        msg["Reply-To"] = reply_to
     if cc_list:
         msg["Cc"] = ", ".join(cc_list)
     msg.set_content(text)
@@ -583,8 +588,10 @@ def build_payment_overdue_email(
     paid_through: date,
     today: date,
     pay_url: str,
+    gstin: str | None = None,
+    invoice_number: str | None = None,
 ) -> tuple[str, str, str]:
-    """Overdue payment reminder: days overdue, pay link, close-all-ties deadline on the 30th."""
+    """Overdue payment reminder: days overdue, pay link, bank/UPI/GSTIN, previous invoice."""
     cutoff = payment_overdue_close_date(today)
     overdue_days = max(0, (today - paid_through).days)
     months_now = unpaid_month_count(paid_through, today) if overdue_days else 1
@@ -595,15 +602,38 @@ def build_payment_overdue_email(
     months_now_label = "1 month" if months_now == 1 else f"{months_now} months"
     months_cut_label = "1 month" if months_at_cutoff == 1 else f"{months_at_cutoff} months"
     subject = f"{ADMIN_PAYMENT_OVERDUE_SUBJECT_PREFIX}{cutoff_fmt}"
+    account_text = seller_account_details_text(gstin=gstin)
+    inv = (invoice_number or "").strip()
+    if inv:
+        invoice_note = (
+            f"Your previous invoice {inv} is attached. Please pay the outstanding amount using Pay now "
+            "or the bank / UPI details below.\n\n"
+        )
+        invoice_html = (
+            f"<p style=\"margin:0 0 16px;\">Your previous invoice <strong>{escape(inv)}</strong> is attached. "
+            "Please pay the outstanding amount using Pay now or the bank / UPI details below.</p>"
+        )
+    else:
+        invoice_note = "Please pay the outstanding amount using Pay now or the bank / UPI details below.\n\n"
+        invoice_html = (
+            "<p style=\"margin:0 0 16px;\">Please pay the outstanding amount using Pay now or the bank / UPI details below.</p>"
+        )
+    account_html_rows = "".join(
+        f"<tr><td style=\"padding:4px 8px 4px 0;color:#64748b;white-space:nowrap;\">{escape(line.split(': ', 1)[0])}</td>"
+        f"<td style=\"padding:4px 0;font-weight:600;\">{escape(line.split(': ', 1)[1])}</td></tr>"
+        for line in seller_account_details_lines(gstin=gstin)
+    )
     text = (
         f"Dear {customer_name},\n\n"
         f"Your TheAIQualisys subscription payment for the {plan_name} plan is overdue.\n\n"
         f"You have been overdue for {overdue_phrase} (coverage ended on {paid_through_fmt}). "
         f"{months_now_label.capitalize()} of payment is currently outstanding.\n\n"
+        f"{invoice_note}"
         "Please complete payment as soon as possible so we can continue supporting your inspection "
-        "reporting without interruption. Open the link below to pay by UPI and send the reference "
-        "for verification.\n\n"
-        f"Pay here: {pay_url}\n\n"
+        "reporting without interruption.\n\n"
+        f"Pay now: {pay_url}\n\n"
+        "Account details\n"
+        f"{account_text}\n\n"
         f"Deadline: after {cutoff_fmt} we will close all ties. "
         f"If payment is not received by that date, {months_cut_label} of dues will be outstanding "
         "and we will end the engagement.\n\n"
@@ -628,10 +658,13 @@ def build_payment_overdue_email(
     <p style="margin:0 0 16px;">Dear {cn},</p>
     <p style="margin:0 0 16px;">Your TheAIQualisys subscription payment for the <strong>{plan}</strong> plan is overdue.</p>
     <p style="margin:0 0 16px;">You have been overdue for <strong>{overdue_esc}</strong> (coverage ended on <strong>{thru}</strong>). {months_now_esc.capitalize()} of payment is currently outstanding.</p>
-    <p style="margin:0 0 20px;">Please complete payment as soon as possible so we can continue supporting your inspection reporting without interruption. Use the button below to pay by UPI, then send the reference for verification.</p>
+    {invoice_html}
+    <p style="margin:0 0 20px;">Please complete payment as soon as possible so we can continue supporting your inspection reporting without interruption.</p>
     <div style="text-align:center;margin:28px 0;">
       <a href="{safe_url}" style="display:inline-block;background:#2563eb;color:#ffffff !important;text-decoration:none;font-weight:600;padding:14px 28px;border-radius:10px;font-family:system-ui,sans-serif;">Pay now</a>
     </div>
+    <p style="margin:0 0 8px;font-weight:600;">Account details</p>
+    <table style="width:100%;border-collapse:collapse;margin:0 0 20px;font-family:system-ui,sans-serif;font-size:14px;">{account_html_rows}</table>
     <p style="margin:0 0 16px;"><strong>Deadline:</strong> after <strong>{cut}</strong> we will close all ties. If payment is not received by that date, {months_cut_esc} of dues will be outstanding and we will end the engagement.</p>
     <p style="margin:0 0 16px;font-size:15px;">If you have already paid, reply to this email with the UPI / transaction reference and we will verify it immediately.</p>
     <p style="margin:16px 0 4px;">Team,<br />TheAIQualisys</p>
@@ -650,6 +683,10 @@ def send_payment_overdue_email(
     paid_through: date,
     today: date,
     pay_url: str,
+    gstin: str | None = None,
+    invoice_number: str | None = None,
+    invoice_pdf: bytes | None = None,
+    invoice_filename: str | None = None,
 ) -> None:
     subject, text, html = build_payment_overdue_email(
         customer_name=customer_name,
@@ -657,7 +694,22 @@ def send_payment_overdue_email(
         paid_through=paid_through,
         today=today,
         pay_url=pay_url,
+        gstin=gstin,
+        invoice_number=invoice_number,
     )
+    if invoice_pdf and invoice_filename:
+        send_email_with_pdf_attachment(
+            settings,
+            to_email=to_email,
+            cc=None,
+            subject=subject,
+            text=text,
+            html=html,
+            filename=invoice_filename,
+            pdf_bytes=invoice_pdf,
+            reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO,
+        )
+        return
     _send_text_and_html_email(
         settings,
         to_email,

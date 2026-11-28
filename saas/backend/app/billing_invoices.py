@@ -183,6 +183,24 @@ def invoice_counts(db: Session) -> dict[str, int]:
     return counts
 
 
+def latest_billing_invoice_for_company(db: Session, company_id: int) -> BillingInvoice | None:
+    """Most recent generated SaaS invoice for this tenant (previous invoice to re-send)."""
+    return db.execute(
+        select(BillingInvoice)
+        .options(
+            selectinload(BillingInvoice.payment).selectinload(BillingPayment.company).selectinload(Company.users),
+            selectinload(BillingInvoice.payment).selectinload(BillingPayment.user),
+            selectinload(BillingInvoice.company),
+        )
+        .where(
+            BillingInvoice.company_id == company_id,
+            BillingInvoice.status == STATUS_GENERATED,
+        )
+        .order_by(BillingInvoice.invoice_date.desc(), BillingInvoice.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
 def list_billing_invoices(db: Session, *, status_filter: str | None = None, limit: int = 500) -> list[BillingInvoice]:
     q = select(BillingInvoice).options(
         selectinload(BillingInvoice.payment).selectinload(BillingPayment.company),
