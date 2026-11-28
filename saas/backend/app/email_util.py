@@ -456,6 +456,41 @@ def _trial_ending_html_body(
 </html>"""
 
 
+def simple_email_html(text: str) -> str:
+    """Turn an edited plain-text reminder into simple HTML paragraphs."""
+    chunks = [p.strip() for p in (text or "").replace("\r\n", "\n").split("\n\n")]
+    chunks = [c for c in chunks if c]
+    inner = "".join(
+        f'<p style="margin:0 0 16px;">{escape(c).replace(chr(10), "<br />")}</p>' for c in chunks
+    )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+<body style="margin:0;padding:24px;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.65;color:#1e293b;background:#f8fafc;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;padding:32px;border-radius:12px;border:1px solid #e2e8f0;">
+    {inner}
+  </div>
+</body>
+</html>"""
+
+
+def build_trial_ending_email_parts(
+    *,
+    company_name: str,
+    trial_end_date: date,
+    subscribe_url: str,
+    already_ended: bool = False,
+) -> tuple[str, str, str]:
+    trial_end_formatted = _format_subscription_end_human(trial_end_date)
+    text = _trial_ending_text_body(
+        company_name, trial_end_formatted, subscribe_url, already_ended=already_ended
+    )
+    html = _trial_ending_html_body(
+        company_name, trial_end_formatted, subscribe_url, already_ended=already_ended
+    )
+    return TRIAL_ENDING_SUBJECT, text, html
+
+
 def send_trial_ending_email(
     settings: Settings,
     to_email: str,

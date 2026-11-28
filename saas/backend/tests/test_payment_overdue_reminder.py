@@ -4,7 +4,7 @@ from datetime import date
 from pathlib import Path
 
 from app.dates import payment_overdue_close_date, unpaid_month_count
-from app.email_util import build_payment_overdue_email
+from app.email_util import build_payment_overdue_email, simple_email_html
 
 
 def test_close_date_is_thirtieth_of_this_month():
@@ -55,6 +55,13 @@ def test_overdue_email_states_days_pay_link_and_close_ties():
     assert "close all ties" in html
 
 
+def test_simple_email_html_preserves_paragraphs():
+    html = simple_email_html("Hello,\n\nPlease pay.\nUPI ID: 7892007580@axisbank")
+    assert "Hello," in html
+    assert "Please pay." in html
+    assert "7892007580@axisbank" in html
+
+
 def test_admin_reminder_menu_includes_payment_overdue():
     page = (
         Path(__file__).resolve().parents[2]
@@ -63,10 +70,14 @@ def test_admin_reminder_menu_includes_payment_overdue():
         / "components"
         / "AdminSubscriptionReminderButton.tsx"
     ).read_text(encoding="utf-8")
-    assert 'send("payment_overdue")' in page
+    assert 'loadPreview("payment_overdue")' in page
+    assert "Review and edit message" in page
     assert "close all ties" in page
     assert "previous invoice attached" in page
     schemas = (Path(__file__).resolve().parents[1] / "app" / "schemas.py").read_text(encoding="utf-8")
     assert '"payment_overdue"' in schemas
+    assert "subscription-reminder/preview" in (
+        Path(__file__).resolve().parents[1] / "app" / "routers" / "admin.py"
+    ).read_text(encoding="utf-8")
     invoices = (Path(__file__).resolve().parents[1] / "app" / "billing_invoices.py").read_text(encoding="utf-8")
     assert "def latest_billing_invoice_for_company" in invoices

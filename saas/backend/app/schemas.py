@@ -441,6 +441,8 @@ ThankYouCategory = Literal["running", "regular", "occasional", "stranger", "new"
 class AdminSubscriptionReminderSendBody(BaseModel):
     reminder_type: Literal["ending_soon", "already_ended", "thank_you", "trial_ending", "payment_overdue"]
     thank_you_category: ThankYouCategory | None = None
+    subject: str | None = None
+    message: str | None = None
 
     @model_validator(mode="after")
     def _thank_you_needs_category(self):
@@ -449,7 +451,20 @@ class AdminSubscriptionReminderSendBody(BaseModel):
                 raise ValueError("thank_you_category is required when reminder_type is thank_you")
         elif self.thank_you_category is not None:
             raise ValueError("thank_you_category is only allowed when reminder_type is thank_you")
+        sub = (self.subject or "").strip()
+        msg = (self.message or "").strip()
+        if (self.subject is not None or self.message is not None) and (not sub or not msg):
+            raise ValueError("subject and message are both required when editing the reminder")
         return self
+
+
+class AdminSubscriptionReminderPreviewOut(BaseModel):
+    subject: str
+    message: str
+    invoice_number: str | None = None
+    invoice_attached: bool = False
+    recipient_count: int
+    recipients: list[str] = []
 
 
 class AdminSubscriptionReminderSendResponse(BaseModel):

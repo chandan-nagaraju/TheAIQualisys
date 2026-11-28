@@ -41,13 +41,19 @@ from app.billing_payments import (
 from app.config import get_settings
 from app.deps import get_db_session, get_platform_admin
 from app.email_util import (
+    SUBSCRIPTION_EXPIRY_REPLY_TO,
+    _send_text_and_html_email,
     build_admin_manual_subscription_reminder_email,
     build_admin_thank_you_all_email,
     build_admin_thank_you_email,
+    build_payment_overdue_email,
+    build_trial_ending_email_parts,
     is_email_configured,
+    send_email_with_pdf_attachment,
     send_payment_overdue_email,
     send_plain_text_email,
     send_trial_ending_email,
+    simple_email_html,
 )
 from app.seller_payment import SELLER_GSTIN
 from app.fir_analytics import build_fir_intelligence, list_fir_invoice_months
@@ -86,6 +92,7 @@ from app.schemas import (
     AdminDashboardResponse,
     AdminFirCustomerRow,
     AdminLoginRequest,
+    AdminSubscriptionReminderPreviewOut,
     AdminSubscriptionReminderSendBody,
     AdminSubscriptionReminderSendResponse,
     AdminTenantUserRow,
@@ -552,101 +559,65 @@ def patch_company(
     return _company_out(c)
 
 
-@router.post(
-    "/companies/{company_id}/subscription-reminder",
-    response_model=AdminSubscriptionReminderSendResponse,
-)
-def send_manual_subscription_reminder(
-    company_id: int,
+def _compose_manual_subscription_reminder(
+    db: Session,
+    c: Company,
     body: AdminSubscriptionReminderSendBody,
-    _: PlatformAdmin = Depends(get_platform_admin),
-    db: Session = Depends(get_db_session),
-):
-    """Send a subscription reminder email to all non-blocked workspace users for this tenant."""
-    settings = get_settings()
-    if not is_email_configured(settings):
-        raise HTTPException(status_code=503, detail="Email is not configured (Resend or SMTP + EMAIL_FROM).")
-
-    c = db.get(Company, company_id)
-    if not c:
-        raise HTTPException(status_code=404, detail="Company not found")
-
-    today = billing_today()
-    if sync_subscription_status_from_dates(c, today):
-        db.add(c)
-        db.commit()
-        db.refresh(c)
-
-    users = (
-        db.execute(
-            select(CompanyUser).where(
-                CompanyUser.company_id == company_id,
-                CompanyUser.is_blocked == 0,
-            )
-        )
-        .scalars()
-        .all()
-    )
-    if not users:
-        raise HTTPException(
-            status_code=400,
-            detail="No active (non-blocked) workspace users to email for this tenant.",
-        )
+    settings,
+    today: date,
+    users: list[CompanyUser],
+    *,
+    include_invoice_pdf: bool,
+) -> dict:
+    report_total = count_fir_reports_total(db, c.id)
+    report_month = count_fir_reports_this_month(db, c.id, today)
+    current_month_name = billing_month_year_english(today)
+    plan_name = c.plan_type.title()
+    pay_url = f"{settings.public_app_url.rstrip('/')}/upgrade"
+    subscribe_url = f"{settings.public_app_url.rstrip('/')}/workspace/pricing"
+    thank_you_audit: dict | None = None
+    invoice_number: str | None = None
+    invoice_filename: str | None = None
+    invoice_pdf: bytes | None = None
+    html: str | None = None
+    send_kind = "plain"
+    trial_already_ended = False
 
     if body.reminder_type == "payment_overdue" and c.subscription_end is None:
         raise HTTPException(
             status_code=400,
             detail="This tenant has no subscription end date; cannot send a payment overdue reminder.",
         )
-
     if body.reminder_type in ("ending_soon", "already_ended") and c.subscription_end is None and c.trial_end_date is None:
         raise HTTPException(
             status_code=400,
             detail="This tenant has no trial end date or subscription end date.",
         )
 
-    report_total = count_fir_reports_total(db, company_id)
-    report_month = count_fir_reports_this_month(db, company_id, today)
-    current_month_name = billing_month_year_english(today)
-    plan_name = c.plan_type.title()
-
-    thank_you_audit: dict | None = None
-    pay_url = f"{settings.public_app_url.rstrip('/')}/upgrade"
-    seller_gstin = SELLER_GSTIN
-    overdue_invoice_number: str | None = None
-    overdue_invoice_filename: str | None = None
-    overdue_invoice_pdf: bytes | None = None
     if body.reminder_type == "trial_ending":
         if c.trial_end_date is None:
             raise HTTPException(
                 status_code=400,
                 detail="This tenant has no trial end date; cannot send a trial reminder.",
             )
-        subject = ""
-        text = ""
+        send_kind = "trial"
+        trial_already_ended = c.trial_end_date < today
+        subject, text, html = build_trial_ending_email_parts(
+            company_name=c.company_name,
+            trial_end_date=c.trial_end_date,
+            subscribe_url=subscribe_url,
+            already_ended=trial_already_ended,
+        )
     elif body.reminder_type == "thank_you":
         assert body.thank_you_category is not None
-        # Pass:
-        # (customer_email,)
-        #
-        # This guarantees:
-        # - Overall Top 5 = selected customer's parts only
-        # - Running Parts = selected customer's running parts only
-        # - Regular Parts = selected customer's regular parts only
-        # - Occasional Parts = selected customer's occasional parts only
-        # - Stranger Parts = selected customer's stranger parts only
-        # - New Parts = selected customer's new parts only
-        # - Every number and part shown in the email belongs only to the selected customer
         sub_start = c.subscription_start.strftime("%B %d, %Y") if c.subscription_start else "—"
         sub_end = c.subscription_end.strftime("%B %d, %Y") if c.subscription_end else "—"
-        top_parts = top_fir_part_thank_you_table_rows(db, company_id, limit=5)
-
+        top_parts = top_fir_part_thank_you_table_rows(db, c.id, limit=5)
         if body.thank_you_category == "all":
-            today = billing_today()
             engagement_sections: list[tuple[str, int, int, list[tuple[str, int, str, str]]]] = []
             for key, title in _THANK_YOU_ALL_ENGAGEMENT_KEYS_AND_TITLES:
                 report_count, row_count, sec_top = thank_you_engagement_section_rows(
-                    db, company_id, key, today=today
+                    db, c.id, key, today=today
                 )
                 engagement_sections.append((title, report_count, row_count, sec_top))
             subject, text, hours_saved = build_admin_thank_you_all_email(
@@ -686,57 +657,171 @@ def send_manual_subscription_reminder(
                 "total_time_saved_hours": hours_saved,
             }
     elif body.reminder_type == "payment_overdue":
-        subject = ""
-        text = ""
-        overdue_invoice = latest_billing_invoice_for_company(db, company_id)
-        overdue_invoice_number = overdue_invoice.invoice_number if overdue_invoice else None
-        overdue_invoice_filename = f"{overdue_invoice_number}.pdf" if overdue_invoice_number else None
-        if overdue_invoice is not None:
-            overdue_invoice_pdf = render_invoice_pdf(serialize_billing_invoice(overdue_invoice, db=db))
+        send_kind = "overdue"
+        overdue_invoice = latest_billing_invoice_for_company(db, c.id)
+        invoice_number = overdue_invoice.invoice_number if overdue_invoice else None
+        invoice_filename = f"{invoice_number}.pdf" if invoice_number else None
+        if include_invoice_pdf and overdue_invoice is not None:
+            invoice_pdf = render_invoice_pdf(serialize_billing_invoice(overdue_invoice, db=db))
         seller_gstin = (get_billing_settings(db).gstin or "").strip().upper() or SELLER_GSTIN
+        assert c.subscription_end is not None
+        subject, text, html = build_payment_overdue_email(
+            customer_name=c.company_name,
+            plan_name=plan_name,
+            paid_through=c.subscription_end,
+            today=today,
+            pay_url=pay_url,
+            gstin=seller_gstin,
+            invoice_number=invoice_number,
+        )
+    elif c.subscription_end is None:
+        if c.trial_end_date is None:
+            raise HTTPException(status_code=400, detail="This tenant has no trial end date.")
+        send_kind = "trial"
+        trial_already_ended = body.reminder_type == "already_ended" or c.trial_end_date < today
+        subject, text, html = build_trial_ending_email_parts(
+            company_name=c.company_name,
+            trial_end_date=c.trial_end_date,
+            subscribe_url=subscribe_url,
+            already_ended=trial_already_ended,
+        )
     else:
-        trial_manual = c.subscription_end is None
-        if trial_manual:
-            assert c.trial_end_date is not None
-            subject = ""
-            text = ""
-        else:
-            end_date_display = c.subscription_end.strftime("%B %d, %Y")
-            renewal_link = f"{settings.public_app_url.rstrip('/')}/dashboard/billing"
-            subject, text = build_admin_manual_subscription_reminder_email(
-                reminder_type=body.reminder_type,
-                customer_name=c.company_name,
-                plan_name=plan_name,
-                end_date_display=end_date_display,
-                current_month_name=current_month_name,
-                current_month_report_count=report_month,
-                total_report_count=report_total,
-                renewal_link=renewal_link,
+        end_date_display = c.subscription_end.strftime("%B %d, %Y")
+        renewal_link = f"{settings.public_app_url.rstrip('/')}/dashboard/billing"
+        subject, text = build_admin_manual_subscription_reminder_email(
+            reminder_type=body.reminder_type,
+            customer_name=c.company_name,
+            plan_name=plan_name,
+            end_date_display=end_date_display,
+            current_month_name=current_month_name,
+            current_month_report_count=report_month,
+            total_report_count=report_total,
+            renewal_link=renewal_link,
+        )
+
+    return {
+        "subject": subject,
+        "text": text,
+        "html": html,
+        "send_kind": send_kind,
+        "trial_already_ended": trial_already_ended,
+        "invoice_number": invoice_number,
+        "invoice_filename": invoice_filename,
+        "invoice_pdf": invoice_pdf,
+        "thank_you_audit": thank_you_audit,
+        "report_total": report_total,
+        "report_month": report_month,
+        "current_month_name": current_month_name,
+        "plan_name": plan_name,
+        "pay_url": pay_url,
+        "subscribe_url": subscribe_url,
+        "seller_gstin": (get_billing_settings(db).gstin or "").strip().upper() or SELLER_GSTIN,
+    }
+
+
+def _reminder_company_and_users(db: Session, company_id: int) -> tuple[Company, list[CompanyUser], date]:
+    c = db.get(Company, company_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Company not found")
+    today = billing_today()
+    if sync_subscription_status_from_dates(c, today):
+        db.add(c)
+        db.commit()
+        db.refresh(c)
+    users = (
+        db.execute(
+            select(CompanyUser).where(
+                CompanyUser.company_id == company_id,
+                CompanyUser.is_blocked == 0,
             )
+        )
+        .scalars()
+        .all()
+    )
+    if not users:
+        raise HTTPException(
+            status_code=400,
+            detail="No active (non-blocked) workspace users to email for this tenant.",
+        )
+    return c, users, today
+
+
+@router.post(
+    "/companies/{company_id}/subscription-reminder/preview",
+    response_model=AdminSubscriptionReminderPreviewOut,
+)
+def preview_manual_subscription_reminder(
+    company_id: int,
+    body: AdminSubscriptionReminderSendBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Return the full reminder subject and body for review/edit. Does not send email."""
+    settings = get_settings()
+    c, users, today = _reminder_company_and_users(db, company_id)
+    draft = _compose_manual_subscription_reminder(
+        db, c, body, settings, today, users, include_invoice_pdf=False
+    )
+    emails = [u.email for u in users]
+    return AdminSubscriptionReminderPreviewOut(
+        subject=draft["subject"],
+        message=draft["text"],
+        invoice_number=draft["invoice_number"],
+        invoice_attached=bool(draft["invoice_number"]),
+        recipient_count=len(emails),
+        recipients=emails,
+    )
+
+
+@router.post(
+    "/companies/{company_id}/subscription-reminder",
+    response_model=AdminSubscriptionReminderSendResponse,
+)
+def send_manual_subscription_reminder(
+    company_id: int,
+    body: AdminSubscriptionReminderSendBody,
+    _: PlatformAdmin = Depends(get_platform_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Send a subscription reminder email to all non-blocked workspace users for this tenant."""
+    settings = get_settings()
+    if not is_email_configured(settings):
+        raise HTTPException(status_code=503, detail="Email is not configured (Resend or SMTP + EMAIL_FROM).")
+
+    c, users, today = _reminder_company_and_users(db, company_id)
+    draft = _compose_manual_subscription_reminder(
+        db, c, body, settings, today, users, include_invoice_pdf=True
+    )
+    subject = (body.subject or "").strip() or draft["subject"]
+    text = (body.message or "").replace("\r\n", "\n").strip() or draft["text"]
+    composed_text = (draft["text"] or "").replace("\r\n", "\n").strip()
+    edited = text != composed_text or subject != (draft["subject"] or "").strip()
+    html = simple_email_html(text) if edited else draft["html"]
+    thank_you_audit = draft["thank_you_audit"]
+    report_total = draft["report_total"]
+    report_month = draft["report_month"]
+    current_month_name = draft["current_month_name"]
 
     errors: list[str] = []
     sent = 0
-    subscribe_url = f"{settings.public_app_url.rstrip('/')}/workspace/pricing"
     for u in users:
         try:
-            if body.reminder_type == "payment_overdue":
+            if draft["send_kind"] == "overdue" and not edited:
                 assert c.subscription_end is not None
                 send_payment_overdue_email(
                     settings,
                     u.email,
                     customer_name=c.company_name,
-                    plan_name=plan_name,
+                    plan_name=draft["plan_name"],
                     paid_through=c.subscription_end,
                     today=today,
-                    pay_url=pay_url,
-                    gstin=seller_gstin,
-                    invoice_number=overdue_invoice_number,
-                    invoice_pdf=overdue_invoice_pdf,
-                    invoice_filename=overdue_invoice_filename,
+                    pay_url=draft["pay_url"],
+                    gstin=draft["seller_gstin"],
+                    invoice_number=draft["invoice_number"],
+                    invoice_pdf=draft["invoice_pdf"],
+                    invoice_filename=draft["invoice_filename"],
                 )
-            elif body.reminder_type == "trial_ending" or (
-                body.reminder_type != "thank_you" and c.subscription_end is None
-            ):
+            elif draft["send_kind"] == "trial" and not edited:
                 if c.trial_end_date is None:
                     raise HTTPException(status_code=400, detail="This tenant has no trial end date.")
                 send_trial_ending_email(
@@ -744,8 +829,24 @@ def send_manual_subscription_reminder(
                     u.email,
                     company_name=c.company_name,
                     trial_end_date=c.trial_end_date,
-                    subscribe_url=subscribe_url,
-                    already_ended=body.reminder_type == "already_ended" or c.trial_end_date < today,
+                    subscribe_url=draft["subscribe_url"],
+                    already_ended=draft["trial_already_ended"],
+                )
+            elif draft["invoice_pdf"] and draft["invoice_filename"]:
+                send_email_with_pdf_attachment(
+                    settings,
+                    to_email=u.email,
+                    cc=None,
+                    subject=subject,
+                    text=text,
+                    html=html or simple_email_html(text),
+                    filename=draft["invoice_filename"],
+                    pdf_bytes=draft["invoice_pdf"],
+                    reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO,
+                )
+            elif html:
+                _send_text_and_html_email(
+                    settings, u.email, subject, text, html, reply_to=SUBSCRIPTION_EXPIRY_REPLY_TO
                 )
             else:
                 send_plain_text_email(settings, u.email, subject, text)
